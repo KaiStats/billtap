@@ -28,8 +28,7 @@ export default function Claim() {
     return id;
   });
   const [myName, setMyName] = useState(() => localStorage.getItem("divvy_participant_name") || "");
-  const [nameInput, setNameInput] = useState("");
-  const [joined, setJoined] = useState(false);
+  const [nameInput, setNameInput] = useState(() => localStorage.getItem("divvy_participant_name") || "");
   const [loading, setLoading] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
   const [newItemName, setNewItemName] = useState("");
