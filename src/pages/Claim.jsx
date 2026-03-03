@@ -87,6 +87,8 @@ export default function Claim() {
 
   const toggleClaim = async (itemId) => {
     if (!session) return;
+    // Auto-join on first claim if not yet registered
+    await ensureJoined(nameInput.trim() || myName || "Anonymous");
     const updatedItems = session.items.map(item => {
       if (item.id !== itemId) return item;
       const claimed = item.claimed_by || [];
