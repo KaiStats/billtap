@@ -140,32 +140,6 @@ export default function Claim() {
     <div className="min-h-screen flex items-center justify-center text-gray-500">Session not found.</div>
   );
 
-  // Name entry screen
-  if (!joined) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <Card className="rounded-3xl border-0 shadow-lg max-w-sm w-full">
-        <CardContent className="p-6 space-y-4 text-center">
-          <div className="text-4xl">👋</div>
-          <h2 className="text-xl font-black text-gray-900">{session.title}</h2>
-          <p className="text-gray-500 text-sm">${(session.total_amount || 0).toFixed(2)} total · {(session.items || []).length} items</p>
-          <div className="space-y-3 pt-2">
-            <Input
-              value={nameInput}
-              onChange={e => setNameInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleJoin()}
-              placeholder="Your name"
-              className="rounded-xl text-center text-lg h-12"
-              autoFocus
-            />
-            <Button onClick={handleJoin} disabled={!nameInput.trim() || saving} className="w-full bg-purple-600 hover:bg-purple-700 font-bold rounded-xl h-12">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join & Claim Items →"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   const items = session.items || [];
   const participants = session.participants || [];
   const claimedCount = items.filter(i => (i.claimed_by || []).length > 0).length;
