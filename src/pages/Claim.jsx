@@ -158,8 +158,8 @@ export default function Claim() {
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
-      <div className="bg-white border-b px-5 py-4 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto">
+      <div className="bg-white border-b px-5 py-3 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto space-y-2">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-black text-gray-900">{session.title}</h1>
@@ -171,6 +171,18 @@ export default function Claim() {
                 <div className="bg-purple-600 h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
               </div>
             </div>
+          </div>
+          {/* Optional inline name field */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 shrink-0">Your name:</span>
+            <input
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onBlur={handleNameBlur}
+              onKeyDown={e => e.key === "Enter" && e.target.blur()}
+              placeholder="optional"
+              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-purple-400 bg-gray-50"
+            />
           </div>
         </div>
       </div>
