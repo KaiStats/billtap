@@ -8,27 +8,27 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 const statusColors = {
-  pending: "bg-yellow-100 text-yellow-800",
-  assigned: "bg-blue-100 text-blue-800",
+  waiting: "bg-yellow-100 text-yellow-800",
+  claiming: "bg-blue-100 text-blue-800",
   completed: "bg-green-100 text-green-800",
 };
 
 export default function Dashboard() {
-  const [receipts, setReceipts] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.entities.Receipt.list("-created_date", 50).then((data) => {
-      setReceipts(data);
+    base44.entities.Session.list("-created_date", 50).then((data) => {
+      setSessions(data);
       setLoading(false);
     });
   }, []);
 
-  const totalOwed = receipts.reduce((sum, r) => {
-    return sum + (r.participants || []).filter(p => p.payment_status !== "paid").reduce((s, p) => s + (p.amount_owed || 0), 0);
+  const totalOwed = sessions.reduce((sum, s) => {
+    return sum + (s.participants || []).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0);
   }, 0);
-  const totalCollected = receipts.reduce((sum, r) => {
-    return sum + (r.participants || []).filter(p => p.payment_status === "paid").reduce((s, p) => s + (p.amount_owed || 0), 0);
+  const totalCollected = sessions.reduce((sum, s) => {
+    return sum + (s.participants || []).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.amount_owed || 0), 0);
   }, 0);
 
   return (
@@ -49,7 +49,7 @@ export default function Dashboard() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Bills Split", value: receipts.length, icon: Receipt, color: "text-purple-600 bg-purple-50" },
+            { label: "Bills Split", value: sessions.length, icon: Receipt, color: "text-purple-600 bg-purple-50" },
             { label: "Outstanding", value: `$${totalOwed.toFixed(2)}`, icon: Clock, color: "text-orange-600 bg-orange-50" },
             { label: "Collected", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "text-green-600 bg-green-50" },
           ].map(({ label, value, icon: Icon, color }) => (
@@ -67,10 +67,9 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Receipts List */}
         {loading ? (
           <div className="text-center py-20 text-gray-400">Loading...</div>
-        ) : receipts.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <div className="text-center py-20">
             <Receipt className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 text-lg">No bills yet.</p>
@@ -80,11 +79,11 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="space-y-3">
-            {receipts.map((receipt) => {
-              const paid = (receipt.participants || []).filter(p => p.payment_status === "paid").length;
-              const total = (receipt.participants || []).length;
+            {sessions.map((session) => {
+              const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
+              const total = (session.participants || []).length;
               return (
-                <Link key={receipt.id} to={createPageUrl(`ReceiptDetail?id=${receipt.id}`)}>
+                <Link key={session.id} to={createPageUrl(`ReceiptDetail?id=${session.id}&host=1`)}>
                   <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                     <CardContent className="p-5 flex items-center justify-between">
                       <div className="flex items-center gap-4">
@@ -92,17 +91,17 @@ export default function Dashboard() {
                           <Receipt className="w-6 h-6 text-purple-600" />
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900">{receipt.title}</div>
+                          <div className="font-bold text-gray-900">{session.title}</div>
                           <div className="text-sm text-gray-500 flex items-center gap-2 mt-0.5">
                             <Users className="w-3.5 h-3.5" />
-                            {total} people · ${(receipt.total_amount || 0).toFixed(2)}
+                            {total} people · ${(session.total_amount || 0).toFixed(2)}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-sm text-gray-500">{paid}/{total} paid</div>
-                        <Badge className={statusColors[receipt.status] || statusColors.pending}>
-                          {receipt.status || "pending"}
+                        <Badge className={statusColors[session.status] || statusColors.waiting}>
+                          {session.status || "waiting"}
                         </Badge>
                       </div>
                     </CardContent>
