@@ -40,9 +40,8 @@ export default function Claim() {
     const data = await base44.entities.Session.filter({ id: sessionId });
     if (data[0]) {
       setSession(data[0]);
-      // Check if already joined
       const existing = (data[0].participants || []).find(p => p.participant_id === myId);
-      if (existing) { setMyName(existing.name); setJoined(true); }
+      if (existing && existing.name) setMyName(existing.name);
     }
     setLoading(false);
   }, [sessionId, myId]);
