@@ -57,24 +57,32 @@ export default function Claim() {
     return unsub;
   }, [sessionId]);
 
-  const handleJoin = async () => {
-    if (!nameInput.trim()) return;
-    setSaving(true);
-    const name = nameInput.trim();
-    localStorage.setItem("divvy_participant_name", name);
-    setMyName(name);
-
+  // Register/update participant (called on name change or on first claim)
+  const ensureJoined = async (name) => {
     const current = await base44.entities.Session.filter({ id: sessionId });
     const s = current[0];
+    if (!s) return;
     const alreadyIn = (s.participants || []).find(p => p.participant_id === myId);
     if (!alreadyIn) {
       await base44.entities.Session.update(sessionId, {
-        participants: [...(s.participants || []), { participant_id: myId, name, amount_owed: 0, payment_status: "unpaid" }],
+        participants: [...(s.participants || []), { participant_id: myId, name: name || "Anonymous", amount_owed: 0, payment_status: "unpaid" }],
         status: s.status === "waiting" ? "claiming" : s.status
       });
+    } else if (name && alreadyIn.name !== name) {
+      const updatedParticipants = (s.participants || []).map(p =>
+        p.participant_id === myId ? { ...p, name } : p
+      );
+      await base44.entities.Session.update(sessionId, { participants: updatedParticipants });
     }
-    setJoined(true);
-    setSaving(false);
+  };
+
+  const handleNameBlur = async () => {
+    const name = nameInput.trim();
+    if (name !== myName) {
+      localStorage.setItem("divvy_participant_name", name);
+      setMyName(name);
+      await ensureJoined(name);
+    }
   };
 
   const toggleClaim = async (itemId) => {
