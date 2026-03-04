@@ -80,73 +80,86 @@ export default function SessionHost() {
   const claimedItems = (session.items || []).filter(i => (i.claimed_by || []).length > 0).length;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="max-w-sm w-full space-y-4">
-        <div className="text-center">
-          <div className="text-3xl mb-1">🎉</div>
-          <h1 className="text-2xl font-black text-gray-900">Your bill is ready!</h1>
-          <p className="text-gray-500 mt-1 text-sm">{session.title} · ${(session.total_amount || 0).toFixed(2)}</p>
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center p-6">
+      <div className="max-w-sm w-full space-y-5">
+        {/* Header */}
+        <div className="text-center text-white">
+          <div className="text-4xl mb-2">🎉</div>
+          <h1 className="text-2xl font-black">Your bill is ready!</h1>
+          <p className="text-purple-200 mt-1 text-sm">{session.title} · ${(session.total_amount || 0).toFixed(2)}</p>
         </div>
 
-        <Card className="rounded-3xl border-0 shadow-lg">
-          <CardContent className="p-6 space-y-4">
+        <Card className="rounded-3xl border-0 shadow-2xl">
+          <CardContent className="p-6 space-y-5">
             {/* QR Code */}
             <div className="flex flex-col items-center gap-3">
-              <div className="bg-white p-4 rounded-2xl shadow-inner border border-gray-100">
-                <QRCodeSVG value={claimUrl} size={200} fgColor="#7c3aed" />
+              <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                <QRCodeSVG value={claimUrl} size={220} fgColor="#5b21b6" level="H" includeMargin={false} />
               </div>
               <p className="text-gray-600 font-semibold text-sm text-center">Have everyone scan this 📱</p>
             </div>
 
             {/* Link */}
-            <div className="flex gap-2 items-center bg-gray-50 rounded-xl p-3">
-              <span className="text-xs text-gray-500 flex-1 truncate">{claimUrl}</span>
-              <Button size="sm" variant="outline" onClick={copyLink} className="rounded-lg shrink-0">
-                {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+            <div className="flex gap-2 items-center bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <span className="text-xs text-gray-500 font-mono flex-1 truncate">{claimUrl}</span>
+              <Button size="sm" variant="outline" onClick={copyLink} className="rounded-lg shrink-0 h-7 px-3">
+                {copied ? <><Check className="w-3 h-3 text-green-500 mr-1" /><span className="text-xs text-green-600">Copied!</span></> : <><Copy className="w-3 h-3 mr-1" /><span className="text-xs">Copy</span></>}
               </Button>
             </div>
 
-            {/* Participants */}
+            {/* Live Participants */}
             <div className="flex items-center justify-between bg-purple-50 rounded-xl p-3">
               <div className="flex items-center gap-2 text-purple-700 font-semibold text-sm">
                 <Users className="w-4 h-4" />
-                Joined: {participants.length}
+                {participants.length === 0 ? "Waiting for guests…" : `${participants.length} joined`}
               </div>
               <div className="flex gap-1">
-                {participants.slice(0, 5).map((p, i) => (
-                  <div key={i} className="w-7 h-7 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                {participants.slice(0, 6).map((p, i) => (
+                  <div key={i} title={p.name} className="w-7 h-7 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-sm">
                     {(p.name || "?")[0].toUpperCase()}
                   </div>
                 ))}
-                {participants.length > 5 && (
-                  <div className="w-7 h-7 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center text-xs">
-                    +{participants.length - 5}
-                  </div>
+                {participants.length > 6 && (
+                  <div className="w-7 h-7 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center text-xs">+{participants.length - 6}</div>
                 )}
               </div>
             </div>
 
             {/* Progress (if claiming started) */}
-            {session.status === "claiming" && (
+            {session.status === "claiming" && totalItems > 0 && (
               <div className="space-y-1">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>{claimedItems}/{totalItems} items claimed</span>
+                  <span>Items claimed</span><span>{claimedItems}/{totalItems}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-purple-600 h-2 rounded-full transition-all"
-                    style={{ width: `${totalItems > 0 ? (claimedItems / totalItems) * 100 : 0}%` }}
-                  />
+                  <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${(claimedItems / totalItems) * 100}%` }} />
                 </div>
               </div>
             )}
 
+            {/* Primary CTA */}
             <Button
               onClick={startClaiming}
-              className="w-full bg-purple-600 hover:bg-purple-700 font-bold rounded-xl h-12"
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 font-bold rounded-xl h-12 text-base shadow-lg"
             >
-              {session.status === "claiming" ? "View Progress" : "Start Claiming"} <ArrowRight className="ml-2 w-4 h-4" />
+              {session.status === "claiming" ? "View Progress" : "Claim My Items"} <ArrowRight className="ml-2 w-4 h-4" />
             </Button>
+
+            {/* Share Options */}
+            <div>
+              <p className="text-center text-xs text-gray-400 mb-3">Or share via</p>
+              <div className="flex gap-2 justify-center">
+                <Button size="sm" variant="outline" onClick={shareViaText} className="rounded-xl flex-1 text-xs">
+                  <MessageSquare className="w-3.5 h-3.5 mr-1" /> Text
+                </Button>
+                <Button size="sm" variant="outline" onClick={shareViaEmail} className="rounded-xl flex-1 text-xs">
+                  <Mail className="w-3.5 h-3.5 mr-1" /> Email
+                </Button>
+                <Button size="sm" variant="outline" onClick={shareNative} className="rounded-xl flex-1 text-xs">
+                  <Share2 className="w-3.5 h-3.5 mr-1" /> More
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
