@@ -45,9 +45,28 @@ export default function SessionHost() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const shareViaText = () => {
+    const msg = encodeURIComponent(`Join me to split the bill!\n${claimUrl}`);
+    window.location.href = `sms:?body=${msg}`;
+  };
+
+  const shareViaEmail = () => {
+    const subject = encodeURIComponent("Split our bill with Divvy");
+    const body = encodeURIComponent(`Hey! Join me to claim your items:\n${claimUrl}`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  const shareNative = async () => {
+    if (navigator.share) {
+      await navigator.share({ title: "Split bill with Divvy", text: "Join me to claim your items!", url: claimUrl });
+    } else {
+      copyLink();
+    }
+  };
+
   const startClaiming = async () => {
     await base44.entities.Session.update(sessionId, { status: "claiming" });
-    navigate(createPageUrl(`ReceiptDetail?id=${sessionId}&host=1`));
+    navigate(createPageUrl(`Claim?id=${sessionId}`));
   };
 
   if (!session) return (
