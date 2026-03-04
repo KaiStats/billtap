@@ -47,21 +47,21 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import Claim from './pages/Claim';
 import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
 import NewReceipt from './pages/NewReceipt';
 import ReceiptDetail from './pages/ReceiptDetail';
 import SessionHost from './pages/SessionHost';
-import Claim from './pages/Claim';
 
 
 export const PAGES = {
+    "Claim": Claim,
     "Dashboard": Dashboard,
     "Home": Home,
     "NewReceipt": NewReceipt,
     "ReceiptDetail": ReceiptDetail,
     "SessionHost": SessionHost,
-    "Claim": Claim,
 }
 
 export const pagesConfig = {
