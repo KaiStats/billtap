@@ -11,7 +11,7 @@ export default function Home() {
           <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur">
             <Receipt className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-5xl font-black tracking-tight">Divvy</h1>
+          <h1 className="text-5xl font-black tracking-tight">BillTap</h1>
         </div>
         <p className="text-xl text-purple-100 font-medium">
           Split any bill in seconds — snap a receipt, assign items, collect payments.
