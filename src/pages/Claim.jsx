@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useMutation } from "@tanstack/react-query";
 import { Plus, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { dispatchMutationError } from "@/components/MutationErrorToast";
+import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 
 function calcMyShare(items, myId, tax, tip) {
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
@@ -84,19 +83,17 @@ export default function Claim() {
     }
   };
 
-  const claimMutation = useMutation({
-    mutationFn: async ({ optimisticItems, optimisticParticipants }) => {
+  const claimMutation = useMutationOptimistic(
+    async ({ optimisticItems, optimisticParticipants }) => {
       await ensureJoined(nameInput.trim() || myName || "Anonymous");
       return base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
     },
-    onMutate: ({ optimisticItems, optimisticParticipants }) => {
-      const snapshot = session;
-      setSession(prev => ({ ...prev, items: optimisticItems, participants: optimisticParticipants }));
-      return snapshot;
-    },
-    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
-    onSuccess: (updated) => { setSession(updated); },
-  });
+    {
+      onOptimisticState: ({ optimisticItems, optimisticParticipants }) => session,
+      onRollback: (snapshot) => setSession(snapshot),
+      onSuccess: (updated) => setSession(updated),
+    }
+  );
 
   const toggleClaim = (itemId) => {
     if (!session) return;
@@ -113,17 +110,15 @@ export default function Claim() {
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
-  const addItemMutation = useMutation({
-    mutationFn: ({ updatedItems, total }) =>
+  const addItemMutation = useMutationOptimistic(
+    ({ updatedItems, total }) =>
       base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total }),
-    onMutate: ({ updatedItems, total }) => {
-      const snapshot = session;
-      setSession(prev => ({ ...prev, items: updatedItems, total_amount: total }));
-      return snapshot;
-    },
-    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
-    onSuccess: (updated) => { setSession(updated); },
-  });
+    {
+      onOptimisticState: ({ updatedItems, total }) => session,
+      onRollback: (snapshot) => setSession(snapshot),
+      onSuccess: (updated) => setSession(updated),
+    }
+  );
 
   const handleAddItem = () => {
     if (!newItemName.trim() || !newItemPrice) return;
@@ -135,17 +130,15 @@ export default function Claim() {
     setNewItemName(""); setNewItemPrice(""); setAddingItem(false);
   };
 
-  const paidMutation = useMutation({
-    mutationFn: ({ updatedParticipants, newStatus }) =>
+  const paidMutation = useMutationOptimistic(
+    ({ updatedParticipants, newStatus }) =>
       base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
-    onMutate: ({ updatedParticipants, newStatus }) => {
-      const snapshot = session;
-      setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
-      return snapshot;
-    },
-    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
-    onSuccess: (updated) => { setSession(updated); },
-  });
+    {
+      onOptimisticState: ({ updatedParticipants, newStatus }) => session,
+      onRollback: (snapshot) => setSession(snapshot),
+      onSuccess: (updated) => setSession(updated),
+    }
+  );
 
   const markMePaid = () => {
     const updatedParticipants = (session.participants || []).map(p =>
