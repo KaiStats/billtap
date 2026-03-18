@@ -52,6 +52,8 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
         ))}
       </div>
 
+      <div id="tip-group" className="sr-only">Tip percentage or amount</div>
+
       <button
         onClick={() => { setShowCustom(true); setCustomVal(tip > 0 ? tip.toFixed(2) : ""); }}
         aria-pressed={showCustom}
