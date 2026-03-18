@@ -30,12 +30,12 @@ export default function Dashboard() {
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
-  const totalOwed = sessions.reduce((sum, s) => {
-    return sum + (s.participants || []).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0);
-  }, 0);
-  const totalCollected = sessions.reduce((sum, s) => {
-    return sum + (s.participants || []).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.amount_owed || 0), 0);
-  }, 0);
+  const { totalOwed, totalCollected } = useMemo(() => ({
+    totalOwed: sessions.reduce((sum, s) =>
+      sum + (s.participants || []).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
+    totalCollected: sessions.reduce((sum, s) =>
+      sum + (s.participants || []).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
+  }), [sessions]);
 
   return (
     <div className="min-h-screen bg-surface">
@@ -49,14 +49,14 @@ export default function Dashboard() {
               { label: "Outstanding", value: `$${totalOwed.toFixed(2)}`, icon: Clock, iconClass: "text-warning bg-warning-muted" },
               { label: "Collected", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, iconClass: "text-success bg-success-muted" },
             ].map(({ label, value, icon: Icon, iconClass }) => (
-              <Card key={label} className="rounded-2xl border-0 shadow-sm">
+              <Card key={label} className="rounded-2xl border-0 shadow-sm" aria-label={`${label}: ${value}`}>
                 <CardContent className="p-5 flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${iconClass}`}>
                     <Icon className="w-6 h-6" aria-hidden="true" />
                   </div>
                   <div>
-                    <div className="text-2xl font-black text-foreground">{value}</div>
-                    <div className="text-sm text-muted-foreground">{label}</div>
+                    <div className="text-2xl font-black text-foreground" aria-hidden="true">{value}</div>
+                    <div className="text-sm text-muted-foreground" aria-hidden="true">{label}</div>
                   </div>
                 </CardContent>
               </Card>
@@ -75,7 +75,10 @@ export default function Dashboard() {
           </div>
 
           {loading ? (
-            <div className="text-center py-20 text-muted-foreground">Loading...</div>
+            <div className="text-center py-20 text-muted-foreground flex flex-col items-center gap-3" role="status" aria-live="polite">
+              <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
+              <span>Loading…</span>
+            </div>
           ) : sessions.length === 0 ? (
             <div className="text-center py-20">
               <Receipt className="w-16 h-16 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
@@ -97,14 +100,14 @@ export default function Dashboard() {
                           </div>
                           <div>
                             <div className="font-bold text-foreground text-base">{session.title}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5" style={{fontSize: "14px"}}>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
                               <Users className="w-3.5 h-3.5" aria-hidden="true" />
                               {total} people · ${(session.total_amount || 0).toFixed(2)}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className="text-muted-foreground" style={{fontSize: "14px"}}>{paid}/{total} paid</div>
+                          <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
                           <Badge className={statusColors[session.status] || statusColors.waiting}>
                             {session.status || "waiting"}
                           </Badge>
