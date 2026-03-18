@@ -192,11 +192,50 @@
     color: var(--warning-color);
   }
 
-  /* Visible focus rings for keyboard navigation */
-  :focus-visible {
-    outline: 2px solid hsl(var(--brand));
+  /* Remove default outline */
+  *:focus {
+    outline: none;
+  }
+
+  /* Add custom visible focus indicator */
+  *:focus-visible {
+    outline: 3px solid #667eea;
     outline-offset: 2px;
     border-radius: 4px;
+  }
+
+  /* For dark backgrounds */
+  .dark *:focus-visible,
+  [data-theme="dark"] *:focus-visible {
+    outline-color: #ffffff;
+  }
+
+  /* Specific interactive elements */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [role="button"]:focus-visible,
+  [role="checkbox"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 3px solid #667eea;
+    outline-offset: 2px;
+  }
+
+  /* For elements with borders, use box-shadow instead */
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
+    border-color: #667eea;
+  }
+
+  /* Make sure focus is visible in all states */
+  button:focus-visible:active,
+  button:focus-visible:hover {
+    outline: 3px solid #667eea;
+    outline-offset: 2px;
   }
 
   /* WCAG 2.5.5 Touch Target Minimum 44x44px */
