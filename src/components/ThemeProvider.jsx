@@ -20,11 +20,13 @@ export default function ThemeProvider({ children }) {
 
     const apply = (dark) => {
       document.documentElement.classList.toggle("dark", dark);
+      updateStatusBar(dark);
     };
 
     apply(mq.matches);
-    mq.addEventListener("change", (e) => apply(e.matches));
-    return () => mq.removeEventListener("change", (e) => apply(e.matches));
+    const handler = (e) => apply(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   return children;
