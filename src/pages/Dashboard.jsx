@@ -9,6 +9,7 @@ import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import PullToRefresh from "@/components/PullToRefresh";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
+import { useScrollBehavior } from "@/hooks/useScrollBehavior";
 
 const statusColors = {
   waiting: "bg-warning-muted text-warning-muted-foreground",
