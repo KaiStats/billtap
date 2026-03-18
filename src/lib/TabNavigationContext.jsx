@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+// Detect Android/Cordova environment
+const isAndroid = () => {
+  return /Android/i.test(navigator.userAgent) || 
+         typeof window.cordova !== 'undefined' ||
+         typeof window.phonegap !== 'undefined';
+};
+
 export const TAB_ROOTS = {
   "/Home": "Home",
   "/": "Home",
