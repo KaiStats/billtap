@@ -85,9 +85,22 @@ export default function Claim() {
     }
   };
 
-  const toggleClaim = async (itemId) => {
+  const claimMutation = useMutation({
+    mutationFn: async ({ optimisticItems, optimisticParticipants }) => {
+      await ensureJoined(nameInput.trim() || myName || "Anonymous");
+      return base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
+    },
+    onMutate: ({ optimisticItems, optimisticParticipants }) => {
+      const snapshot = session;
+      setSession(prev => ({ ...prev, items: optimisticItems, participants: optimisticParticipants }));
+      return snapshot;
+    },
+    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onSuccess: (updated) => { setSession(updated); },
+  });
+
+  const toggleClaim = (itemId) => {
     if (!session) return;
-    // Optimistic update
     const optimisticItems = session.items.map(item => {
       if (item.id !== itemId) return item;
       const claimed = item.claimed_by || [];
@@ -98,12 +111,7 @@ export default function Claim() {
       ...p,
       amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
     }));
-    setSession(prev => ({ ...prev, items: optimisticItems, participants: optimisticParticipants }));
-
-    // Auto-join on first claim if not yet registered
-    await ensureJoined(nameInput.trim() || myName || "Anonymous");
-    const updated = await base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
-    setSession(updated);
+    claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
   const handleAddItem = async () => {
