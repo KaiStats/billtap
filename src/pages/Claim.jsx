@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Check, Loader2 } from "lucide-react";
@@ -21,7 +21,7 @@ function calcMyShare(items, myId, tax, tip) {
   return mySubtotal + (tax || 0) * ratio + (tip || 0) * ratio;
 }
 
-export default function Claim() {
+const Claim = memo(function Claim() {
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
@@ -213,7 +213,7 @@ export default function Claim() {
               onKeyDown={e => e.key === "Enter" && e.target.blur()}
               placeholder="optional"
               autoComplete="nickname"
-              className="flex-1 text-sm min-h-[36px] border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-foreground"
+              className="flex-1 h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-foreground"
             />
           </div>
         </div>
