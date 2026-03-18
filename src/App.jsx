@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -54,7 +55,7 @@ const AuthenticatedApp = () => {
   useNetworkStatus();
 
   // Handle deep linking (direct navigation via URI params)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!location.pathname || location.pathname === '/') return;
     
     const deepLink = handleDeepLink(location);
