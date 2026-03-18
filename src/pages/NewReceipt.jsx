@@ -216,4 +216,6 @@ Return a JSON with:
       </div>
     </div>
   );
-}
+});
+
+export default NewReceipt;
