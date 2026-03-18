@@ -116,7 +116,7 @@ export default function Dashboard() {
             })}
           </div>
         )}
-      </div>
+        </div>
       </PullToRefresh>
     </div>
   );
