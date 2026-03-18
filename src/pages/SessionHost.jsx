@@ -80,10 +80,11 @@ export default function SessionHost() {
   };
 
   if (!session) return (
-    <div className="min-h-screen flex items-center justify-center text-muted-foreground" role="status" aria-live="polite">
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground" role="status" aria-live="polite" aria-busy="true">
       <div className="text-center flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
-        <span>Loading session…</span>
+        <span className="sr-only">Loading your session</span>
+        <span aria-hidden="true">Loading session…</span>
       </div>
     </div>
   );

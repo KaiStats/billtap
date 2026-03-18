@@ -135,7 +135,7 @@ Return a JSON with:
                   </>
                 )}
               </div>
-              <input id="file-input" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+              <input id="file-input" type="file" accept="image/*" className="sr-only" onChange={handleFileChange} aria-label="Upload receipt image" />
               <Button
                 onClick={handleParseReceipt}
                 disabled={!imageFile || uploading || parsing}
@@ -157,7 +157,7 @@ Return a JSON with:
               </div>
               <div>
                 <Label htmlFor="bill-title">Bill title</Label>
-                <Input id="bill-title" value={title} onChange={e => setTitle(e.target.value)} className="mt-1 rounded-xl" />
+                  <Input id="bill-title" value={title} onChange={e => setTitle(e.target.value)} className="mt-1 rounded-xl" aria-required="false" />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

@@ -156,8 +156,9 @@ export default function Claim() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite" aria-busy="true">
       <Loader2 className="w-8 h-8 animate-spin text-brand" aria-label="Loading session" />
+      <span className="sr-only">Loading your split session</span>
     </div>
   );
 
@@ -213,7 +214,9 @@ export default function Claim() {
               onKeyDown={e => e.key === "Enter" && e.target.blur()}
               placeholder="optional"
               autoComplete="nickname"
+              aria-label="Your name (optional)"
               className="flex-1 h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-foreground"
+              style={{ minHeight: "44px", fontSize: "16px" }}
             />
           </div>
         </div>
@@ -352,6 +355,7 @@ export default function Claim() {
           <Button
             onClick={markMePaid}
             disabled={myMyClaimed.length === 0 || alreadyPaid}
+            aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay your share of $${myShare.toFixed(2)}` : "Claim at least one item to pay"}
             className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-success hover:bg-success text-success-muted-foreground" : "bg-brand hover:bg-brand/90 text-brand-foreground"}`}
           >
             {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}

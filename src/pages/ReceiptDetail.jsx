@@ -93,7 +93,7 @@ export default function ReceiptDetail() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <AppHeader title={session.title} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
+      <AppHeader title={session.title || "Bill Details"} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
       <div className="max-w-2xl mx-auto p-5 space-y-5 pb-safe-or-5" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}>
 
         <div className="flex items-start justify-between">
@@ -196,7 +196,7 @@ export default function ReceiptDetail() {
                     }
                   </Badge>
                   {p.payment_status !== "paid" && isHost && (
-                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} className="h-11 text-sm px-4 bg-success hover:bg-success/90 text-white rounded-xl">
+                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} aria-label={`Mark ${p.name} as paid for $${(p.amount_owed || 0).toFixed(2)}`} className="h-11 text-sm px-4 bg-success hover:bg-success/90 text-white rounded-xl">
                       Mark Paid
                     </Button>
                   )}

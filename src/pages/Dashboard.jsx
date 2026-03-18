@@ -17,11 +17,11 @@ const statusColors = {
 };
 
 const SessionCard = memo(function SessionCard({ session, onClick }) {
-  const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
-  const total = (session.participants || []).length;
-  return (
-    <button onClick={onClick} className="w-full text-left">
-      <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+   const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
+   const total = (session.participants || []).length;
+   return (
+     <button onClick={onClick} aria-label={`${session.title}: $${(session.total_amount || 0).toFixed(2)} - ${paid} of ${total} paid`} className="w-full text-left">
+       <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
         <CardContent className="p-5 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-brand-muted rounded-xl flex items-center justify-center">
@@ -102,7 +102,7 @@ export default function Dashboard() {
               <h1 className="text-2xl font-black text-foreground">BillTap</h1>
               <p className="text-muted-foreground text-sm mt-0.5">Your bills &amp; splits</p>
             </div>
-            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-brand hover:bg-brand/90 text-brand-foreground font-semibold rounded-xl h-11 px-4">
+            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} aria-label="Create new bill split" className="bg-brand hover:bg-brand/90 text-brand-foreground font-semibold rounded-xl h-12 px-4">
               <Plus className="mr-2 w-4 h-4" aria-hidden="true" /> New Split
             </Button>
           </div>
