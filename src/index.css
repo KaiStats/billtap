@@ -37,6 +37,25 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* App brand + semantic tokens */
+    --brand: 262 83% 58%;
+    --brand-foreground: 0 0% 100%;
+    --brand-muted: 262 83% 95%;
+    --brand-muted-foreground: 262 60% 35%;
+    --success: 142 71% 45%;
+    --success-muted: 142 71% 93%;
+    --success-muted-foreground: 142 60% 25%;
+    --warning: 38 95% 53%;
+    --warning-muted: 38 95% 93%;
+    --warning-muted-foreground: 38 70% 28%;
+    --info: 217 91% 60%;
+    --info-muted: 217 91% 93%;
+    --info-muted-foreground: 217 70% 30%;
+    --danger-muted: 0 84% 93%;
+    --danger-muted-foreground: 0 70% 35%;
+    --surface: 0 0% 96%;
+    --surface-raised: 0 0% 100%;
   }
 
   .dark {
