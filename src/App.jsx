@@ -91,6 +91,7 @@ function App() {
               <AuthenticatedApp />
             </TabNavigationProvider>
           </Router>
+          <MutationErrorToast />
           <Toaster />
         </QueryClientProvider>
       </AuthProvider>
