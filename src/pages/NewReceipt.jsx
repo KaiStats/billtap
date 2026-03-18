@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useTabNav } from "@/lib/TabNavigationContext";
 import { Upload, Loader2, Wand2, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function NewReceipt() {
-  const navigate = useNavigate();
+  const { pushScreen } = useTabNav();
   const [step, setStep] = useState(1); // 1: upload, 2: review/fix items
   const [imageFile, setImageFile] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
@@ -89,7 +89,7 @@ Return a JSON with:
       status: "waiting"
     });
 
-    navigate(createPageUrl(`SessionHost?id=${session.id}`));
+    pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
   };
 
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
