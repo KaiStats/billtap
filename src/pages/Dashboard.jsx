@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import PullToRefresh from "@/components/PullToRefresh";
+import DashboardSkeleton from "@/components/DashboardSkeleton";
 
 const statusColors = {
   waiting: "bg-warning-muted text-warning-muted-foreground",
@@ -39,7 +40,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <PullToRefresh onRefresh={fetchSessions}>
+      {loading && <DashboardSkeleton />}
+      {!loading && <PullToRefresh onRefresh={fetchSessions}>
         <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
 
           {/* Stats */}
@@ -74,12 +76,7 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          {loading ? (
-            <div className="text-center py-20 text-muted-foreground flex flex-col items-center gap-3" role="status" aria-live="polite">
-              <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
-              <span>Loading…</span>
-            </div>
-          ) : sessions.length === 0 ? (
+          {loading ? null : sessions.length === 0 ? (
             <div className="text-center py-20">
               <Receipt className="w-16 h-16 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
               <p className="text-muted-foreground text-lg">No bills yet.</p>
@@ -120,7 +117,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </PullToRefresh>
+      </PullToRefresh>}
     </div>
   );
 }
