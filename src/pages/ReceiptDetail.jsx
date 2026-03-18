@@ -92,9 +92,10 @@ export default function ReceiptDetail() {
             </div>
           </div>
           <div>
-          <Badge className={session.status === "completed" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}>
-            {session.status}
-          </Badge>
+            <Badge className={session.status === "completed" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}>
+              {session.status}
+            </Badge>
+          </div>
         </div>
 
         {/* Progress bar */}
