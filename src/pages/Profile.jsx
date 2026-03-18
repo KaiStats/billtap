@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Trash2, LogOut, User, AlertTriangle } from "lucide-react";
 
 export default function Profile() {
@@ -73,36 +74,47 @@ export default function Profile() {
                 Delete Account
               </button>
             ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  This will permanently delete your account and all your bill sessions. Type <strong>DELETE</strong> to confirm.
-                </p>
-                <input
-                  type="text"
-                  value={confirmText}
-                  onChange={e => setConfirmText(e.target.value)}
-                  placeholder="Type DELETE to confirm"
-                  className="w-full border border-destructive/40 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-destructive bg-background text-foreground"
-                  autoFocus
-                />
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => { setShowDeleteConfirm(false); setConfirmText(""); }}
-                    className="flex-1 h-11 rounded-xl"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleDeleteAccount}
-                    disabled={confirmText !== "DELETE" || deleting}
-                    className="flex-1 h-11 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold disabled:opacity-40"
-                  >
-                    {deleting ? "Deleting…" : "Delete Account"}
-                  </Button>
-                </div>
-              </div>
-            )}
+               <div className="space-y-4">
+                 <div className="bg-danger-muted rounded-xl p-4 border border-destructive/20">
+                   <div className="font-semibold text-danger-muted-foreground text-sm mb-2">This will permanently delete:</div>
+                   <ul className="text-xs text-danger-muted-foreground space-y-1 list-disc list-inside">
+                     <li>Your account and profile</li>
+                     <li>All bill split history</li>
+                     <li>Payment records</li>
+                   </ul>
+                 </div>
+                 <p className="text-sm text-muted-foreground">
+                   Type <strong className="text-foreground">DELETE</strong> to permanently delete your account.
+                 </p>
+                 <Input
+                   type="text"
+                   value={confirmText}
+                   onChange={e => setConfirmText(e.target.value)}
+                   placeholder="Type DELETE to confirm"
+                   aria-label="Type DELETE to confirm account deletion"
+                   className="rounded-xl border-destructive/40 focus-visible:border-destructive focus-visible:ring-destructive/50"
+                   autoFocus
+                 />
+                 <div className="flex gap-3 pt-2">
+                   <Button
+                     variant="outline"
+                     onClick={() => { setShowDeleteConfirm(false); setConfirmText(""); }}
+                     className="flex-1 h-11 rounded-xl"
+                     aria-label="Cancel account deletion"
+                   >
+                     Cancel
+                   </Button>
+                   <Button
+                     onClick={handleDeleteAccount}
+                     disabled={confirmText !== "DELETE" || deleting}
+                     className="flex-1 h-11 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold disabled:opacity-40"
+                     aria-label={`Confirm account deletion${confirmText === "DELETE" ? ": ready to delete" : ""}`}
+                   >
+                     {deleting ? "Deleting…" : "Delete Account"}
+                   </Button>
+                 </div>
+               </div>
+             )}
           </CardContent>
         </Card>
       </div>
