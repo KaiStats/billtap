@@ -4,16 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import { useScrollBehavior } from '@/hooks/useScrollBehavior';
+import ListLayout from '@/components/ListLayout';
 
 export default function Home() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // Disable scroll bounce
-  useScrollBehavior();
 
-  const { data: sessions = [] } = useQuery({
+  const { data: sessions = [], refetch } = useQuery({
     queryKey: ['sessions', 'home'],
     queryFn: async () => {
       const result = await base44.entities.Session.filter({}, '-updated_date', 3);
@@ -31,7 +28,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-32">
+    <ListLayout onRefresh={refetch} className="bg-background">
       {/* Header */}
       <div className="bg-gradient-to-b from-brand/10 to-transparent pt-8 pb-6 px-5">
         <div className="max-w-4xl mx-auto">
@@ -137,6 +134,6 @@ export default function Home() {
           </div>
         )}
       </div>
-    </div>
+    </ListLayout>
   );
 }
