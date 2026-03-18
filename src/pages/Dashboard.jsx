@@ -53,6 +53,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const { pushScreen } = useTabNav();
+  
+  // Disable scroll bounce
+  useScrollBehavior();
 
   const fetchSessions = useCallback(async () => {
     const data = await base44.entities.Session.list("-created_date", 50);
