@@ -125,19 +125,24 @@ export default function Claim() {
     setNewItemName(""); setNewItemPrice(""); setAddingItem(false);
   };
 
-  const markMePaid = async () => {
+  const paidMutation = useMutation({
+    mutationFn: ({ updatedParticipants, newStatus }) =>
+      base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
+    onMutate: ({ updatedParticipants, newStatus }) => {
+      const snapshot = session;
+      setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
+      return snapshot;
+    },
+    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onSuccess: (updated) => { setSession(updated); },
+  });
+
+  const markMePaid = () => {
     const updatedParticipants = (session.participants || []).map(p =>
       p.participant_id === myId ? { ...p, payment_status: "paid" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
-    const newStatus = allPaid ? "completed" : session.status;
-    // Optimistic update
-    setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
-    const updated = await base44.entities.Session.update(sessionId, {
-      participants: updatedParticipants,
-      status: newStatus
-    });
-    setSession(updated);
+    paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
   };
 
   if (loading) return (
