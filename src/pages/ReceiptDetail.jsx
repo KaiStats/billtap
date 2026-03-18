@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AppHeader from "@/components/AppHeader";
 import { dispatchMutationError } from "@/components/MutationErrorToast";
+import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
 
 const statusColors = {
   unpaid: "bg-danger-muted text-danger-muted-foreground",
@@ -62,11 +63,9 @@ export default function ReceiptDetail() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
-        <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
-        <span>Loading…</span>
-      </div>
+    <div className="min-h-screen bg-surface">
+      <AppHeader title="" />
+      <ReceiptDetailSkeleton />
     </div>
   );
   if (!session) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>;
