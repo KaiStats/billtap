@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, LayoutDashboard, Plus } from "lucide-react";
+import { Home, LayoutDashboard, Plus, UserCircle } from "lucide-react";
 
 const navItems = [
   { label: "Home", icon: Home, path: "/Home" },
   { label: "New Split", icon: Plus, path: "/NewReceipt", highlight: true },
   { label: "Dashboard", icon: LayoutDashboard, path: "/Dashboard" },
+  { label: "Profile", icon: UserCircle, path: "/Profile" },
 ];
 
 export default function BottomNav() {
@@ -22,8 +23,8 @@ export default function BottomNav() {
         const isActive = location.pathname === path || (path === "/Home" && location.pathname === "/");
         if (highlight) {
           return (
-            <Link key={path} to={path} className="flex flex-col items-center justify-center flex-1 py-3">
-              <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg -mt-5">
+            <Link key={path} to={path} className="flex flex-col items-center justify-center flex-1 py-2 min-h-[44px]">
+              <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg -mt-4">
                 <Icon className="w-6 h-6 text-white" />
               </div>
             </Link>
@@ -33,7 +34,7 @@ export default function BottomNav() {
           <Link
             key={path}
             to={path}
-            className={`flex flex-col items-center justify-center flex-1 py-3 gap-0.5 transition-colors ${isActive ? "text-purple-600" : "text-gray-400 hover:text-gray-600"}`}
+            className={`flex flex-col items-center justify-center flex-1 py-2 gap-0.5 min-h-[44px] transition-colors ${isActive ? "text-purple-600" : "text-gray-400 hover:text-gray-600"}`}
           >
             <Icon className="w-6 h-6" />
             <span className="text-xs font-medium">{label}</span>

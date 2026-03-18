@@ -53,6 +53,7 @@ import Home from './pages/Home';
 import NewReceipt from './pages/NewReceipt';
 import ReceiptDetail from './pages/ReceiptDetail';
 import SessionHost from './pages/SessionHost';
+import Profile from './pages/Profile';
 
 
 export const PAGES = {
@@ -62,6 +63,7 @@ export const PAGES = {
     "NewReceipt": NewReceipt,
     "ReceiptDetail": ReceiptDetail,
     "SessionHost": SessionHost,
+    "Profile": Profile,
 }
 
 export const pagesConfig = {
