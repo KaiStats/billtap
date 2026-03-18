@@ -238,7 +238,7 @@
     outline-offset: 2px;
   }
 
-  /* WCAG 2.5.5 Touch Target Minimum 44x44px */
+  /* WCAG 2.5.5 Touch Target Minimum 44x44px on mobile, constrained on desktop */
   button,
   a,
   input[type="button"],
@@ -255,7 +255,16 @@
     min-width: 44px;
   }
 
-  /* Text inputs need good tap size */
+  /* Constrain touch targets on larger screens */
+  @media (min-width: 1024px) {
+    button:not([data-no-constraint]),
+    a:not([data-no-constraint]),
+    [role="button"]:not([data-no-constraint]) {
+      max-height: 40px;
+    }
+  }
+
+  /* Text inputs need good tap size on mobile */
   input[type="text"],
   input[type="email"],
   input[type="tel"],
@@ -268,12 +277,35 @@
     font-size: 16px;
   }
 
-  /* Primary action buttons larger */
+  /* Constrain input size on desktop */
+  @media (min-width: 1024px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="number"],
+    input[type="password"],
+    textarea,
+    select {
+      max-height: 40px;
+    }
+  }
+
+  /* Primary action buttons larger on mobile */
   .btn-primary,
   .primary-button,
   [data-primary="true"] {
     min-height: 56px;
     padding: 16px 32px;
+  }
+
+  /* Constrain primary buttons on desktop */
+  @media (min-width: 1024px) {
+    .btn-primary,
+    .primary-button,
+    [data-primary="true"] {
+      max-height: 48px;
+      padding: 12px 24px;
+    }
   }
 
   /* Icon-only buttons */
@@ -283,6 +315,16 @@
     min-height: 48px;
     min-width: 48px;
     padding: 12px;
+  }
+
+  /* Constrain icon buttons on desktop */
+  @media (min-width: 1024px) {
+    .icon-button,
+    .close-button,
+    .back-button {
+      max-height: 40px;
+      max-width: 40px;
+    }
   }
 
   /* Checkbox and radio */
@@ -298,5 +340,15 @@
   .participant-item {
     min-height: 56px;
     padding: 12px 16px;
+  }
+
+  /* Constrain list items on desktop */
+  @media (min-width: 1024px) {
+    .list-item,
+    .claim-item,
+    .participant-item {
+      min-height: 48px;
+      padding: 8px 12px;
+    }
   }
 }
