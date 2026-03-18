@@ -91,6 +91,7 @@ export default function ReceiptDetail() {
               <span className="text-gray-400">{claimedCount}/{items.length} items claimed</span>
             </div>
           </div>
+          <div>
           <Badge className={session.status === "completed" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}>
             {session.status}
           </Badge>
