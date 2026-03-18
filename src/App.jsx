@@ -9,6 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { AnimatePresence, motion } from 'framer-motion';
 import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
+import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -18,32 +19,28 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
-const pageVariants = {
-  initial: { opacity: 0, x: 20 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -20 },
+const AnimatedPage = ({ children, direction }) => {
+  const xIn = direction === "back" ? -30 : direction === "tab" ? 0 : 30;
+  const xOut = direction === "back" ? 30 : direction === "tab" ? 0 : -30;
+  const opacityOnly = direction === "tab";
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: opacityOnly ? 0 : xIn }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: opacityOnly ? 0 : xOut }}
+      transition={{ duration: 0.2, ease: "easeInOut" }}
+      className="w-full"
+    >
+      {children}
+    </motion.div>
+  );
 };
-
-const pageTransition = { duration: 0.2, ease: "easeInOut" };
-
-const AnimatedPage = ({ children }) => (
-  <motion.div
-    variants={pageVariants}
-    initial="initial"
-    animate="animate"
-    exit="exit"
-    transition={pageTransition}
-    className="w-full"
-  >
-    {children}
-  </motion.div>
-);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   const location = useLocation();
+  const { directionRef } = useTabNav();
 
-  // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -52,41 +49,28 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
   if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
+    if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
+    if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
 
-  // Render the main app
+  const direction = directionRef.current;
+
   return (
     <div className="flex flex-col min-h-screen">
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={
-            <AnimatedPage>
-              <LayoutWrapper currentPageName={mainPageKey}>
-                <MainPage />
-              </LayoutWrapper>
+            <AnimatedPage direction={direction}>
+              <LayoutWrapper currentPageName={mainPageKey}><MainPage /></LayoutWrapper>
             </AnimatedPage>
           } />
           {Object.entries(Pages).map(([path, Page]) => (
-            <Route
-              key={path}
-              path={`/${path}`}
-              element={
-                <AnimatedPage>
-                  <LayoutWrapper currentPageName={path}>
-                    <Page />
-                  </LayoutWrapper>
-                </AnimatedPage>
-              }
-            />
+            <Route key={path} path={`/${path}`} element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>
+              </AnimatedPage>
+            } />
           ))}
           <Route path="*" element={<PageNotFound />} />
         </Routes>
@@ -96,21 +80,21 @@ const AuthenticatedApp = () => {
   );
 };
 
-
 function App() {
-
   return (
     <ThemeProvider>
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <Router>
-            <AuthenticatedApp />
+            <TabNavigationProvider>
+              <AuthenticatedApp />
+            </TabNavigationProvider>
           </Router>
           <Toaster />
         </QueryClientProvider>
       </AuthProvider>
     </ThemeProvider>
-  )
+  );
 }
 
 export default App
