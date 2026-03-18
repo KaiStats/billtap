@@ -24,12 +24,12 @@ export default function SplitTypeSelector({ onTypeChange }) {
   };
 
   return (
-    <div className="py-4">
-      <div className="text-base font-semibold text-foreground mb-3">
+    <fieldset className="py-4">
+      <legend className="text-base font-semibold text-foreground mb-3">
         How do you want to split?
-      </div>
+      </legend>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="split-type-legend">
         {options.map(option => (
           <button
             key={option.value}
