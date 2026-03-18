@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { useCallback } from "react";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { Receipt, Users, CheckCircle, ArrowRight, Zap } from "lucide-react";
