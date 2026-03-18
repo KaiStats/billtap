@@ -173,7 +173,7 @@ export default function ReceiptDetail() {
                     {p.payment_status}
                   </Badge>
                   {p.payment_status !== "paid" && isHost && (
-                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} className="h-7 text-xs bg-green-600 hover:bg-green-700 rounded-lg">
+                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} className="h-11 text-sm px-4 bg-green-600 hover:bg-green-700 rounded-xl">
                       Mark Paid
                     </Button>
                   )}
