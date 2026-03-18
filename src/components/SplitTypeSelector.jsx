@@ -56,6 +56,6 @@ export default function SplitTypeSelector({ onTypeChange }) {
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }
