@@ -27,17 +27,17 @@ export default function SplitItemSelector({
     selectedPeople.length > 0 ? itemPrice / selectedPeople.length : 0;
 
   return (
-    <div className="p-6 bg-surface-raised rounded-3xl rounded-b-none max-h-[80vh] overflow-y-auto">
+    <fieldset className="p-6 bg-surface-raised rounded-3xl rounded-b-none max-h-[80vh] overflow-y-auto">
       <div className="mb-5">
-        <div className="text-2xl font-black text-foreground mb-2">
+        <legend className="text-2xl font-black text-foreground mb-2">
           Split {itemName}
-        </div>
+        </legend>
         <div className="text-sm text-muted-foreground">
           ${itemPrice.toFixed(2)} - Select who's sharing this
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 mb-5">
+      <div className="flex flex-col gap-2 mb-5" role="group" aria-label={`Select participants for ${itemName}`}>
         {participants.map(person => (
           <button
             key={person.id}
