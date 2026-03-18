@@ -41,19 +41,24 @@ export default function ReceiptDetail() {
     return unsub;
   }, [sessionId]);
 
-  const markAsPaid = async (participantId) => {
+  const markPaidMutation = useMutation({
+    mutationFn: ({ updatedParticipants, newStatus }) =>
+      base44.entities.Session.update(session.id, { participants: updatedParticipants, status: newStatus }),
+    onMutate: ({ updatedParticipants, newStatus }) => {
+      const snapshot = session;
+      setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
+      return snapshot;
+    },
+    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onSuccess: (updated) => { setSession(updated); },
+  });
+
+  const markAsPaid = (participantId) => {
     const updatedParticipants = session.participants.map(p =>
       p.participant_id === participantId ? { ...p, payment_status: "paid" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
-    const newStatus = allPaid ? "completed" : "claiming";
-    // Optimistic update
-    setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
-    const updated = await base44.entities.Session.update(session.id, {
-      participants: updatedParticipants,
-      status: newStatus,
-    });
-    setSession(updated);
+    markPaidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : "claiming" });
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
