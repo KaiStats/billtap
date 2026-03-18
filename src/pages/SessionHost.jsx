@@ -66,7 +66,7 @@ export default function SessionHost() {
 
   const startClaiming = async () => {
     await base44.entities.Session.update(sessionId, { status: "claiming" });
-    navigate(createPageUrl(`Claim?id=${sessionId}`));
+    pushScreen(createPageUrl(`Claim?id=${sessionId}`));
   };
 
   if (!session) return (
