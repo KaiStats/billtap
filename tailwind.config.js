@@ -11,6 +11,35 @@ module.exports = {
   		},
   		colors: {
   			background: 'hsl(var(--background))',
+  			brand: {
+  				DEFAULT: 'hsl(var(--brand))',
+  				foreground: 'hsl(var(--brand-foreground))',
+  				muted: 'hsl(var(--brand-muted))',
+  				'muted-foreground': 'hsl(var(--brand-muted-foreground))',
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				muted: 'hsl(var(--success-muted))',
+  				'muted-foreground': 'hsl(var(--success-muted-foreground))',
+  			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--warning))',
+  				muted: 'hsl(var(--warning-muted))',
+  				'muted-foreground': 'hsl(var(--warning-muted-foreground))',
+  			},
+  			info: {
+  				DEFAULT: 'hsl(var(--info))',
+  				muted: 'hsl(var(--info-muted))',
+  				'muted-foreground': 'hsl(var(--info-muted-foreground))',
+  			},
+  			danger: {
+  				muted: 'hsl(var(--danger-muted))',
+  				'muted-foreground': 'hsl(var(--danger-muted-foreground))',
+  			},
+  			surface: {
+  				DEFAULT: 'hsl(var(--surface))',
+  				raised: 'hsl(var(--surface-raised))',
+  			},
   			foreground: 'hsl(var(--foreground))',
   			card: {
   				DEFAULT: 'hsl(var(--card))',
