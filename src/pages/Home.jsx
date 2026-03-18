@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 
 export default function Home() {
   const navigate = useNavigate();
