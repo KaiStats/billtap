@@ -66,25 +66,25 @@ export default function ReceiptDetail() {
     return p ? p.name : "?";
   };
 
+  const rightAction = isHost ? (
+    <button
+      onClick={() => navigate(createPageUrl(`SessionHost?id=${sessionId}`))}
+      className="w-11 h-11 flex items-center justify-center rounded-xl text-purple-600 active:bg-purple-50"
+      aria-label="Show QR"
+    >
+      <QrCode className="w-5 h-5" />
+    </button>
+  ) : null;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-2xl mx-auto space-y-5">
-        <div className="flex items-center gap-3">
-          <Link to={createPageUrl("Dashboard")}>
-            <Button variant="ghost" size="sm" className="rounded-xl"><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
-          </Link>
-          {isHost && (
-            <Button size="sm" variant="outline" onClick={() => navigate(createPageUrl(`SessionHost?id=${sessionId}`))} className="rounded-xl ml-auto">
-              <QrCode className="w-4 h-4 mr-1" /> Show QR
-            </Button>
-          )}
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <AppHeader title={session.title} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
+      <div className="max-w-2xl mx-auto p-5 space-y-5">
 
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-black text-gray-900">{session.title}</h1>
-            <div className="flex items-center gap-3 mt-2 text-gray-500 text-sm flex-wrap">
+            <div className="flex items-center gap-3 mt-0 text-gray-500 text-sm flex-wrap">
               <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {total} people</span>
               <span className="flex items-center gap-1"><Receipt className="w-4 h-4" /> ${(session.total_amount || 0).toFixed(2)} total</span>
               <span className="font-semibold text-green-600">{paid}/{total} paid</span>
