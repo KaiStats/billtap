@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, LogOut, User, AlertTriangle } from "lucide-react";
 
 export default function Profile() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState("");
