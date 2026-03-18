@@ -11,9 +11,7 @@ export const TAB_ROOTS = {
 };
 
 export function getTabForPath(pathname) {
-  // Exact match first
   if (TAB_ROOTS[pathname]) return TAB_ROOTS[pathname];
-  // Detail pages belong to Dashboard tab
   if (["/ReceiptDetail", "/SessionHost", "/Claim"].some(p => pathname.startsWith(p))) return "Dashboard";
   return "Home";
 }
@@ -21,69 +19,84 @@ export function getTabForPath(pathname) {
 const TabNavContext = createContext(null);
 
 export function TabNavigationProvider({ children }) {
-  // Per-tab stack: { [tabKey]: string[] }
-  const [tabStacks, setTabStacks] = useState({
+  const navigate = useNavigate();
+  const location = useLocation();
+  const directionRef = useRef("tab");
+
+  // Per-tab stacks keyed by tab name → string[]
+  const tabStacksRef = useRef({
     Home: ["/Home"],
     Dashboard: ["/Dashboard"],
     NewReceipt: ["/NewReceipt"],
     Profile: ["/Profile"],
   });
 
-  const navigate = useNavigate();
-  const location = useLocation();
+  // Mirror as state so consumers re-render when canGoBack changes
+  const [tabStacks, setTabStacks] = useState(tabStacksRef.current);
 
-  // direction: "forward" | "back" | "tab"
-  const directionRef = useRef("tab");
+  const syncStacks = useCallback((next) => {
+    tabStacksRef.current = next;
+    setTabStacks(next);
+  }, []);
 
   const activeTab = getTabForPath(location.pathname);
 
-  // Handle iOS swipe-back / browser back button — pop our stack instead of letting
-  // the browser navigate away, so animations and stack state stay in sync.
+  // Sync our stack with the browser's History API popstate.
+  // We use history.state to embed the stack so it survives full reloads / swipe-back.
   useEffect(() => {
-    const handler = () => {
-      const tab = getTabForPath(location.pathname);
-      const stack = tabStacks[tab] || [];
-      if (stack.length > 1) {
-        const prev = stack[stack.length - 2];
+    const handler = (e) => {
+      // The browser has already moved to the previous history entry.
+      // Restore stacks from the state we embedded there (if any).
+      const restoredStacks = e.state?.tabStacks;
+      if (restoredStacks) {
+        const prev = restoredStacks;
         directionRef.current = "back";
-        setTabStacks(s => ({ ...s, [tab]: s[tab].slice(0, -1) }));
-        navigate(prev, { replace: true });
+        syncStacks(prev);
+        // React Router's location will update via the popstate it also listens to.
+      } else {
+        // No embedded state — fall back to popping our in-memory stack.
+        const tab = getTabForPath(location.pathname);
+        const stack = tabStacksRef.current[tab] || [];
+        if (stack.length > 1) {
+          directionRef.current = "back";
+          const next = { ...tabStacksRef.current, [tab]: stack.slice(0, -1) };
+          syncStacks(next);
+        }
       }
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, [location.pathname, tabStacks, navigate]);
+  }, [location.pathname, syncStacks]);
 
+  // Push a new screen, embedding the updated stacks into history.state.
   const pushScreen = useCallback((path) => {
     const tab = getTabForPath(path);
+    const stack = tabStacksRef.current[tab] || [];
+    if (stack[stack.length - 1] === path) return; // no-op if already on top
     directionRef.current = "forward";
-    setTabStacks(prev => {
-      const stack = prev[tab] || [];
-      // Don't duplicate top of stack
-      if (stack[stack.length - 1] === path) return prev;
-      return { ...prev, [tab]: [...stack, path] };
-    });
-    navigate(path);
-  }, [navigate]);
+    const next = { ...tabStacksRef.current, [tab]: [...stack, path] };
+    syncStacks(next);
+    navigate(path, { state: { tabStacks: next } });
+  }, [navigate, syncStacks]);
 
   const popScreen = useCallback(() => {
     const tab = activeTab;
-    const stack = tabStacks[tab] || [];
+    const stack = tabStacksRef.current[tab] || [];
     if (stack.length <= 1) return false;
-    const prev = stack[stack.length - 2];
     directionRef.current = "back";
-    setTabStacks(s => ({ ...s, [tab]: s[tab].slice(0, -1) }));
-    navigate(prev);
+    const next = { ...tabStacksRef.current, [tab]: stack.slice(0, -1) };
+    syncStacks(next);
+    navigate(-1);
     return true;
-  }, [activeTab, tabStacks, navigate]);
+  }, [activeTab, navigate, syncStacks]);
 
   const switchTab = useCallback((tabPath) => {
     directionRef.current = "tab";
     const tab = getTabForPath(tabPath);
-    const stack = tabStacks[tab] || [tabPath];
-    // Navigate to top of that tab's stack
-    navigate(stack[stack.length - 1]);
-  }, [tabStacks, navigate]);
+    const stack = tabStacksRef.current[tab] || [tabPath];
+    const dest = stack[stack.length - 1];
+    navigate(dest, { state: { tabStacks: tabStacksRef.current } });
+  }, [navigate]);
 
   const canGoBack = (tabStacks[activeTab] || []).length > 1;
 
