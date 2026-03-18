@@ -16,7 +16,38 @@ const statusColors = {
   completed: "bg-success-muted text-success-muted-foreground",
 };
 
-export default function Dashboard() {
+const SessionCard = memo(function SessionCard({ session, onClick }) {
+  const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
+  const total = (session.participants || []).length;
+  return (
+    <button onClick={onClick} className="w-full text-left">
+      <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+        <CardContent className="p-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-brand-muted rounded-xl flex items-center justify-center">
+              <Receipt className="w-6 h-6 text-brand" aria-hidden="true" />
+            </div>
+            <div>
+              <div className="font-bold text-foreground text-base">{session.title}</div>
+              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+                <Users className="w-3.5 h-3.5" aria-hidden="true" />
+                {total} people · ${(session.total_amount || 0).toFixed(2)}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
+            <Badge className={statusColors[session.status] || statusColors.waiting}>
+              {session.status || "waiting"}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+    </button>
+  );
+});
+
+const Dashboard = memo(function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
@@ -84,36 +115,13 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {sessions.map((session) => {
-                const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
-                const total = (session.participants || []).length;
-                return (
-                  <button key={session.id} onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))} className="w-full text-left">
-                    <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-                      <CardContent className="p-5 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-brand-muted rounded-xl flex items-center justify-center">
-                            <Receipt className="w-6 h-6 text-brand" aria-hidden="true" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-foreground text-base">{session.title}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
-                              <Users className="w-3.5 h-3.5" aria-hidden="true" />
-                              {total} people · ${(session.total_amount || 0).toFixed(2)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
-                          <Badge className={statusColors[session.status] || statusColors.waiting}>
-                            {session.status || "waiting"}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </button>
-                );
-              })}
+              {sessions.map((session) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
+                />
+              ))}
             </div>
           )}
         </div>
