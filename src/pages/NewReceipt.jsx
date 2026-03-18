@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import TipSelector from "@/components/TipSelector";
+import { useScrollBehavior } from "@/hooks/useScrollBehavior";
 
 export default function NewReceipt() {
   const { pushScreen } = useTabNav();
+  useScrollBehavior();
   const [step, setStep] = useState(1);
   const [imageFile, setImageFile] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
