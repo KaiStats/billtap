@@ -1,22 +1,24 @@
 import { useRef, useCallback } from "react";
 
-// Per-tab scroll position memory
-const scrollPositions = {};
-
-export function useSaveScroll(tabKey) {
+/**
+ * Persists scroll position for a tab key using sessionStorage.
+ * Returns a ref to attach to the scrollable element, plus save/restore helpers.
+ */
+export function useSaveScroll(key) {
   const ref = useRef(null);
 
   const onScroll = useCallback(() => {
     if (ref.current) {
-      scrollPositions[tabKey] = ref.current.scrollTop;
+      sessionStorage.setItem(`scroll_${key}`, String(ref.current.scrollTop));
     }
-  }, [tabKey]);
+  }, [key]);
 
   const restoreScroll = useCallback(() => {
-    if (ref.current && scrollPositions[tabKey] !== undefined) {
-      ref.current.scrollTop = scrollPositions[tabKey];
+    const saved = sessionStorage.getItem(`scroll_${key}`);
+    if (ref.current && saved !== null) {
+      ref.current.scrollTop = parseInt(saved, 10);
     }
-  }, [tabKey]);
+  }, [key]);
 
   return { ref, onScroll, restoreScroll };
 }
