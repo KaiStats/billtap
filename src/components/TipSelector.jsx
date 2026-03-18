@@ -32,8 +32,9 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
   const tipPct = subtotal > 0 ? (tip / subtotal) * 100 : 0;
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-5 gap-2">
+    <fieldset className="space-y-3">
+      <legend className="sr-only">Tip Selection</legend>
+      <div className="grid grid-cols-5 gap-2" role="group" aria-labelledby="tip-group">
         {PRESETS.map(({ label, value }) => (
           <button
             key={value}
