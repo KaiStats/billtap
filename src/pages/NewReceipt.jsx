@@ -142,9 +142,14 @@ Return a JSON with:
                 className="w-full bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl h-12 text-base"
               >
                 {uploading ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> Uploading...</> :
-                  parsing ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> AI is reading your receipt...</> :
-                    <><Wand2 className="mr-2 w-4 h-4" aria-hidden="true" /> Parse Receipt with AI</>}
-              </Button>
+                    parsing ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> Processing...</> :
+                      <><Wand2 className="mr-2 w-4 h-4" aria-hidden="true" /> Parse Receipt with AI</>}
+                {(uploading || parsing) && (
+                  <span className="sr-only" role="status" aria-live="polite">
+                    {uploading ? "Uploading receipt image" : "Analyzing receipt with AI. This usually takes 3 to 5 seconds."}
+                  </span>
+                )}
+                </Button>
             </CardContent>
           </Card>
         )}
