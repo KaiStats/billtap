@@ -59,6 +59,19 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Header */}
+        <div className="flex items-center justify-between pt-2">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900">BillTap</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Your bills & splits</p>
+          </div>
+          <Link to={createPageUrl("NewReceipt")}>
+            <Button className="bg-purple-600 hover:bg-purple-700 font-semibold rounded-xl h-11 px-4">
+              <Plus className="mr-2 w-4 h-4" /> New Split
+            </Button>
+          </Link>
+        </div>
+
         {loading ? (
           <div className="text-center py-20 text-gray-400">Loading...</div>
         ) : sessions.length === 0 ? (
