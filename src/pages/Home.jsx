@@ -23,20 +23,16 @@ const Home = memo(function Home() {
           </div>
           <h1 className="text-5xl font-black tracking-tight">BillTap</h1>
         </div>
-        <p className="text-xl text-brand-foreground/80 font-medium">
+        <p className="text-xl text-brand-foreground font-medium opacity-90">
           Split any bill in seconds — snap a receipt, assign items, collect payments.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
-          {[
-            { icon: Receipt, title: "Scan Receipt", desc: "AI reads every line item instantly" },
-            { icon: Users, title: "Assign Items", desc: "Drag items to each person" },
-            { icon: CheckCircle, title: "Collect Payments", desc: "Stripe links sent automatically" },
-          ].map(({ icon: Icon, title, desc }) => (
+          {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="bg-brand-foreground/10 backdrop-blur rounded-2xl p-5 border border-brand-foreground/20">
-              <Icon className="w-6 h-6 mb-3 text-brand-foreground/70" aria-hidden="true" />
-              <div className="font-bold text-lg">{title}</div>
-              <div className="text-brand-foreground/70 text-sm mt-1">{desc}</div>
+              <Icon className="w-6 h-6 mb-3 text-brand-foreground" aria-hidden="true" />
+              <div className="font-bold text-lg text-brand-foreground">{title}</div>
+              <div className="text-brand-foreground text-sm mt-1 opacity-80">{desc}</div>
             </div>
           ))}
         </div>
