@@ -17,7 +17,7 @@ const statusColors = {
   paid: "bg-success-muted text-success-muted-foreground",
 };
 
-export default function ReceiptDetail() {
+const ReceiptDetail = memo(function ReceiptDetail() {
   const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +196,7 @@ export default function ReceiptDetail() {
                     }
                   </Badge>
                   {p.payment_status !== "paid" && isHost && (
-                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} className="h-11 text-sm px-4 bg-success hover:bg-success/90 text-success-muted-foreground rounded-xl">
+                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} className="h-11 text-sm px-4 bg-success hover:bg-success/90 text-white rounded-xl">
                       Mark Paid
                     </Button>
                   )}
