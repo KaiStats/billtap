@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useMutation } from "@tanstack/react-query";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { createPageUrl } from "@/utils";
 import { CheckCircle2, Clock, Users, Receipt, QrCode } from "lucide-react";
@@ -8,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AppHeader from "@/components/AppHeader";
-import { dispatchMutationError } from "@/components/MutationErrorToast";
 import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
+import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 
 const statusColors = {
   unpaid: "bg-danger-muted text-danger-muted-foreground",
@@ -42,17 +41,15 @@ export default function ReceiptDetail() {
     return unsub;
   }, [sessionId]);
 
-  const markPaidMutation = useMutation({
-    mutationFn: ({ updatedParticipants, newStatus }) =>
+  const markPaidMutation = useMutationOptimistic(
+    ({ updatedParticipants, newStatus }) =>
       base44.entities.Session.update(session.id, { participants: updatedParticipants, status: newStatus }),
-    onMutate: ({ updatedParticipants, newStatus }) => {
-      const snapshot = session;
-      setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
-      return snapshot;
-    },
-    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
-    onSuccess: (updated) => { setSession(updated); },
-  });
+    {
+      onOptimisticState: ({ updatedParticipants, newStatus }) => session,
+      onRollback: (snapshot) => setSession(snapshot),
+      onSuccess: (updated) => setSession(updated),
+    }
+  );
 
   const markAsPaid = (participantId) => {
     const updatedParticipants = session.participants.map(p =>
