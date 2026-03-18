@@ -14,6 +14,7 @@ import MutationErrorToast from '@/components/MutationErrorToast';
 import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import Home from '@/pages/Home';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -47,6 +48,9 @@ const AuthenticatedApp = () => {
   
   // Disable overscroll bounce on mobile WebViews
   useScrollBehavior();
+  
+  // Global offline detector
+  useNetworkStatus();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return <AuthLoadingSkeleton />;
