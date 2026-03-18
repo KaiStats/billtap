@@ -5,7 +5,7 @@ import { useTabNav } from "@/lib/TabNavigationContext";
 
 const ROOT_PATHS = ["/", "/Home", "/Dashboard", "/NewReceipt", "/Profile"];
 
-export default function AppHeader({ title, rightAction, forceBack, backTo }) {
+const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backTo }) {
   const location = useLocation();
   const { popScreen, pushScreen, canGoBack } = useTabNav();
 

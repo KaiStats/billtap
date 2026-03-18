@@ -10,7 +10,7 @@ const navItems = [
   { label: "Profile", icon: UserCircle, path: "/Profile" },
 ];
 
-export default function BottomNav() {
+const BottomNav = memo(function BottomNav() {
   const location = useLocation();
   const { switchTab } = useTabNav();
 
