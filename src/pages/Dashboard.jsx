@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
+  const { pushScreen } = useTabNav();
 
   useEffect(() => {
     base44.entities.Session.list("-created_date", 50).then((data) => {
@@ -65,11 +66,9 @@ export default function Dashboard() {
             <h1 className="text-2xl font-black text-gray-900">BillTap</h1>
             <p className="text-gray-500 text-sm mt-0.5">Your bills & splits</p>
           </div>
-          <Link to={createPageUrl("NewReceipt")}>
-            <Button className="bg-purple-600 hover:bg-purple-700 font-semibold rounded-xl h-11 px-4">
-              <Plus className="mr-2 w-4 h-4" /> New Split
-            </Button>
-          </Link>
+          <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-purple-600 hover:bg-purple-700 font-semibold rounded-xl h-11 px-4">
+            <Plus className="mr-2 w-4 h-4" /> New Split
+          </Button>
         </div>
 
         {loading ? (
@@ -78,9 +77,7 @@ export default function Dashboard() {
           <div className="text-center py-20">
             <Receipt className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 text-lg">No bills yet.</p>
-            <Link to={createPageUrl("NewReceipt")}>
-              <Button className="mt-4 bg-purple-600 hover:bg-purple-700 rounded-xl">Split your first bill</Button>
-            </Link>
+            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="mt-4 bg-purple-600 hover:bg-purple-700 rounded-xl">Split your first bill</Button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -88,7 +85,7 @@ export default function Dashboard() {
               const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
               const total = (session.participants || []).length;
               return (
-                <Link key={session.id} to={createPageUrl(`ReceiptDetail?id=${session.id}&host=1`)}>
+                <button key={session.id} onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))} className="w-full text-left">
                   <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                     <CardContent className="p-5 flex items-center justify-between">
                       <div className="flex items-center gap-4">
@@ -111,7 +108,7 @@ export default function Dashboard() {
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
+                </button>
               );
             })}
           </div>
