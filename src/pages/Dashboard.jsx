@@ -40,7 +40,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <PullToRefresh onRefresh={fetchSessions}>
-      <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
+        <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
