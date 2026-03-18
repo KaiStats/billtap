@@ -96,6 +96,6 @@ export default function SplitItemSelector({
               selectedPeople.length === 1 ? 'Person' : 'People'
             }`}
       </button>
-    </div>
-  );
-}
+      </fieldset>
+      );
+      }
