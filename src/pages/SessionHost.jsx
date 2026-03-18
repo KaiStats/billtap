@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function SessionHost() {
-  const navigate = useNavigate();
+  const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [copied, setCopied] = useState(false);
 
