@@ -21,13 +21,14 @@ export default function Dashboard() {
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const { pushScreen } = useTabNav();
 
-  useEffect(() => {
-    base44.entities.Session.list("-created_date", 50).then((data) => {
-      setSessions(data);
-      setLoading(false);
-      setTimeout(restoreScroll, 50);
-    });
+  const fetchSessions = useCallback(async () => {
+    const data = await base44.entities.Session.list("-created_date", 50);
+    setSessions(data);
+    setLoading(false);
+    setTimeout(restoreScroll, 50);
   }, []);
+
+  useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
   const totalOwed = sessions.reduce((sum, s) => {
     return sum + (s.participants || []).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0);
