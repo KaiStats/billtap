@@ -33,7 +33,7 @@ const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backT
             className="w-11 h-11 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100 transition-colors"
             aria-label="Go back"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-6 h-6" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -53,4 +53,6 @@ const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backT
       </div>
     </header>
   );
-}
+});
+
+export default AppHeader;

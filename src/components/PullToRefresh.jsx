@@ -59,4 +59,6 @@ const PullToRefresh = memo(function PullToRefresh({ onRefresh, children }) {
       {children}
     </div>
   );
-}
+});
+
+export default PullToRefresh;
