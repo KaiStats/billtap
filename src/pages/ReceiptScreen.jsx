@@ -1,0 +1,92 @@
+import { useState } from 'react';
+import TipSelector from '@/components/TipSelector';
+import TaxToggle from '@/components/TaxToggle';
+import SplitTypeSelector from '@/components/SplitTypeSelector';
+import PeopleSelector from '@/components/PeopleSelector';
+import PaymentMethodSelector from '@/components/PaymentMethodSelector';
+import { Button } from '@/components/ui/button';
+
+export default function ReceiptScreen() {
+  const [tip, setTip] = useState(0);
+  const [includeTax, setIncludeTax] = useState(true);
+  const [splitType, setSplitType] = useState('itemized');
+  const [peopleCount, setPeopleCount] = useState(4);
+  const [paymentMethod, setPaymentMethod] = useState('apple-pay');
+
+  const subtotal = 42.50;
+  const tax = 3.77;
+  const total = subtotal + (includeTax ? tax : 0) + tip;
+
+  return (
+    <div className="min-h-screen bg-background pb-32">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-surface-raised border-b border-border">
+        <div className="max-w-2xl mx-auto px-4 py-4">
+          <h1 className="text-2xl font-black text-foreground">Split Bill</h1>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        {/* Receipt Summary Card */}
+        <div className="bg-card rounded-xl border border-border p-6">
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span className="font-semibold text-foreground">${subtotal.toFixed(2)}</span>
+            </div>
+            {includeTax && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Tax</span>
+                <span className="font-semibold text-foreground">${tax.toFixed(2)}</span>
+              </div>
+            )}
+            {tip > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Tip</span>
+                <span className="font-semibold text-foreground">${tip.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="border-t border-border pt-3 flex justify-between items-center">
+              <span className="font-semibold text-foreground">Total</span>
+              <span className="text-2xl font-black text-brand">${total.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tax Toggle */}
+        <div>
+          <TaxToggle taxAmount={tax} onToggle={setIncludeTax} />
+        </div>
+
+        {/* Tip Selector */}
+        <div>
+          <TipSelector subtotal={subtotal} onTipChange={setTip} />
+        </div>
+
+        {/* Split Type Selector */}
+        <div>
+          <SplitTypeSelector onTypeChange={setSplitType} />
+        </div>
+
+        {/* People Selector - Only show for even split */}
+        {splitType === 'even' && (
+          <div>
+            <PeopleSelector initialCount={4} onCountChange={setPeopleCount} />
+          </div>
+        )}
+
+        {/* Payment Method Selector */}
+        <div>
+          <PaymentMethodSelector onMethodChange={setPaymentMethod} />
+        </div>
+
+        {/* Continue Button */}
+        <div className="pt-6">
+          <Button className="w-full h-14 text-lg font-bold" size="lg">
+            Continue to Payment
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
