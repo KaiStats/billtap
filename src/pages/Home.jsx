@@ -38,14 +38,16 @@ const Home = memo(function Home() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-          <Button size="lg" onClick={() => pushScreen(createPageUrl("Dashboard"))} className="bg-background text-brand hover:bg-background/90 font-bold text-base px-8 rounded-xl shadow-lg">
+          <Button size="lg" onClick={goToDashboard} className="bg-background text-brand hover:bg-background/90 font-bold text-base px-8 rounded-xl shadow-lg">
             Go to Dashboard <ArrowRight className="ml-2 w-5 h-5" aria-hidden="true" />
           </Button>
-          <Button size="lg" onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-brand-foreground/20 hover:bg-brand-foreground/30 border border-brand-foreground/30 text-brand-foreground font-bold text-base px-8 rounded-xl">
+          <Button size="lg" onClick={goToNewReceipt} className="bg-brand-foreground/20 hover:bg-brand-foreground/30 border border-brand-foreground/40 text-brand-foreground font-bold text-base px-8 rounded-xl">
             <Zap className="mr-2 w-5 h-5" aria-hidden="true" /> Split a Bill
           </Button>
         </div>
       </div>
     </div>
   );
-}
+});
+
+export default Home;
