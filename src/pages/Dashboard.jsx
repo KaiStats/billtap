@@ -7,9 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
-import PullToRefresh from "@/components/PullToRefresh";
+import ListLayout from "@/components/ListLayout";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
-import { useScrollBehavior } from "@/hooks/useScrollBehavior";
 
 const statusColors = {
   waiting: "bg-warning-muted text-warning-muted-foreground",
@@ -53,9 +52,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const { pushScreen } = useTabNav();
-  
-  // Disable scroll bounce
-  useScrollBehavior();
 
   const fetchSessions = useCallback(async () => {
     const data = await base44.entities.Session.list("-created_date", 50);
@@ -74,9 +70,9 @@ export default function Dashboard() {
   }), [sessions]);
 
   return (
-    <div className="min-h-screen bg-surface">
+    <>
       {loading && <DashboardSkeleton />}
-      {!loading && <PullToRefresh onRefresh={fetchSessions}>
+      {!loading && <ListLayout onRefresh={fetchSessions}>
         <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
 
           {/* Stats */}
@@ -129,7 +125,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </PullToRefresh>}
-    </div>
+      </ListLayout>}
+    </>
   );
 }
