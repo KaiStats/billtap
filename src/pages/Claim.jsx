@@ -224,6 +224,8 @@ export default function Claim() {
             <button
               key={item.id}
               onClick={() => toggleClaim(item.id)}
+              aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
+              aria-pressed={isMine}
               className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${
                 isMine
                   ? "bg-purple-50 border-purple-400"
@@ -268,6 +270,7 @@ export default function Claim() {
         {!addingItem ? (
           <button
             onClick={() => setAddingItem(true)}
+            aria-label="Add a missing item to the bill"
             className="w-full p-3 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-all text-sm font-medium flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4" /> Add missing item
