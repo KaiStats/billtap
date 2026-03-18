@@ -45,9 +45,12 @@ export default function ReceiptDetail() {
       p.participant_id === participantId ? { ...p, payment_status: "paid" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
+    const newStatus = allPaid ? "completed" : "claiming";
+    // Optimistic update
+    setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
     const updated = await base44.entities.Session.update(session.id, {
       participants: updatedParticipants,
-      status: allPaid ? "completed" : "claiming",
+      status: newStatus,
     });
     setSession(updated);
   };

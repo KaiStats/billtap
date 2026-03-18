@@ -87,23 +87,22 @@ export default function Claim() {
 
   const toggleClaim = async (itemId) => {
     if (!session) return;
-    // Auto-join on first claim if not yet registered
-    await ensureJoined(nameInput.trim() || myName || "Anonymous");
-    const updatedItems = session.items.map(item => {
+    // Optimistic update
+    const optimisticItems = session.items.map(item => {
       if (item.id !== itemId) return item;
       const claimed = item.claimed_by || [];
       const already = claimed.includes(myId);
       return { ...item, claimed_by: already ? claimed.filter(id => id !== myId) : [...claimed, myId] };
     });
-
-    // Recalculate amounts for all participants
-    const participants = session.participants || [];
-    const updatedParticipants = participants.map(p => ({
+    const optimisticParticipants = (session.participants || []).map(p => ({
       ...p,
-      amount_owed: Math.round(calcMyShare(updatedItems, p.participant_id, session.tax, session.tip) * 100) / 100
+      amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
     }));
+    setSession(prev => ({ ...prev, items: optimisticItems, participants: optimisticParticipants }));
 
-    const updated = await base44.entities.Session.update(sessionId, { items: updatedItems, participants: updatedParticipants });
+    // Auto-join on first claim if not yet registered
+    await ensureJoined(nameInput.trim() || myName || "Anonymous");
+    const updated = await base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
     setSession(updated);
   };
 
@@ -123,9 +122,12 @@ export default function Claim() {
       p.participant_id === myId ? { ...p, payment_status: "paid" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
+    const newStatus = allPaid ? "completed" : session.status;
+    // Optimistic update
+    setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
     const updated = await base44.entities.Session.update(sessionId, {
       participants: updatedParticipants,
-      status: allPaid ? "completed" : session.status
+      status: newStatus
     });
     setSession(updated);
   };
