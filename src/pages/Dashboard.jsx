@@ -35,19 +35,8 @@ export default function Dashboard() {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-black text-gray-900">BillTap</h1>
-            <p className="text-gray-500 mt-1">Your bills & splits</p>
-          </div>
-          <Link to={createPageUrl("NewReceipt")}>
-            <Button className="bg-purple-600 hover:bg-purple-700 font-semibold rounded-xl">
-              <Plus className="mr-2 w-4 h-4" /> New Split
-            </Button>
-          </Link>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
