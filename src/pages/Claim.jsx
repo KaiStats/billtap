@@ -114,14 +114,25 @@ export default function Claim() {
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
-  const handleAddItem = async () => {
+  const addItemMutation = useMutation({
+    mutationFn: ({ updatedItems, total }) =>
+      base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total }),
+    onMutate: ({ updatedItems, total }) => {
+      const snapshot = session;
+      setSession(prev => ({ ...prev, items: updatedItems, total_amount: total }));
+      return snapshot;
+    },
+    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onSuccess: (updated) => { setSession(updated); },
+  });
+
+  const handleAddItem = () => {
     if (!newItemName.trim() || !newItemPrice) return;
     const newItem = { id: `item-${Date.now()}`, name: newItemName.trim(), price: parseFloat(newItemPrice) || 0, quantity: 1, claimed_by: [] };
     const updatedItems = [...(session.items || []), newItem];
     const subtotal = updatedItems.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0);
     const total = subtotal + (session.tax || 0) + (session.tip || 0);
-    const updated = await base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total });
-    setSession(updated);
+    addItemMutation.mutate({ updatedItems, total });
     setNewItemName(""); setNewItemPrice(""); setAddingItem(false);
   };
 

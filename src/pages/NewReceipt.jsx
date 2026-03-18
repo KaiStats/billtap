@@ -165,7 +165,7 @@ Return a JSON with:
                   <div key={i} className="flex gap-2 items-center">
                     <Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Item name" className="flex-1 rounded-xl text-sm" />
                     <Input type="number" value={item.price} onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)} className="w-24 rounded-xl text-sm" placeholder="Price" />
-                    <button onClick={() => removeItem(i)} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                    <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || "item"}`} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>
