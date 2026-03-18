@@ -15,6 +15,7 @@ import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import Home from '@/pages/Home';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { handleDeepLink } from '@/lib/deepLinking';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -44,13 +45,24 @@ const AnimatedPage = ({ children, direction }) => {
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   const location = useLocation();
-  const { directionRef } = useTabNav();
+  const { directionRef, pushScreen } = useTabNav();
   
   // Disable overscroll bounce on mobile WebViews
   useScrollBehavior();
   
   // Global offline detector
   useNetworkStatus();
+
+  // Handle deep linking (direct navigation via URI params)
+  React.useEffect(() => {
+    if (!location.pathname || location.pathname === '/') return;
+    
+    const deepLink = handleDeepLink(location);
+    if (deepLink.state && deepLink.state.sessionId) {
+      // Store state for destination component
+      sessionStorage.setItem('deepLinkState', JSON.stringify(deepLink.state));
+    }
+  }, [location]);
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return <AuthLoadingSkeleton />;
