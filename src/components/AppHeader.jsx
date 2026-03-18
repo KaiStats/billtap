@@ -1,22 +1,22 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
+import { useTabNav } from "@/lib/TabNavigationContext";
 
-const ROOT_PATHS = ["/", "/Home", "/Dashboard", "/NewReceipt"];
+const ROOT_PATHS = ["/", "/Home", "/Dashboard", "/NewReceipt", "/Profile"];
 
 export default function AppHeader({ title, rightAction, forceBack, backTo }) {
-  const navigate = useNavigate();
   const location = useLocation();
+  const { popScreen, pushScreen, canGoBack } = useTabNav();
 
   const isRoot = ROOT_PATHS.includes(location.pathname) && !forceBack;
-  const showBack = !isRoot || forceBack;
+  const showBack = !isRoot || forceBack || canGoBack;
 
   const handleBack = () => {
     if (backTo) {
-      navigate(backTo);
-    } else if (window.history.length > 1) {
-      navigate(-1);
+      pushScreen(backTo);
     } else {
-      navigate("/Dashboard");
+      const popped = popScreen();
+      if (!popped) pushScreen("/Dashboard");
     }
   };
 
