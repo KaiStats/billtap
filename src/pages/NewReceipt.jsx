@@ -126,8 +126,14 @@ Return a JSON with:
                 onClick={() => document.getElementById("file-input").click()}
               >
                 {imageUrl ? (
-                  <img src={imageUrl} alt="Receipt" className="max-h-64 mx-auto rounded-xl object-contain" />
-                ) : (
+                   <img 
+                     src={imageUrl} 
+                     alt="Receipt" 
+                     loading="lazy"
+                     decoding="async"
+                     className="max-h-64 mx-auto rounded-xl object-contain" 
+                   />
+                 ) : (
                   <>
                     <Upload className="w-12 h-12 mx-auto text-brand/40 mb-3" aria-hidden="true" />
                     <p className="text-foreground font-medium">Drop receipt photo here or click to upload</p>
