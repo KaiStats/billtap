@@ -17,6 +17,24 @@ export default function ReceiptScreen() {
   const subtotal = 42.50;
   const tax = 3.77;
   const total = subtotal + (includeTax ? tax : 0) + tip;
+  const perPerson = splitType === 'even' ? total / peopleCount : total / 2;
+
+  const handleShare = async () => {
+    const shareText = `Split Bill Summary\n\nSubtotal: $${subtotal.toFixed(2)}\n${includeTax ? `Tax: $${tax.toFixed(2)}\n` : ''}${tip > 0 ? `Tip: $${tip.toFixed(2)}\n` : ''}\nTotal: $${total.toFixed(2)}\n\nPer Person: $${perPerson.toFixed(2)}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Split Bill',
+          text: shareText
+        });
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error('Share failed:', err);
+      }
+    } else {
+      await navigator.clipboard.writeText(shareText);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-32">
