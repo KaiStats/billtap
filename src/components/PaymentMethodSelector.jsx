@@ -31,12 +31,12 @@ export default function PaymentMethodSelector({ onMethodChange }) {
   };
 
   return (
-    <div className="py-4">
-      <div className="text-base font-semibold text-foreground mb-3">
+    <fieldset className="py-4">
+      <legend className="text-base font-semibold text-foreground mb-3">
         Payment Method
-      </div>
+      </legend>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3" role="group" aria-labelledby="payment-method-legend">
         {methods.map(method => (
           <button
             key={method.value}
