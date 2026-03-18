@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { CheckCircle2, Clock, ArrowLeft, Users, Receipt, QrCode } from "lucide-react";
+import { CheckCircle2, Clock, Users, Receipt, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import AppHeader from "@/components/AppHeader";
 
 const statusColors = {
   unpaid: "bg-red-100 text-red-700",
