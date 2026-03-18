@@ -34,7 +34,6 @@ export default function Claim() {
   const [addingItem, setAddingItem] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemPrice, setNewItemPrice] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
