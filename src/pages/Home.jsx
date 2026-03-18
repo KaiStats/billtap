@@ -10,7 +10,7 @@ const FEATURES = [
   { icon: CheckCircle, title: "Collect Payments", desc: "Stripe links sent automatically" },
 ];
 
-const Home = memo(function Home() {
+export default function Home() {
   const { pushScreen } = useTabNav();
   const goToDashboard = useCallback(() => pushScreen(createPageUrl("Dashboard")), [pushScreen]);
   const goToNewReceipt = useCallback(() => pushScreen(createPageUrl("NewReceipt")), [pushScreen]);
@@ -48,6 +48,4 @@ const Home = memo(function Home() {
       </div>
     </div>
   );
-});
-
-export default Home;
+}

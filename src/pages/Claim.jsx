@@ -21,7 +21,7 @@ function calcMyShare(items, myId, tax, tip) {
   return mySubtotal + (tax || 0) * ratio + (tip || 0) * ratio;
 }
 
-const Claim = memo(function Claim() {
+export default function Claim() {
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
@@ -360,6 +360,4 @@ const Claim = memo(function Claim() {
       </div>
     </div>
   );
-});
-
-export default Claim;
+}

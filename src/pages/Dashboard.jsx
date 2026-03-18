@@ -48,7 +48,7 @@ const SessionCard = memo(function SessionCard({ session, onClick }) {
   );
 });
 
-const Dashboard = memo(function Dashboard() {
+export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
@@ -129,6 +129,4 @@ const Dashboard = memo(function Dashboard() {
       </PullToRefresh>}
     </div>
   );
-});
-
-export default Dashboard;
+}

@@ -17,7 +17,7 @@ const statusColors = {
   paid: "bg-success-muted text-success-muted-foreground",
 };
 
-const ReceiptDetail = memo(function ReceiptDetail() {
+export default function ReceiptDetail() {
   const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -208,6 +208,4 @@ const ReceiptDetail = memo(function ReceiptDetail() {
       </div>
     </div>
   );
-});
-
-export default ReceiptDetail;
+}
