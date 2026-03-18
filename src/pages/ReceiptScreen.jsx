@@ -5,6 +5,7 @@ import SplitTypeSelector from '@/components/SplitTypeSelector';
 import PeopleSelector from '@/components/PeopleSelector';
 import PaymentMethodSelector from '@/components/PaymentMethodSelector';
 import { Button } from '@/components/ui/button';
+import { Share2 } from 'lucide-react';
 
 export default function ReceiptScreen() {
   const [tip, setTip] = useState(0);
