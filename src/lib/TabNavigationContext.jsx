@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-// Which bottom-nav tab does a path belong to?
 export const TAB_ROOTS = {
   "/Home": "Home",
   "/": "Home",
@@ -10,11 +9,32 @@ export const TAB_ROOTS = {
   "/Profile": "Profile",
 };
 
+const VALID_TABS = new Set(["Home", "Dashboard", "NewReceipt", "Profile"]);
+const VALID_PATHS = /^\/[A-Za-z0-9_\-?=&%]+$/;
+
 export function getTabForPath(pathname) {
   if (TAB_ROOTS[pathname]) return TAB_ROOTS[pathname];
   if (["/ReceiptDetail", "/SessionHost", "/Claim"].some(p => pathname.startsWith(p))) return "Dashboard";
   return "Home";
 }
+
+/** Validate that a restored tabStacks object from history.state is safe to use */
+function isValidTabStacks(stacks) {
+  if (!stacks || typeof stacks !== "object" || Array.isArray(stacks)) return false;
+  for (const [tab, stack] of Object.entries(stacks)) {
+    if (!VALID_TABS.has(tab)) return false;
+    if (!Array.isArray(stack) || stack.length === 0) return false;
+    if (!stack.every(p => typeof p === "string" && VALID_PATHS.test(p))) return false;
+  }
+  return true;
+}
+
+const DEFAULT_STACKS = {
+  Home: ["/Home"],
+  Dashboard: ["/Dashboard"],
+  NewReceipt: ["/NewReceipt"],
+  Profile: ["/Profile"],
+};
 
 const TabNavContext = createContext(null);
 
@@ -23,15 +43,7 @@ export function TabNavigationProvider({ children }) {
   const location = useLocation();
   const directionRef = useRef("tab");
 
-  // Per-tab stacks keyed by tab name → string[]
-  const tabStacksRef = useRef({
-    Home: ["/Home"],
-    Dashboard: ["/Dashboard"],
-    NewReceipt: ["/NewReceipt"],
-    Profile: ["/Profile"],
-  });
-
-  // Mirror as state so consumers re-render when canGoBack changes
+  const tabStacksRef = useRef({ ...DEFAULT_STACKS });
   const [tabStacks, setTabStacks] = useState(tabStacksRef.current);
 
   const syncStacks = useCallback((next) => {
@@ -41,26 +53,19 @@ export function TabNavigationProvider({ children }) {
 
   const activeTab = getTabForPath(location.pathname);
 
-  // Sync our stack with the browser's History API popstate.
-  // We use history.state to embed the stack so it survives full reloads / swipe-back.
   useEffect(() => {
     const handler = (e) => {
-      // The browser has already moved to the previous history entry.
-      // Restore stacks from the state we embedded there (if any).
       const restoredStacks = e.state?.tabStacks;
-      if (restoredStacks) {
-        const prev = restoredStacks;
+      if (isValidTabStacks(restoredStacks)) {
         directionRef.current = "back";
-        syncStacks(prev);
-        // React Router's location will update via the popstate it also listens to.
+        syncStacks(restoredStacks);
       } else {
-        // No embedded state — fall back to popping our in-memory stack.
+        // Fallback: pop in-memory stack for the current tab
         const tab = getTabForPath(location.pathname);
         const stack = tabStacksRef.current[tab] || [];
         if (stack.length > 1) {
           directionRef.current = "back";
-          const next = { ...tabStacksRef.current, [tab]: stack.slice(0, -1) };
-          syncStacks(next);
+          syncStacks({ ...tabStacksRef.current, [tab]: stack.slice(0, -1) });
         }
       }
     };
@@ -68,11 +73,10 @@ export function TabNavigationProvider({ children }) {
     return () => window.removeEventListener("popstate", handler);
   }, [location.pathname, syncStacks]);
 
-  // Push a new screen, embedding the updated stacks into history.state.
   const pushScreen = useCallback((path) => {
     const tab = getTabForPath(path);
     const stack = tabStacksRef.current[tab] || [];
-    if (stack[stack.length - 1] === path) return; // no-op if already on top
+    if (stack[stack.length - 1] === path) return;
     directionRef.current = "forward";
     const next = { ...tabStacksRef.current, [tab]: [...stack, path] };
     syncStacks(next);
@@ -80,12 +84,10 @@ export function TabNavigationProvider({ children }) {
   }, [navigate, syncStacks]);
 
   const popScreen = useCallback(() => {
-    const tab = activeTab;
-    const stack = tabStacksRef.current[tab] || [];
+    const stack = tabStacksRef.current[activeTab] || [];
     if (stack.length <= 1) return false;
     directionRef.current = "back";
-    const next = { ...tabStacksRef.current, [tab]: stack.slice(0, -1) };
-    syncStacks(next);
+    syncStacks({ ...tabStacksRef.current, [activeTab]: stack.slice(0, -1) });
     navigate(-1);
     return true;
   }, [activeTab, navigate, syncStacks]);
@@ -94,8 +96,7 @@ export function TabNavigationProvider({ children }) {
     directionRef.current = "tab";
     const tab = getTabForPath(tabPath);
     const stack = tabStacksRef.current[tab] || [tabPath];
-    const dest = stack[stack.length - 1];
-    navigate(dest, { state: { tabStacks: tabStacksRef.current } });
+    navigate(stack[stack.length - 1], { state: { tabStacks: tabStacksRef.current } });
   }, [navigate]);
 
   const canGoBack = (tabStacks[activeTab] || []).length > 1;

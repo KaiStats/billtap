@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useTabNav } from "@/lib/TabNavigationContext";
 import { Receipt, Users, CheckCircle, ArrowRight, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
