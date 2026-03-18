@@ -37,6 +37,23 @@ export function TabNavigationProvider({ children }) {
 
   const activeTab = getTabForPath(location.pathname);
 
+  // Handle iOS swipe-back / browser back button — pop our stack instead of letting
+  // the browser navigate away, so animations and stack state stay in sync.
+  useEffect(() => {
+    const handler = () => {
+      const tab = getTabForPath(location.pathname);
+      const stack = tabStacks[tab] || [];
+      if (stack.length > 1) {
+        const prev = stack[stack.length - 2];
+        directionRef.current = "back";
+        setTabStacks(s => ({ ...s, [tab]: s[tab].slice(0, -1) }));
+        navigate(prev, { replace: true });
+      }
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [location.pathname, tabStacks, navigate]);
+
   const pushScreen = useCallback((path) => {
     const tab = getTabForPath(path);
     directionRef.current = "forward";
