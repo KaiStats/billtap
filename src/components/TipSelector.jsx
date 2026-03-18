@@ -9,7 +9,7 @@ const PRESETS = [
   { label: "25%", value: 0.25 },
 ];
 
-export default function TipSelector({ subtotal, tip, onChange }) {
+export default function TipSelector({ subtotal, tip, onChange, participantCount }) {
   const [showCustom, setShowCustom] = useState(false);
   const [customVal, setCustomVal] = useState("");
 
@@ -77,10 +77,17 @@ export default function TipSelector({ subtotal, tip, onChange }) {
       )}
 
       {tip > 0 && (
-        <div className="bg-surface rounded-xl p-3 text-center">
-          <span className="font-black text-lg text-foreground">${tip.toFixed(2)}</span>
-          {subtotal > 0 && (
-            <span className="text-muted-foreground text-sm ml-2">({tipPct.toFixed(1)}% of ${subtotal.toFixed(2)})</span>
+        <div className="bg-surface rounded-xl p-3 text-center space-y-0.5">
+          <div>
+            <span className="font-black text-lg text-foreground">${tip.toFixed(2)}</span>
+            {subtotal > 0 && (
+              <span className="text-muted-foreground text-sm ml-2">({tipPct.toFixed(1)}% of ${subtotal.toFixed(2)})</span>
+            )}
+          </div>
+          {participantCount > 1 && (
+            <div className="text-muted-foreground text-xs">
+              Your share: <span className="font-semibold text-foreground">${(tip / participantCount).toFixed(2)}</span>
+            </div>
           )}
         </div>
       )}
