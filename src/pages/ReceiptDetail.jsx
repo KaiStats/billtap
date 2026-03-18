@@ -132,7 +132,7 @@ export default function ReceiptDetail() {
         {/* Image */}
         {session.image_url && (
           <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
-            <img src={session.image_url} alt="Receipt" className="w-full max-h-64 object-contain bg-muted" />
+            <img src={session.image_url} alt={`Receipt for ${session.title}`} className="w-full max-h-64 object-contain bg-muted" />
           </Card>
         )}
 

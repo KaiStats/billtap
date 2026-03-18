@@ -106,7 +106,7 @@ export default function SessionHost() {
           <CardContent className="p-6 space-y-5">
             {/* QR Code */}
             <div className="flex flex-col items-center gap-3">
-              <div className="bg-surface p-5 rounded-2xl border border-border">
+              <div className="bg-surface p-5 rounded-2xl border border-border" role="img" aria-label={`QR code to join bill split: ${session.title}`}>
                 <QRCodeSVG value={claimUrl} size={220} fgColor="hsl(var(--brand))" level="H" includeMargin={false} />
               </div>
               <p className="text-muted-foreground font-semibold text-sm text-center">Have everyone scan this 📱</p>
@@ -147,7 +147,14 @@ export default function SessionHost() {
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Items claimed</span><span>{claimedItems}/{totalItems}</span>
                 </div>
-                <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  role="progressbar"
+                  aria-valuenow={claimedItems}
+                  aria-valuemin={0}
+                  aria-valuemax={totalItems}
+                  aria-label="Items claimed"
+                  className="w-full bg-muted rounded-full h-2"
+                >
                   <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${(claimedItems / totalItems) * 100}%` }} />
                 </div>
               </div>
@@ -157,6 +164,7 @@ export default function SessionHost() {
             <Button
               onClick={startClaiming}
               className="w-full bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl h-12 text-base shadow-lg"
+              aria-label={session.status === "claiming" ? "View claiming progress" : "Claim my items from the bill"}
             >
               {session.status === "claiming" ? "View Progress" : "Claim My Items"} <ArrowRight className="ml-2 w-4 h-4" aria-hidden="true" />
             </Button>
