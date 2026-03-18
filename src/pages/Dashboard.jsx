@@ -17,6 +17,7 @@ const statusColors = {
 export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
 
   useEffect(() => {
     base44.entities.Session.list("-created_date", 50).then((data) => {
