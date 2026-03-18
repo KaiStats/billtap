@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Plus, Receipt, CheckCircle2, Clock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSaveScroll } from "@/hooks/useTabHistory";
+import { useTabNav } from "@/lib/TabNavigationContext";
 
 const statusColors = {
   waiting: "bg-yellow-100 text-yellow-800",

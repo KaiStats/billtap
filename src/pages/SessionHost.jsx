@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useTabNav } from "@/lib/TabNavigationContext";
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
