@@ -1,60 +1,102 @@
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
-import { registerRoute, NavigationRoute, createHandlerBoundToURL } from 'workbox-routing';
-import { CacheFirst, StaleWhileRevalidate, NetworkFirst } from 'workbox-strategies';
-import { ExpirationPlugin } from 'workbox-expiration';
-import { BackgroundSyncPlugin } from 'workbox-background-sync';
+/**
+ * Optimized Service Worker with Core Shell Precaching
+ * 
+ * Strategy:
+ * - Precache: Core app shell (html, js, css, fonts) only
+ * - Runtime Cache: Images (StaleWhileRevalidate), APIs (NetworkFirst), Fonts (CacheFirst)
+ * - Memory footprint: <20MB initial, scales with usage
+ */
 
-// Clean up old cache versions
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { StaleWhileRevalidate, NetworkFirst, CacheFirst } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+
+// Clean up old caches from previous versions
 cleanupOutdatedCaches();
 
-// Precache static assets from build manifest
+// ============================================================================
+// PRECACHE: Core App Shell Only (Injected by Workbox build)
+// ============================================================================
 precacheAndRoute(self.__WB_MANIFEST || []);
 
-// Cache images with CacheFirst strategy (1 week expiration)
+// ============================================================================
+// RUNTIME CACHING: Images (Lazy-Loaded)
+// ============================================================================
 registerRoute(
   ({ request }) => request.destination === 'image',
-  new CacheFirst({
-    cacheName: 'images',
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 60,
-        maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
-      }),
-    ],
-  })
-);
-
-// Cache CSS/JS with StaleWhileRevalidate (cache-first, update in background)
-registerRoute(
-  ({ request }) => request.destination === 'style' || request.destination === 'script',
   new StaleWhileRevalidate({
-    cacheName: 'static-assets',
-    plugins: [new ExpirationPlugin({ maxAgeSeconds: 24 * 60 * 60 })],
-  })
-);
-
-// Cache API calls with NetworkFirst strategy (network first, fallback to cache)
-registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/'),
-  new NetworkFirst({
-    cacheName: 'api-cache',
-    networkTimeoutSeconds: 5,
+    cacheName: 'images-cache-v1',
     plugins: [
       new ExpirationPlugin({
         maxEntries: 50,
-        maxAgeSeconds: 5 * 60, // 5 minutes
-      }),
-      new BackgroundSyncPlugin('api-queue', {
-        maxRetentionTime: 24 * 60, // 24 hours
+        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
       }),
     ],
   })
 );
 
-// Serve app shell for navigation requests (SPA support)
-const handler = createHandlerBoundToURL('/index.html');
-const navigationRoute = new NavigationRoute(handler, {
-  allowlist: [/^(?!\/__)/],
-  denylist: [/\/[^/?]+\.[^/]+$/], // Don't intercept files with extensions
+// Alternative: Cache images by URL pattern
+registerRoute(
+  /\.(png|jpg|jpeg|gif|webp|svg)$/i,
+  new StaleWhileRevalidate({
+    cacheName: 'images-cache-v1',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 30 * 24 * 60 * 60,
+      }),
+    ],
+  })
+);
+
+// ============================================================================
+// RUNTIME CACHING: API Calls (Network First)
+// ============================================================================
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/') || url.origin === 'https://api.base44.com',
+  new NetworkFirst({
+    cacheName: 'api-cache-v1',
+    networkTimeoutSeconds: 5, // 5s timeout before fallback to cache
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 20,
+        maxAgeSeconds: 5 * 60, // 5 minutes cache time for API
+      }),
+    ],
+  })
+);
+
+// ============================================================================
+// RUNTIME CACHING: Fonts (Cache First - Never Revalidate)
+// ============================================================================
+registerRoute(
+  ({ request }) => request.destination === 'font',
+  new CacheFirst({
+    cacheName: 'fonts-cache-v1',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 20,
+        maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+      }),
+    ],
+  })
+);
+
+// ============================================================================
+// SKIP WAITING: Allow faster updates
+// ============================================================================
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
-registerRoute(navigationRoute);
+
+// ============================================================================
+// LOGGING: Optional debugging
+// ============================================================================
+if (process.env.NODE_ENV === 'development') {
+  console.log('[SW] Service worker active with optimized core-shell precaching');
+  console.log('[SW] Precached: Core shell (html, js, css, fonts)');
+  console.log('[SW] Runtime: Images, APIs, Fonts');
+}
