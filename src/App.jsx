@@ -44,8 +44,16 @@ const AuthenticatedApp = () => {
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div 
+        className="fixed inset-0 flex items-center justify-center bg-background"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading app"
+      >
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-3"></div>
+          <span className="sr-only">Loading, please wait...</span>
+        </div>
       </div>
     );
   }
