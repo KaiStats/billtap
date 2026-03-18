@@ -6,8 +6,10 @@ import PeopleSelector from '@/components/PeopleSelector';
 import PaymentMethodSelector from '@/components/PaymentMethodSelector';
 import { Button } from '@/components/ui/button';
 import { Share2 } from 'lucide-react';
+import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 
 export default function ReceiptScreen() {
+  useScrollBehavior();
   const [tip, setTip] = useState(0);
   const [includeTax, setIncludeTax] = useState(true);
   const [splitType, setSplitType] = useState('itemized');
