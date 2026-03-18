@@ -78,7 +78,7 @@ export default function ReceiptDetail() {
 
   const rightAction = isHost ? (
     <button
-      onClick={() => navigate(createPageUrl(`SessionHost?id=${sessionId}`))}
+      onClick={() => pushScreen(createPageUrl(`SessionHost?id=${sessionId}`))}
       className="w-11 h-11 flex items-center justify-center rounded-xl text-purple-600 active:bg-purple-50"
       aria-label="Show QR"
     >
