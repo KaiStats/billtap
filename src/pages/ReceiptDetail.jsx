@@ -208,4 +208,6 @@ const ReceiptDetail = memo(function ReceiptDetail() {
       </div>
     </div>
   );
-}
+});
+
+export default ReceiptDetail;
