@@ -30,12 +30,17 @@ const AnimatedPage = ({ children, direction }) => {
   const xIn = direction === "back" ? -30 : direction === "tab" ? 0 : 30;
   const xOut = direction === "back" ? 30 : direction === "tab" ? 0 : -30;
   const opacityOnly = direction === "tab";
+
   return (
     <motion.div
       initial={{ opacity: 0, x: opacityOnly ? 0 : xIn }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: opacityOnly ? 0 : xOut }}
-      transition={{ duration: 0.2, ease: "easeInOut" }}
+      transition={{
+        duration: direction === "tab" ? 0.15 : 0.2,
+        ease: direction === "tab" ? "easeInOut" : "easeInOut",
+        when: "beforeChildren",
+      }}
       className="w-full"
     >
       {children}
@@ -78,7 +83,7 @@ const AuthenticatedApp = () => {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" onExitComplete={() => null}>
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={
             <AnimatedPage direction={direction}>
