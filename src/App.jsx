@@ -44,6 +44,9 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   const location = useLocation();
   const { directionRef } = useTabNav();
+  
+  // Disable overscroll bounce on mobile WebViews
+  useScrollBehavior();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return <AuthLoadingSkeleton />;
