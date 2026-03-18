@@ -47,6 +47,6 @@ export default function QuantitySelector({ initialQuantity = 1, onQuantityChange
           +
         </button>
       </div>
-    </div>
+    </fieldset>
   );
 }
