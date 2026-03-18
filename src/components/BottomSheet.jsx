@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check } from "lucide-react";
 
@@ -14,12 +14,27 @@ import { X, Check } from "lucide-react";
  * or the user dismisses the sheet themselves.
  */
 export function BottomSheet({ open, onClose, title, children }) {
+  const closeButtonRef = useRef(null);
+
   // Prevent body scroll while open
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
     return () => { document.body.style.overflow = ""; };
   }, [open]);
+
+  // Move focus to close button when opened
+  useEffect(() => {
+    if (open) setTimeout(() => closeButtonRef.current?.focus(), 50);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
 
   return (
     <AnimatePresence>
@@ -33,9 +48,13 @@ export function BottomSheet({ open, onClose, title, children }) {
             transition={{ duration: 0.2 }}
             className="fixed inset-0 bg-black/40 z-40"
             onClick={onClose}
+            aria-hidden="true"
           />
           <motion.div
             key="sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={title || "Options"}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -44,23 +63,25 @@ export function BottomSheet({ open, onClose, title, children }) {
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           >
             {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1">
+            <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
             </div>
 
             {/* Header */}
-            {title && (
-              <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-                <span className="font-semibold text-foreground text-base">{title}</span>
-                <button
-                  onClick={onClose}
-                  aria-label="Close"
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-muted active:bg-accent"
-                >
-                  <X className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+              {title
+                ? <span className="font-semibold text-foreground text-base">{title}</span>
+                : <span />
+              }
+              <button
+                ref={closeButtonRef}
+                onClick={onClose}
+                aria-label="Close"
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <X className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              </button>
+            </div>
 
             {/* Content */}
             <div className="px-4 py-2 pb-4 max-h-[70vh] overflow-y-auto">
@@ -77,7 +98,9 @@ export function BottomSheetOption({ label, description, selected, onSelect, icon
   return (
     <button
       onClick={onSelect}
-      className={`w-full flex items-center gap-3 px-3 py-4 rounded-2xl text-left transition-colors active:bg-accent
+      role="option"
+      aria-selected={selected}
+      className={`w-full flex items-center gap-3 px-3 py-4 rounded-2xl text-left transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset
         ${selected ? "bg-brand-muted" : ""}
         ${destructive ? "text-destructive" : "text-foreground"}
       `}

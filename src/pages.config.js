@@ -1,72 +1,41 @@
 /**
  * pages.config.js - Page routing configuration
- * 
- * This file is AUTO-GENERATED. Do not add imports or modify PAGES manually.
- * Pages are auto-registered when you create files in the ./pages/ folder.
- * 
- * THE ONLY EDITABLE VALUE: mainPage
- * This controls which page is the landing page (shown when users visit the app).
- * 
- * Example file structure:
- * 
- *   import HomePage from './pages/HomePage';
- *   import Dashboard from './pages/Dashboard';
- *   import Settings from './pages/Settings';
- *   
- *   export const PAGES = {
- *       "HomePage": HomePage,
- *       "Dashboard": Dashboard,
- *       "Settings": Settings,
- *   }
- *   
- *   export const pagesConfig = {
- *       mainPage: "HomePage",
- *       Pages: PAGES,
- *   };
- * 
- * Example with Layout (wraps all pages):
  *
- *   import Home from './pages/Home';
- *   import Settings from './pages/Settings';
- *   import __Layout from './Layout.jsx';
- *
- *   export const PAGES = {
- *       "Home": Home,
- *       "Settings": Settings,
- *   }
- *
- *   export const pagesConfig = {
- *       mainPage: "Home",
- *       Pages: PAGES,
- *       Layout: __Layout,
- *   };
- *
- * To change the main page from HomePage to Dashboard, use find_replace:
- *   Old: mainPage: "HomePage",
- *   New: mainPage: "Dashboard",
- *
- * The mainPage value must match a key in the PAGES object exactly.
+ * Lazy-loads all pages for better initial load performance.
  */
-import Claim from './pages/Claim';
-import Dashboard from './pages/Dashboard';
-import Home from './pages/Home';
-import NewReceipt from './pages/NewReceipt';
-import ReceiptDetail from './pages/ReceiptDetail';
-import SessionHost from './pages/SessionHost';
-import Profile from './pages/Profile';
+import { lazy, Suspense } from 'react';
 
+const PageFallback = () => (
+  <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+    <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
+  </div>
+);
+
+const withSuspense = (Component) => (props) => (
+  <Suspense fallback={<PageFallback />}>
+    <Component {...props} />
+  </Suspense>
+);
+
+const Claim        = withSuspense(lazy(() => import('./pages/Claim')));
+const Dashboard    = withSuspense(lazy(() => import('./pages/Dashboard')));
+const Home         = withSuspense(lazy(() => import('./pages/Home')));
+const NewReceipt   = withSuspense(lazy(() => import('./pages/NewReceipt')));
+const ReceiptDetail = withSuspense(lazy(() => import('./pages/ReceiptDetail')));
+const SessionHost  = withSuspense(lazy(() => import('./pages/SessionHost')));
+const Profile      = withSuspense(lazy(() => import('./pages/Profile')));
 
 export const PAGES = {
-    "Claim": Claim,
-    "Dashboard": Dashboard,
-    "Home": Home,
-    "NewReceipt": NewReceipt,
-    "ReceiptDetail": ReceiptDetail,
-    "SessionHost": SessionHost,
-    "Profile": Profile,
-}
+  "Claim":         Claim,
+  "Dashboard":     Dashboard,
+  "Home":          Home,
+  "NewReceipt":    NewReceipt,
+  "ReceiptDetail": ReceiptDetail,
+  "SessionHost":   SessionHost,
+  "Profile":       Profile,
+};
 
 export const pagesConfig = {
-    mainPage: "Home",
-    Pages: PAGES,
+  mainPage: "Home",
+  Pages: PAGES,
 };

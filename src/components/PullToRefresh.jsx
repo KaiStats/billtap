@@ -47,13 +47,18 @@ const PullToRefresh = memo(function PullToRefresh({ onRefresh, children }) {
       style={{ overscrollBehavior: "none" }}
     >
       <div
+        role="status"
+        aria-live="polite"
+        aria-label={refreshing ? "Refreshing" : undefined}
         className="flex items-center justify-center transition-all duration-200 overflow-hidden"
         style={{ height: refreshing ? 48 : pullDistance > 0 ? pullDistance : 0 }}
       >
         <Loader2
           className={`w-5 h-5 text-brand ${refreshing ? "animate-spin" : ""}`}
           style={{ transform: !refreshing ? `rotate(${(pullDistance / PULL_THRESHOLD) * 360}deg)` : undefined }}
+          aria-hidden="true"
         />
+        {refreshing && <span className="sr-only">Refreshing content</span>}
       </div>
       {children}
     </div>
