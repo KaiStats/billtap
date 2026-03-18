@@ -16,12 +16,12 @@ export default function PeopleSelector({ initialCount = 2, onCountChange }) {
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-4 bg-surface rounded-xl mb-3">
-      <div className="text-base font-semibold text-foreground">
+    <div className="flex items-center justify-between px-4 py-4 bg-surface rounded-xl mb-3" role="group" aria-labelledby="people-selector-label">
+      <div className="text-base font-semibold text-foreground" id="people-selector-label">
         Number of People
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4" role="toolbar" aria-label="People count controls">
         <button
           onClick={handleDecrement}
           disabled={count <= 2}
