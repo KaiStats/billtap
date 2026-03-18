@@ -38,6 +38,22 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
 
+    /* WCAG AA Compliant Text Colors */
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-tertiary: #475569;
+    --text-placeholder: #64748b;
+    --text-disabled: #94a3b8;
+
+    /* WCAG AA Compliant Interactive Colors */
+    --link-color: #4338ca;
+    --link-hover: #3730a3;
+
+    /* WCAG AA Compliant Status Colors */
+    --success-color: #047857;
+    --error-color: #b91c1c;
+    --warning-color: #b45309;
+
     /* App brand + semantic tokens */
     --brand: 262 83% 58%;
     --brand-foreground: 0 0% 100%;
