@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-// SessionCard is memoized; Dashboard itself is a lazy module (no page-level memo needed)
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { Plus, Receipt, CheckCircle2, Clock, Users } from "lucide-react";
