@@ -11,6 +11,7 @@ import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
 import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
 import MutationErrorToast from '@/components/MutationErrorToast';
+import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
