@@ -155,8 +155,8 @@ Return a JSON with:
                 ✅ Found {items.length} items — fix anything that looks wrong
               </div>
               <div>
-                <Label>Bill title</Label>
-                <Input value={title} onChange={e => setTitle(e.target.value)} className="mt-1 rounded-xl" />
+                <Label htmlFor="bill-title">Bill title</Label>
+                <Input id="bill-title" value={title} onChange={e => setTitle(e.target.value)} className="mt-1 rounded-xl" />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -167,9 +167,27 @@ Return a JSON with:
                 </div>
                 {items.map((item, i) => (
                   <div key={i} className="flex gap-2 items-center">
-                    <Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Item name" className="flex-1 rounded-xl text-sm" />
-                    <Input type="number" value={item.price} onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)} className="w-24 rounded-xl text-sm" placeholder="Price" />
-                    <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || "item"}`} className="text-muted-foreground hover:text-destructive transition-colors">
+                    <Input
+                      value={item.name}
+                      onChange={e => updateItem(i, "name", e.target.value)}
+                      placeholder="Item name"
+                      aria-label={`Item ${i + 1} name`}
+                      className="flex-1 rounded-xl text-sm"
+                    />
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={item.price}
+                      onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)}
+                      placeholder="Price"
+                      aria-label={`Item ${i + 1} price`}
+                      className="w-24 rounded-xl text-sm"
+                    />
+                    <button
+                      onClick={() => removeItem(i)}
+                      aria-label={`Remove ${item.name || `item ${i + 1}`}`}
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors rounded-lg active:bg-accent"
+                    >
                       <X className="w-4 h-4" aria-hidden="true" />
                     </button>
                   </div>
@@ -177,12 +195,12 @@ Return a JSON with:
               </div>
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <Label>Tax</Label>
-                  <Input type="number" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
+                  <Label htmlFor="tax-input">Tax</Label>
+                  <Input id="tax-input" type="number" inputMode="decimal" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
                 </div>
                 <div className="flex-1">
-                  <Label>Tip</Label>
-                  <Input type="number" value={tip} onChange={e => setTip(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
+                  <Label htmlFor="tip-input">Tip</Label>
+                  <Input id="tip-input" type="number" inputMode="decimal" value={tip} onChange={e => setTip(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
                 </div>
               </div>
               <div className="bg-brand-muted rounded-xl p-4 text-right">

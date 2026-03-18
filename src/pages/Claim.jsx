@@ -191,20 +191,29 @@ export default function Claim() {
             </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">{claimedCount}/{items.length} claimed</div>
-              <div className="w-24 bg-muted rounded-full h-1.5 mt-1">
+              <div
+                role="progressbar"
+                aria-valuenow={claimedCount}
+                aria-valuemin={0}
+                aria-valuemax={items.length}
+                aria-label="Items claimed"
+                className="w-24 bg-muted rounded-full h-1.5 mt-1"
+              >
                 <div className="bg-brand h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground shrink-0">Your name:</span>
+            <label htmlFor="participant-name" className="text-xs text-muted-foreground shrink-0">Your name:</label>
             <input
+              id="participant-name"
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
               onBlur={handleNameBlur}
               onKeyDown={e => e.key === "Enter" && e.target.blur()}
               placeholder="optional"
-              className="flex-1 text-xs border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-brand bg-surface text-foreground"
+              autoComplete="nickname"
+              className="flex-1 text-sm min-h-[36px] border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-foreground"
             />
           </div>
         </div>
@@ -276,8 +285,23 @@ export default function Claim() {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-4 space-y-3">
               <div className="flex gap-2">
-                <Input value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Item name" className="flex-1 rounded-xl text-sm" autoFocus />
-                <Input type="number" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} placeholder="$0.00" className="w-20 rounded-xl text-sm" />
+                <Input
+                  value={newItemName}
+                  onChange={e => setNewItemName(e.target.value)}
+                  placeholder="Item name"
+                  aria-label="New item name"
+                  className="flex-1 rounded-xl text-sm"
+                  autoFocus
+                />
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={newItemPrice}
+                  onChange={e => setNewItemPrice(e.target.value)}
+                  placeholder="$0.00"
+                  aria-label="New item price"
+                  className="w-20 rounded-xl text-sm"
+                />
               </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={handleAddItem} className="flex-1 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Add</Button>

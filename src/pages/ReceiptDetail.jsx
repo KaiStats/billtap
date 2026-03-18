@@ -61,7 +61,14 @@ export default function ReceiptDetail() {
     markPaidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : "claiming" });
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
+        <span>Loading…</span>
+      </div>
+    </div>
+  );
   if (!session) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>;
 
   const participants = session.participants || [];
@@ -88,7 +95,7 @@ export default function ReceiptDetail() {
   return (
     <div className="min-h-screen bg-surface">
       <AppHeader title={session.title} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
-      <div className="max-w-2xl mx-auto p-5 space-y-5">
+      <div className="max-w-2xl mx-auto p-5 space-y-5 pb-safe-or-5" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}>
 
         <div className="flex items-start justify-between">
           <div>
@@ -111,7 +118,14 @@ export default function ReceiptDetail() {
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Items claimed</span><span>{claimedCount}/{items.length}</span>
           </div>
-          <div className="w-full bg-muted rounded-full h-2">
+          <div
+            role="progressbar"
+            aria-valuenow={claimedCount}
+            aria-valuemin={0}
+            aria-valuemax={items.length}
+            aria-label="Items claimed"
+            className="w-full bg-muted rounded-full h-2"
+          >
             <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
           </div>
         </div>
