@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { memo, useState, useRef, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 
 const PULL_THRESHOLD = 70;

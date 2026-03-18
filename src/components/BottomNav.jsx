@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useLocation } from "react-router-dom";
 import { Home, LayoutDashboard, Plus, UserCircle } from "lucide-react";
 import { useTabNav, getTabForPath } from "@/lib/TabNavigationContext";

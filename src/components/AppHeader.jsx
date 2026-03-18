@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useLocation } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useTabNav } from "@/lib/TabNavigationContext";
