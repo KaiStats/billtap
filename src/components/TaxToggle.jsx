@@ -12,7 +12,7 @@ export default function TaxToggle({ taxAmount, onToggle }) {
   return (
     <div className="flex items-center justify-between px-4 py-4 bg-surface rounded-xl mb-3">
       <div className="flex flex-col gap-1">
-        <div className="text-base font-semibold text-foreground">Include Tax</div>
+        <label htmlFor="tax-toggle" className="text-base font-semibold text-foreground">Include Tax</label>
         <div className="text-sm text-muted-foreground">
           ${taxAmount.toFixed(2)} tax
         </div>
