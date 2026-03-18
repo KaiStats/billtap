@@ -96,15 +96,15 @@ export default function Dashboard() {
                             <Receipt className="w-6 h-6 text-brand" aria-hidden="true" />
                           </div>
                           <div>
-                            <div className="font-bold text-foreground">{session.title}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+                            <div className="font-bold text-foreground text-base">{session.title}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5" style={{fontSize: "14px"}}>
                               <Users className="w-3.5 h-3.5" aria-hidden="true" />
                               {total} people · ${(session.total_amount || 0).toFixed(2)}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
+                          <div className="text-muted-foreground" style={{fontSize: "14px"}}>{paid}/{total} paid</div>
                           <Badge className={statusColors[session.status] || statusColors.waiting}>
                             {session.status || "waiting"}
                           </Badge>

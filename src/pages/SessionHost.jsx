@@ -23,8 +23,22 @@ export default function SessionHost() {
 
   useEffect(() => {
     fetchSession();
-    const interval = setInterval(fetchSession, 3000);
-    return () => clearInterval(interval);
+    let interval = setInterval(fetchSession, 3000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        clearInterval(interval);
+      } else {
+        fetchSession();
+        interval = setInterval(fetchSession, 3000);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [fetchSession]);
 
   useEffect(() => {
