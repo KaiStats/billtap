@@ -182,7 +182,6 @@ export default function ReceiptDetail() {
             ))}
           </CardContent>
         </Card>
-        </div>
       </div>
     </div>
   );
