@@ -99,10 +99,18 @@ export default function ReceiptScreen() {
           <PaymentMethodSelector onMethodChange={setPaymentMethod} />
         </div>
 
-        {/* Continue Button */}
-        <div className="pt-6">
+        {/* Action Buttons */}
+        <div className="pt-6 space-y-3">
           <Button className="w-full h-14 text-lg font-bold" size="lg">
             Continue to Payment
+          </Button>
+          <Button 
+            variant="outline" 
+            className="w-full h-14 text-lg font-bold"
+            onClick={handleShare}
+          >
+            <Share2 className="w-5 h-5" />
+            Share Bill
           </Button>
         </div>
       </div>
