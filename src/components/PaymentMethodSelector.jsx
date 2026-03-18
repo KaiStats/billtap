@@ -81,6 +81,6 @@ export default function PaymentMethodSelector({ onMethodChange }) {
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }
