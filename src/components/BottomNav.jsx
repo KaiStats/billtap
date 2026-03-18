@@ -22,7 +22,7 @@ const BottomNav = memo(function BottomNav() {
   return (
     <nav
       aria-label="Main navigation"
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex items-center justify-around"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-surface-raised border-t border-border flex items-center justify-around"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {navItems.map(({ label, icon: Icon, path, highlight }) => {
@@ -31,8 +31,8 @@ const BottomNav = memo(function BottomNav() {
         if (highlight) {
           return (
             <button key={path} onClick={() => switchTab(path)} aria-label={label} className="flex flex-col items-center justify-center flex-1 py-2 min-h-[44px]">
-              <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg -mt-4">
-                <Icon className="w-6 h-6 text-white" aria-hidden="true" />
+              <div className="w-12 h-12 bg-brand rounded-2xl flex items-center justify-center shadow-lg -mt-4">
+                <Icon className="w-6 h-6 text-brand-foreground" aria-hidden="true" />
               </div>
             </button>
           );
@@ -43,7 +43,7 @@ const BottomNav = memo(function BottomNav() {
             onClick={() => switchTab(path)}
             aria-label={label}
             aria-current={isActive ? "page" : undefined}
-            className={`flex flex-col items-center justify-center flex-1 py-2 gap-0.5 min-h-[44px] transition-colors ${isActive ? "text-purple-600" : "text-gray-400 hover:text-gray-600"}`}
+            className={`flex flex-col items-center justify-center flex-1 py-2 gap-0.5 min-h-[44px] transition-colors ${isActive ? "text-brand" : "text-muted-foreground hover:text-foreground"}`}
           >
             <Icon className="w-6 h-6" aria-hidden="true" />
             <span className="text-xs font-medium">{label}</span>

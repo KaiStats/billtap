@@ -24,26 +24,21 @@ const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backT
   if (!title && !showBack && !rightAction) return null;
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-gray-100 flex items-center h-14 px-2">
-      {/* Back button — always 44px tap target */}
+    <header className="sticky top-0 z-30 bg-surface-raised border-b border-border flex items-center h-14 px-2">
       <div className="w-11 flex items-center justify-center">
         {showBack && (
           <button
             onClick={handleBack}
-            className="w-11 h-11 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100 transition-colors"
+            className="w-11 h-11 flex items-center justify-center rounded-xl text-muted-foreground active:bg-accent transition-colors"
             aria-label="Go back"
           >
             <ChevronLeft className="w-6 h-6" aria-hidden="true" />
           </button>
         )}
       </div>
-
-      {/* Title */}
       <div className="flex-1 text-center">
-        {title && <span className="font-bold text-gray-900 text-base">{title}</span>}
+        {title && <span className="font-bold text-foreground text-base">{title}</span>}
       </div>
-
-      {/* Right action slot — 44px min */}
       <div className="w-11 flex items-center justify-center">
         {rightAction && (
           <div className="min-w-[44px] min-h-[44px] flex items-center justify-center">

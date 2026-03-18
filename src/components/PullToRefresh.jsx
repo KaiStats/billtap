@@ -46,13 +46,12 @@ const PullToRefresh = memo(function PullToRefresh({ onRefresh, children }) {
       className="relative overflow-y-auto h-full"
       style={{ overscrollBehavior: "none" }}
     >
-      {/* Pull indicator */}
       <div
         className="flex items-center justify-center transition-all duration-200 overflow-hidden"
         style={{ height: refreshing ? 48 : pullDistance > 0 ? pullDistance : 0 }}
       >
         <Loader2
-          className={`w-5 h-5 text-purple-600 ${refreshing ? "animate-spin" : ""}`}
+          className={`w-5 h-5 text-brand ${refreshing ? "animate-spin" : ""}`}
           style={{ transform: !refreshing ? `rotate(${(pullDistance / PULL_THRESHOLD) * 360}deg)` : undefined }}
         />
       </div>
