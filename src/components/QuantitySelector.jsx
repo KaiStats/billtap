@@ -16,12 +16,12 @@ export default function QuantitySelector({ initialQuantity = 1, onQuantityChange
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="text-sm font-semibold text-muted-foreground min-w-fit">
+    <fieldset className="flex items-center gap-3">
+      <legend className="text-sm font-semibold text-muted-foreground min-w-fit">
         Quantity
-      </div>
+      </legend>
 
-      <div className="flex items-center gap-3 bg-surface rounded-lg border border-border px-3 py-2">
+      <div className="flex items-center gap-3 bg-surface rounded-lg border border-border px-3 py-2" role="group" aria-labelledby="quantity-legend">
         <button
           onClick={handleDecrement}
           disabled={quantity <= 1}
