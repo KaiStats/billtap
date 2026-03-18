@@ -23,6 +23,7 @@ export default function Dashboard() {
     base44.entities.Session.list("-created_date", 50).then((data) => {
       setSessions(data);
       setLoading(false);
+      setTimeout(restoreScroll, 50);
     });
   }, []);
 
