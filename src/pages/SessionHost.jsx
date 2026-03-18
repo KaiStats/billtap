@@ -131,7 +131,7 @@ export default function SessionHost() {
               </div>
               <div className="flex gap-1">
                 {participants.slice(0, 6).map((p, i) => (
-                  <div key={i} title={p.name} className="w-7 h-7 bg-brand text-brand-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-sm">
+                  <div key={i} aria-label={p.name || "Guest"} className="w-7 h-7 bg-brand text-brand-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-sm">
                     {(p.name || "?")[0].toUpperCase()}
                   </div>
                 ))}

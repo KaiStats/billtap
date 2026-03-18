@@ -115,9 +115,13 @@ Return a JSON with:
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-6 space-y-4">
               <div
+                role="button"
+                tabIndex={0}
+                aria-label="Upload receipt photo"
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
-                className="border-2 border-dashed border-brand/30 rounded-2xl p-10 text-center cursor-pointer hover:border-brand/60 transition-colors bg-brand-muted"
+                onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && document.getElementById("file-input").click()}
+                className="border-2 border-dashed border-brand/30 rounded-2xl p-10 text-center cursor-pointer hover:border-brand/60 transition-colors bg-brand-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 onClick={() => document.getElementById("file-input").click()}
               >
                 {imageUrl ? (

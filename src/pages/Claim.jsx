@@ -156,8 +156,8 @@ export default function Claim() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-brand" />
+    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+      <Loader2 className="w-8 h-8 animate-spin text-brand" aria-label="Loading session" />
     </div>
   );
 
@@ -180,7 +180,7 @@ export default function Claim() {
   };
 
   return (
-    <div className="min-h-screen bg-surface pb-32">
+    <div className="min-h-screen bg-surface" style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
       {/* Header */}
       <div className="bg-surface-raised border-b border-border px-5 py-3 sticky top-0 z-10">
         <div className="max-w-lg mx-auto space-y-2">
@@ -307,7 +307,12 @@ export default function Claim() {
       </div>
 
       {/* Sticky bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface-raised border-t border-border shadow-xl p-4">
+      <div
+        role="region"
+        aria-label="Your bill summary"
+        className="fixed bottom-0 left-0 right-0 bg-surface-raised border-t border-border shadow-xl p-4"
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+      >
         <div className="max-w-lg mx-auto space-y-3">
           {myMyClaimed.length > 0 ? (
             <div className="flex justify-between items-center text-sm">

@@ -30,10 +30,11 @@ const BottomNav = memo(function BottomNav() {
         const isActive = activeTab === tabKey;
         if (highlight) {
           return (
-            <button key={path} onClick={() => switchTab(path)} aria-label={label} className="flex flex-col items-center justify-center flex-1 py-2 min-h-[44px]">
+            <button key={path} onClick={() => switchTab(path)} aria-label={label} aria-current={isActive ? "page" : undefined} className="flex flex-col items-center justify-center flex-1 py-2 min-h-[44px]">
               <div className="w-12 h-12 bg-brand rounded-2xl flex items-center justify-center shadow-lg -mt-4">
                 <Icon className="w-6 h-6 text-brand-foreground" aria-hidden="true" />
               </div>
+              <span className="text-xs font-medium mt-0.5 text-brand">{label}</span>
             </button>
           );
         }
