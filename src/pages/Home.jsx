@@ -1,10 +1,19 @@
+import { memo, useCallback } from "react";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { Receipt, Users, CheckCircle, ArrowRight, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function Home() {
+const FEATURES = [
+  { icon: Receipt, title: "Scan Receipt", desc: "AI reads every line item instantly" },
+  { icon: Users, title: "Assign Items", desc: "Drag items to each person" },
+  { icon: CheckCircle, title: "Collect Payments", desc: "Stripe links sent automatically" },
+];
+
+const Home = memo(function Home() {
   const { pushScreen } = useTabNav();
+  const goToDashboard = useCallback(() => pushScreen(createPageUrl("Dashboard")), [pushScreen]);
+  const goToNewReceipt = useCallback(() => pushScreen(createPageUrl("NewReceipt")), [pushScreen]);
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand to-info flex flex-col items-center justify-center px-4 text-brand-foreground">
       <div className="max-w-2xl text-center space-y-8">
