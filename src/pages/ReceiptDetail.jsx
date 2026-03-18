@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useTabNav } from "@/lib/TabNavigationContext";
 import { createPageUrl } from "@/utils";
 import { CheckCircle2, Clock, Users, Receipt, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ const statusColors = {
 };
 
 export default function ReceiptDetail() {
-  const navigate = useNavigate();
+  const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
