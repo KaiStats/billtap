@@ -20,10 +20,13 @@ export default function Profile() {
   const handleDeleteAccount = async () => {
     if (confirmText !== "DELETE") return;
     setDeleting(true);
-    const sessions = await base44.entities.Session.list();
-    const mine = sessions.filter(s => s.created_by === user?.email);
-    await Promise.all(mine.map(s => base44.entities.Session.delete(s.id)));
-    base44.auth.logout();
+    try {
+      await base44.functions.invoke('deleteAccount', {});
+      base44.auth.logout();
+    } catch (error) {
+      alert('Failed to delete account. Please try again or contact support.');
+      setDeleting(false);
+    }
   };
 
   return (
