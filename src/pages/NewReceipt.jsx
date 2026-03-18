@@ -194,15 +194,13 @@ Return a JSON with:
                   </div>
                 ))}
               </div>
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <Label htmlFor="tax-input">Tax</Label>
-                  <Input id="tax-input" type="number" inputMode="decimal" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="tip-input">Tip</Label>
-                  <Input id="tip-input" type="number" inputMode="decimal" value={tip} onChange={e => setTip(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
-                </div>
+              <div className="flex-1">
+                <Label htmlFor="tax-input">Tax</Label>
+                <Input id="tax-input" type="number" inputMode="decimal" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
+              </div>
+              <div>
+                <Label className="mb-2 block">Tip</Label>
+                <TipSelector subtotal={subtotal} tip={tip} onChange={setTip} />
               </div>
               <div className="bg-brand-muted rounded-xl p-4 text-right">
                 <span className="text-muted-foreground">Total: </span>
