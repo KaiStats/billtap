@@ -18,6 +18,7 @@ export default function TipSelector({ subtotal, tip, onChange }) {
     : null;
 
   const handlePreset = (pct) => {
+    if (window.navigator.vibrate) window.navigator.vibrate(10);
     setShowCustom(false);
     setCustomVal("");
     onChange(Math.round(subtotal * pct * 100) / 100);
