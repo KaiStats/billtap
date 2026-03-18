@@ -10,9 +10,9 @@ import { useTabNav } from "@/lib/TabNavigationContext";
 import PullToRefresh from "@/components/PullToRefresh";
 
 const statusColors = {
-  waiting: "bg-yellow-100 text-yellow-800",
-  claiming: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
+  waiting: "bg-warning-muted text-warning-muted-foreground",
+  claiming: "bg-info-muted text-info-muted-foreground",
+  completed: "bg-success-muted text-success-muted-foreground",
 };
 
 export default function Dashboard() {
@@ -38,84 +38,84 @@ export default function Dashboard() {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       <PullToRefresh onRefresh={fetchSessions}>
         <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: "Bills Split", value: sessions.length, icon: Receipt, color: "text-purple-600 bg-purple-50" },
-            { label: "Outstanding", value: `$${totalOwed.toFixed(2)}`, icon: Clock, color: "text-orange-600 bg-orange-50" },
-            { label: "Collected", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "text-green-600 bg-green-50" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <Card key={label} className="rounded-2xl border-0 shadow-sm">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
-                  <Icon className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="text-2xl font-black text-gray-900">{value}</div>
-                  <div className="text-sm text-gray-500">{label}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between pt-2">
-          <div>
-            <h1 className="text-2xl font-black text-gray-900">BillTap</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Your bills & splits</p>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: "Bills Split", value: sessions.length, icon: Receipt, iconClass: "text-brand bg-brand-muted" },
+              { label: "Outstanding", value: `$${totalOwed.toFixed(2)}`, icon: Clock, iconClass: "text-warning bg-warning-muted" },
+              { label: "Collected", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, iconClass: "text-success bg-success-muted" },
+            ].map(({ label, value, icon: Icon, iconClass }) => (
+              <Card key={label} className="rounded-2xl border-0 shadow-sm">
+                <CardContent className="p-5 flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${iconClass}`}>
+                    <Icon className="w-6 h-6" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-foreground">{value}</div>
+                    <div className="text-sm text-muted-foreground">{label}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-          <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-purple-600 hover:bg-purple-700 font-semibold rounded-xl h-11 px-4">
-            <Plus className="mr-2 w-4 h-4" /> New Split
-          </Button>
-        </div>
 
-        {loading ? (
-          <div className="text-center py-20 text-gray-400">Loading...</div>
-        ) : sessions.length === 0 ? (
-          <div className="text-center py-20">
-            <Receipt className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No bills yet.</p>
-            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="mt-4 bg-purple-600 hover:bg-purple-700 rounded-xl">Split your first bill</Button>
+          {/* Header */}
+          <div className="flex items-center justify-between pt-2">
+            <div>
+              <h1 className="text-2xl font-black text-foreground">BillTap</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">Your bills &amp; splits</p>
+            </div>
+            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-brand hover:bg-brand/90 text-brand-foreground font-semibold rounded-xl h-11 px-4">
+              <Plus className="mr-2 w-4 h-4" aria-hidden="true" /> New Split
+            </Button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {sessions.map((session) => {
-              const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
-              const total = (session.participants || []).length;
-              return (
-                <button key={session.id} onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))} className="w-full text-left">
-                  <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-                    <CardContent className="p-5 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <Receipt className="w-6 h-6 text-purple-600" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-gray-900">{session.title}</div>
-                          <div className="text-sm text-gray-500 flex items-center gap-2 mt-0.5">
-                            <Users className="w-3.5 h-3.5" />
-                            {total} people · ${(session.total_amount || 0).toFixed(2)}
+
+          {loading ? (
+            <div className="text-center py-20 text-muted-foreground">Loading...</div>
+          ) : sessions.length === 0 ? (
+            <div className="text-center py-20">
+              <Receipt className="w-16 h-16 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
+              <p className="text-muted-foreground text-lg">No bills yet.</p>
+              <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="mt-4 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Split your first bill</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sessions.map((session) => {
+                const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
+                const total = (session.participants || []).length;
+                return (
+                  <button key={session.id} onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))} className="w-full text-left">
+                    <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                      <CardContent className="p-5 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-brand-muted rounded-xl flex items-center justify-center">
+                            <Receipt className="w-6 h-6 text-brand" aria-hidden="true" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-foreground">{session.title}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+                              <Users className="w-3.5 h-3.5" aria-hidden="true" />
+                              {total} people · ${(session.total_amount || 0).toFixed(2)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-sm text-gray-500">{paid}/{total} paid</div>
-                        <Badge className={statusColors[session.status] || statusColors.waiting}>
-                          {session.status || "waiting"}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
+                          <Badge className={statusColors[session.status] || statusColors.waiting}>
+                            {session.status || "waiting"}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </PullToRefresh>
     </div>

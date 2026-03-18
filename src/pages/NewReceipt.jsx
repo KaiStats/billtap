@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function NewReceipt() {
   const { pushScreen } = useTabNav();
-  const [step, setStep] = useState(1); // 1: upload, 2: review/fix items
+  const [step, setStep] = useState(1);
   const [imageFile, setImageFile] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -96,16 +96,16 @@ Return a JSON with:
   const total = subtotal + (tax || 0) + (tip || 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-surface p-6">
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 className="text-2xl font-black text-gray-900">New Split</h2>
+          <h2 className="text-2xl font-black text-foreground">New Split</h2>
           <div className="flex gap-3 mt-3">
             {["📸 Photo", "✏️ Review"].map((s, i) => (
-              <div key={s} className={`flex items-center gap-1 text-sm font-semibold ${step === i + 1 ? "text-purple-600" : step > i + 1 ? "text-green-600" : "text-gray-400"}`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${step === i + 1 ? "bg-purple-600 text-white" : step > i + 1 ? "bg-green-600 text-white" : "bg-gray-200 text-gray-500"}`}>{i + 1}</div>
+              <div key={s} className={`flex items-center gap-1 text-sm font-semibold ${step === i + 1 ? "text-brand" : step > i + 1 ? "text-success" : "text-muted-foreground"}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${step === i + 1 ? "bg-brand text-brand-foreground" : step > i + 1 ? "bg-success text-success-muted-foreground" : "bg-muted text-muted-foreground"}`}>{i + 1}</div>
                 {s}
-                {i < 1 && <span className="text-gray-300 ml-1">›</span>}
+                {i < 1 && <span className="text-muted-foreground ml-1">›</span>}
               </div>
             ))}
           </div>
@@ -117,16 +117,16 @@ Return a JSON with:
               <div
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
-                className="border-2 border-dashed border-purple-200 rounded-2xl p-10 text-center cursor-pointer hover:border-purple-400 transition-colors bg-purple-50"
+                className="border-2 border-dashed border-brand/30 rounded-2xl p-10 text-center cursor-pointer hover:border-brand/60 transition-colors bg-brand-muted"
                 onClick={() => document.getElementById("file-input").click()}
               >
                 {imageUrl ? (
                   <img src={imageUrl} alt="Receipt" className="max-h-64 mx-auto rounded-xl object-contain" />
                 ) : (
                   <>
-                    <Upload className="w-12 h-12 mx-auto text-purple-300 mb-3" />
-                    <p className="text-gray-600 font-medium">Drop receipt photo here or click to upload</p>
-                    <p className="text-gray-400 text-sm mt-1">JPG, PNG, HEIC supported</p>
+                    <Upload className="w-12 h-12 mx-auto text-brand/40 mb-3" aria-hidden="true" />
+                    <p className="text-foreground font-medium">Drop receipt photo here or click to upload</p>
+                    <p className="text-muted-foreground text-sm mt-1">JPG, PNG, HEIC supported</p>
                   </>
                 )}
               </div>
@@ -134,11 +134,11 @@ Return a JSON with:
               <Button
                 onClick={handleParseReceipt}
                 disabled={!imageFile || uploading || parsing}
-                className="w-full bg-purple-600 hover:bg-purple-700 font-bold rounded-xl h-12 text-base"
+                className="w-full bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl h-12 text-base"
               >
-                {uploading ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" /> Uploading...</> :
-                  parsing ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" /> AI is reading your receipt...</> :
-                    <><Wand2 className="mr-2 w-4 h-4" /> Parse Receipt with AI</>}
+                {uploading ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> Uploading...</> :
+                  parsing ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> AI is reading your receipt...</> :
+                    <><Wand2 className="mr-2 w-4 h-4" aria-hidden="true" /> Parse Receipt with AI</>}
               </Button>
             </CardContent>
           </Card>
@@ -147,7 +147,7 @@ Return a JSON with:
         {step === 2 && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-6 space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 font-semibold text-sm flex items-center gap-2">
+              <div className="bg-success-muted border border-success/30 rounded-xl p-3 text-success-muted-foreground font-semibold text-sm flex items-center gap-2">
                 ✅ Found {items.length} items — fix anything that looks wrong
               </div>
               <div>
@@ -158,14 +158,16 @@ Return a JSON with:
                 <div className="flex items-center justify-between">
                   <Label>Line Items</Label>
                   <Button size="sm" variant="outline" onClick={addItem} className="rounded-lg text-xs">
-                    <Plus className="w-3 h-3 mr-1" /> Add
+                    <Plus className="w-3 h-3 mr-1" aria-hidden="true" /> Add
                   </Button>
                 </div>
                 {items.map((item, i) => (
                   <div key={i} className="flex gap-2 items-center">
                     <Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Item name" className="flex-1 rounded-xl text-sm" />
                     <Input type="number" value={item.price} onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)} className="w-24 rounded-xl text-sm" placeholder="Price" />
-                    <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || "item"}`} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" aria-hidden="true" /></button>
+                    <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || "item"}`} className="text-muted-foreground hover:text-destructive transition-colors">
+                      <X className="w-4 h-4" aria-hidden="true" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -179,12 +181,12 @@ Return a JSON with:
                   <Input type="number" value={tip} onChange={e => setTip(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
                 </div>
               </div>
-              <div className="bg-purple-50 rounded-xl p-4 text-right">
-                <span className="text-gray-600">Total: </span>
-                <span className="font-black text-xl text-purple-700">${total.toFixed(2)}</span>
+              <div className="bg-brand-muted rounded-xl p-4 text-right">
+                <span className="text-muted-foreground">Total: </span>
+                <span className="font-black text-xl text-brand">${total.toFixed(2)}</span>
               </div>
-              <Button onClick={handleCreateSession} disabled={saving || items.length === 0} className="w-full bg-purple-600 hover:bg-purple-700 font-bold rounded-xl h-12 text-base">
-                {saving ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" /> Creating session...</> : "🔗 Generate QR Code →"}
+              <Button onClick={handleCreateSession} disabled={saving || items.length === 0} className="w-full bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl h-12 text-base">
+                {saving ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" aria-hidden="true" /> Creating session...</> : "🔗 Generate QR Code →"}
               </Button>
             </CardContent>
           </Card>

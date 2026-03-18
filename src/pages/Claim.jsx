@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Plus, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { dispatchMutationError } from "@/components/MutationErrorToast";
 
 function calcMyShare(items, myId, tax, tip) {
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
@@ -48,7 +49,6 @@ export default function Claim() {
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
-  // Real-time subscription
   useEffect(() => {
     if (!sessionId) return;
     const unsub = base44.entities.Session.subscribe((event) => {
@@ -57,7 +57,6 @@ export default function Claim() {
     return unsub;
   }, [sessionId]);
 
-  // Register/update participant (called on name change or on first claim)
   const ensureJoined = async (name) => {
     const current = await base44.entities.Session.filter({ id: sessionId });
     const s = current[0];
@@ -95,7 +94,7 @@ export default function Claim() {
       setSession(prev => ({ ...prev, items: optimisticItems, participants: optimisticParticipants }));
       return snapshot;
     },
-    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
     onSuccess: (updated) => { setSession(updated); },
   });
 
@@ -122,7 +121,7 @@ export default function Claim() {
       setSession(prev => ({ ...prev, items: updatedItems, total_amount: total }));
       return snapshot;
     },
-    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
     onSuccess: (updated) => { setSession(updated); },
   });
 
@@ -144,7 +143,7 @@ export default function Claim() {
       setSession(prev => ({ ...prev, participants: updatedParticipants, status: newStatus }));
       return snapshot;
     },
-    onError: (_err, _vars, snapshot) => { setSession(snapshot); },
+    onError: (err, _vars, snapshot) => { setSession(snapshot); dispatchMutationError(err); },
     onSuccess: (updated) => { setSession(updated); },
   });
 
@@ -158,12 +157,12 @@ export default function Claim() {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      <Loader2 className="w-8 h-8 animate-spin text-brand" />
     </div>
   );
 
   if (!session) return (
-    <div className="min-h-screen flex items-center justify-center text-gray-500">Session not found.</div>
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>
   );
 
   const items = session.items || [];
@@ -174,7 +173,6 @@ export default function Claim() {
   const meParticipant = participants.find(p => p.participant_id === myId);
   const alreadyPaid = meParticipant?.payment_status === "paid";
 
-  // Lookup name by participant_id
   const getName = (pid) => {
     if (pid === myId) return "You";
     const p = participants.find(x => x.participant_id === pid);
@@ -182,32 +180,31 @@ export default function Claim() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className="min-h-screen bg-surface pb-32">
       {/* Header */}
-      <div className="bg-white border-b px-5 py-3 sticky top-0 z-10">
+      <div className="bg-surface-raised border-b border-border px-5 py-3 sticky top-0 z-10">
         <div className="max-w-lg mx-auto space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="font-black text-gray-900">{session.title}</h1>
-              <p className="text-xs text-gray-400">Tap what you ordered 👆</p>
+              <h1 className="font-black text-foreground">{session.title}</h1>
+              <p className="text-xs text-muted-foreground">Tap what you ordered 👆</p>
             </div>
             <div className="text-right">
-              <div className="text-xs text-gray-400">{claimedCount}/{items.length} claimed</div>
-              <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
-                <div className="bg-purple-600 h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
+              <div className="text-xs text-muted-foreground">{claimedCount}/{items.length} claimed</div>
+              <div className="w-24 bg-muted rounded-full h-1.5 mt-1">
+                <div className="bg-brand h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
               </div>
             </div>
           </div>
-          {/* Optional inline name field */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 shrink-0">Your name:</span>
+            <span className="text-xs text-muted-foreground shrink-0">Your name:</span>
             <input
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
               onBlur={handleNameBlur}
               onKeyDown={e => e.key === "Enter" && e.target.blur()}
               placeholder="optional"
-              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-purple-400 bg-gray-50"
+              className="flex-1 text-xs border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-brand bg-surface text-foreground"
             />
           </div>
         </div>
@@ -228,37 +225,37 @@ export default function Claim() {
               aria-pressed={isMine}
               className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${
                 isMine
-                  ? "bg-purple-50 border-purple-400"
+                  ? "bg-brand-muted border-brand"
                   : claimed.length > 0
-                  ? "bg-gray-50 border-gray-100 opacity-60"
-                  : "bg-white border-gray-200 hover:border-purple-200"
+                  ? "bg-surface border-border opacity-60"
+                  : "bg-surface-raised border-border hover:border-brand/40"
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? "bg-purple-600 border-purple-600" : "border-gray-300"}`}>
-                    {isMine && <Check className="w-3 h-3 text-white" />}
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? "bg-brand border-brand" : "border-muted-foreground/40"}`}>
+                    {isMine && <Check className="w-3 h-3 text-brand-foreground" aria-hidden="true" />}
                   </div>
                   <div>
-                    <div className={`font-semibold ${isMine ? "text-purple-900" : "text-gray-700"}`}>
+                    <div className={`font-semibold ${isMine ? "text-brand-muted-foreground" : "text-foreground"}`}>
                       {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
                     </div>
                     {claimed.length > 0 && (
                       <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                         {claimed.map(pid => (
-                          <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-purple-200 text-purple-800" : "bg-gray-200 text-gray-600"}`}>
+                          <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-brand-muted text-brand-muted-foreground" : "bg-muted text-muted-foreground"}`}>
                             👤 {getName(pid)}
                           </span>
                         ))}
-                        {claimed.length > 1 && <span className="text-xs text-gray-400">÷{claimed.length}</span>}
+                        {claimed.length > 1 && <span className="text-xs text-muted-foreground">÷{claimed.length}</span>}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <div className="font-bold text-gray-900">${itemTotal.toFixed(2)}</div>
+                  <div className="font-bold text-foreground">${itemTotal.toFixed(2)}</div>
                   {isMine && claimed.length > 1 && (
-                    <div className="text-xs text-purple-600 font-semibold">You: ${myCost.toFixed(2)}</div>
+                    <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>
                   )}
                 </div>
               </div>
@@ -271,9 +268,9 @@ export default function Claim() {
           <button
             onClick={() => setAddingItem(true)}
             aria-label="Add a missing item to the bill"
-            className="w-full p-3 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-all text-sm font-medium flex items-center justify-center gap-2"
+            className="w-full p-3 rounded-2xl border-2 border-dashed border-border text-muted-foreground hover:border-brand/50 hover:text-brand transition-all text-sm font-medium flex items-center justify-center gap-2"
           >
-            <Plus className="w-4 h-4" /> Add missing item
+            <Plus className="w-4 h-4" aria-hidden="true" /> Add missing item
           </button>
         ) : (
           <Card className="rounded-2xl border-0 shadow-sm">
@@ -283,7 +280,7 @@ export default function Claim() {
                 <Input type="number" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} placeholder="$0.00" className="w-20 rounded-xl text-sm" />
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddItem} className="flex-1 bg-purple-600 hover:bg-purple-700 rounded-xl">Add</Button>
+                <Button size="sm" onClick={handleAddItem} className="flex-1 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Add</Button>
                 <Button size="sm" variant="outline" onClick={() => setAddingItem(false)} className="rounded-xl">Cancel</Button>
               </div>
             </CardContent>
@@ -293,11 +290,11 @@ export default function Claim() {
         {/* Who else is claiming */}
         {participants.length > 1 && (
           <div className="pt-2">
-            <p className="text-xs text-gray-400 font-medium mb-2">In this split:</p>
+            <p className="text-xs text-muted-foreground font-medium mb-2">In this split:</p>
             <div className="flex gap-2 flex-wrap">
               {participants.map(p => (
-                <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
-                  <div className="w-4 h-4 rounded-full bg-current opacity-60 flex items-center justify-center text-white text-[8px]">
+                <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand-muted text-brand-muted-foreground" : "bg-muted text-muted-foreground"}`}>
+                  <div className="w-4 h-4 rounded-full bg-current opacity-60 flex items-center justify-center text-[8px]">
                     {(p.name || "?")[0].toUpperCase()}
                   </div>
                   {p.participant_id === myId ? "You" : p.name}
@@ -310,23 +307,23 @@ export default function Claim() {
       </div>
 
       {/* Sticky bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-xl p-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-surface-raised border-t border-border shadow-xl p-4">
         <div className="max-w-lg mx-auto space-y-3">
           {myMyClaimed.length > 0 ? (
             <div className="flex justify-between items-center text-sm">
               <div>
-                <div className="font-bold text-gray-900">Your share</div>
-                <div className="text-xs text-gray-400">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax & tip</div>
+                <div className="font-bold text-foreground">Your share</div>
+                <div className="text-xs text-muted-foreground">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
               </div>
-              <div className="text-2xl font-black text-purple-700">${myShare.toFixed(2)}</div>
+              <div className="text-2xl font-black text-brand">${myShare.toFixed(2)}</div>
             </div>
           ) : (
-            <p className="text-center text-gray-400 text-sm">Tap items above to claim them</p>
+            <p className="text-center text-muted-foreground text-sm">Tap items above to claim them</p>
           )}
           <Button
             onClick={markMePaid}
             disabled={myMyClaimed.length === 0 || alreadyPaid}
-            className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-green-600 hover:bg-green-600" : "bg-purple-600 hover:bg-purple-700"}`}
+            className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-success hover:bg-success text-success-muted-foreground" : "bg-brand hover:bg-brand/90 text-brand-foreground"}`}
           >
             {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}
           </Button>
