@@ -19,6 +19,7 @@ export default function TaxToggle({ taxAmount, onToggle }) {
       </div>
 
       <button
+        id="tax-toggle"
         className={`relative w-14 h-8 rounded-full transition-colors ${
           includeTax ? 'bg-brand' : 'bg-muted'
         }`}
