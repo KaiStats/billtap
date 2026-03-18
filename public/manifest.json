@@ -1,0 +1,66 @@
+{
+  "name": "BillTap - Split Bills Easily",
+  "short_name": "BillTap",
+  "description": "Split restaurant bills with friends instantly using AI receipt parsing",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "categories": ["finance", "utilities"],
+  "screenshots": [
+    {
+      "src": "https://base44.com/logo_v2.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "icons": [
+    {
+      "src": "https://base44.com/logo_v2.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "https://base44.com/logo_v2.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://base44.com/logo_v2.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Split",
+      "short_name": "New Split",
+      "description": "Create a new bill split",
+      "url": "/NewReceipt?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "https://base44.com/logo_v2.svg",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your splits",
+      "url": "/Dashboard?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "https://base44.com/logo_v2.svg",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}
