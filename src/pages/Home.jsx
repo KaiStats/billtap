@@ -4,6 +4,7 @@ import { Receipt, Users, CheckCircle, ArrowRight, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
+  const { pushScreen } = useTabNav();
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand to-info flex flex-col items-center justify-center px-4 text-brand-foreground">
       <div className="max-w-2xl text-center space-y-8">
@@ -32,16 +33,12 @@ export default function Home() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-          <Link to={createPageUrl("Dashboard")}>
-            <Button size="lg" className="bg-background text-brand hover:bg-background/90 font-bold text-base px-8 rounded-xl shadow-lg">
-              Go to Dashboard <ArrowRight className="ml-2 w-5 h-5" aria-hidden="true" />
-            </Button>
-          </Link>
-          <Link to={createPageUrl("NewReceipt")}>
-            <Button size="lg" className="bg-brand-foreground/20 hover:bg-brand-foreground/30 border border-brand-foreground/30 text-brand-foreground font-bold text-base px-8 rounded-xl">
-              <Zap className="mr-2 w-5 h-5" aria-hidden="true" /> Split a Bill
-            </Button>
-          </Link>
+          <Button size="lg" onClick={() => pushScreen(createPageUrl("Dashboard"))} className="bg-background text-brand hover:bg-background/90 font-bold text-base px-8 rounded-xl shadow-lg">
+            Go to Dashboard <ArrowRight className="ml-2 w-5 h-5" aria-hidden="true" />
+          </Button>
+          <Button size="lg" onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="bg-brand-foreground/20 hover:bg-brand-foreground/30 border border-brand-foreground/30 text-brand-foreground font-bold text-base px-8 rounded-xl">
+            <Zap className="mr-2 w-5 h-5" aria-hidden="true" /> Split a Bill
+          </Button>
         </div>
       </div>
     </div>
