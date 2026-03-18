@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 
 const PRESETS = [
+  { label: "No Tip", value: 0 },
   { label: "15%", value: 0.15 },
   { label: "18%", value: 0.18 },
   { label: "20%", value: 0.20 },
@@ -31,7 +32,7 @@ export default function TipSelector({ subtotal, tip, onChange }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         {PRESETS.map(({ label, value }) => (
           <button
             key={value}
