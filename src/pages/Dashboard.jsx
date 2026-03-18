@@ -128,4 +128,6 @@ const Dashboard = memo(function Dashboard() {
       </PullToRefresh>}
     </div>
   );
-}
+});
+
+export default Dashboard;
