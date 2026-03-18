@@ -80,6 +80,55 @@ export function TabNavigationProvider({ children }) {
     return () => window.removeEventListener("popstate", handler);
   }, [location.pathname, syncStacks]);
 
+  // Android hardware back button support
+  useEffect(() => {
+    if (!isAndroid()) return;
+
+    // Handle Cordova backbutton event (for Capacitor/Cordova apps)
+    const handleCordovaBack = () => {
+      const stack = tabStacksRef.current[activeTab] || [];
+      if (stack.length > 1) {
+        // Pop the current screen within the tab
+        directionRef.current = "back";
+        syncStacks({ ...tabStacksRef.current, [activeTab]: stack.slice(0, -1) });
+        navigate(-1);
+      } else {
+        // At root of tab—switch to Home or minimize app
+        if (activeTab !== "Home") {
+          directionRef.current = "tab";
+          navigate("/Home", { state: { tabStacks: tabStacksRef.current } });
+        }
+        // Otherwise let system handle (close app)
+      }
+    };
+
+    // Cordova/Capacitor back button
+    if (window.document.addEventListener && typeof window.cordova !== 'undefined') {
+      window.document.addEventListener('backbutton', handleCordovaBack, false);
+    }
+
+    // Generic keydown for testing/web fallback
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' || (e.keyCode === 27)) {
+        // Allow testing Android back behavior in browser dev tools
+        const stack = tabStacksRef.current[activeTab] || [];
+        if (stack.length > 1) {
+          e.preventDefault();
+          handleCordovaBack();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (typeof window.cordova !== 'undefined') {
+        window.document.removeEventListener('backbutton', handleCordovaBack, false);
+      }
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeTab, navigate, syncStacks]);
+
   const pushScreen = useCallback((path) => {
     const tab = getTabForPath(path);
     const stack = tabStacksRef.current[tab] || [];
