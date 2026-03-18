@@ -198,4 +198,66 @@
     outline-offset: 2px;
     border-radius: 4px;
   }
+
+  /* WCAG 2.5.5 Touch Target Minimum 44x44px */
+  button,
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="checkbox"],
+  input[type="radio"],
+  [role="button"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="tab"],
+  .clickable,
+  .tappable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Text inputs need good tap size */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  textarea,
+  select {
+    min-height: 44px;
+    padding: 12px 16px;
+    font-size: 16px;
+  }
+
+  /* Primary action buttons larger */
+  .btn-primary,
+  .primary-button,
+  [data-primary="true"] {
+    min-height: 56px;
+    padding: 16px 32px;
+  }
+
+  /* Icon-only buttons */
+  .icon-button,
+  .close-button,
+  .back-button {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 12px;
+  }
+
+  /* Checkbox and radio */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* List items */
+  .list-item,
+  .claim-item,
+  .participant-item {
+    min-height: 56px;
+    padding: 12px 16px;
+  }
 }
