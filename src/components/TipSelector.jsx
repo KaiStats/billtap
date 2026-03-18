@@ -94,6 +94,6 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
           )}
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }
