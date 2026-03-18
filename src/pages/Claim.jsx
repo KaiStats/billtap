@@ -360,4 +360,6 @@ const Claim = memo(function Claim() {
       </div>
     </div>
   );
-}
+});
+
+export default Claim;
