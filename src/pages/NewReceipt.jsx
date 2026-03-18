@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default function NewReceipt() {
+const NewReceipt = memo(function NewReceipt() {
   const { pushScreen } = useTabNav();
   const [step, setStep] = useState(1);
   const [imageFile, setImageFile] = useState(null);
