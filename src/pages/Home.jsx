@@ -9,6 +9,9 @@ import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 export default function Home() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // Disable scroll bounce
+  useScrollBehavior();
 
   const { data: sessions = [] } = useQuery({
     queryKey: ['sessions', 'home'],
