@@ -20,9 +20,9 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Product</h4>
             <div className="flex flex-col gap-3">
-              <a href="#how-it-works" onClick={(e) => { e.preventDefault(); document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline">How It Works</a>
-              <a href="#features" onClick={(e) => { e.preventDefault(); document.querySelector('#features')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Features</a>
-              <a href="/NewReceipt" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Try for Free</a>
+              <a href="#how-it-works" onClick={(e) => { e.preventDefault(); document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">How It Works</a>
+              <a href="#features" onClick={(e) => { e.preventDefault(); document.querySelector('#features')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">Features</a>
+              <a href="/NewReceipt" className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">Try for Free</a>
             </div>
           </div>
 
