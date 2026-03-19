@@ -50,10 +50,13 @@ const HowItWorks = () => {
               {/* Image placeholder */}
               <div className="flex-1 w-full">
                 <div
-                  className="w-full rounded-3xl flex items-center justify-center text-slate-400 text-lg font-medium"
+                  role="img"
+                  aria-label={`Step ${step.number}: ${step.title}`}
+                  className="w-full rounded-3xl flex flex-col items-center justify-center text-slate-400 gap-3"
                   style={{ aspectRatio: '3/4', background: '#f8fafc', boxShadow: '0 20px 60px rgba(0,0,0,0.08)' }}
                 >
-                  Screenshot {step.number}
+                  <span className="text-6xl">{step.icon}</span>
+                  <span className="text-base font-medium">Step {step.number} screenshot</span>
                 </div>
               </div>
             </div>
