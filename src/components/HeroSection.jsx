@@ -58,18 +58,21 @@ const HeroSection = () => {
         </div>
 
         {/* Stats */}
-        <div className="flex flex-wrap justify-center gap-8 sm:gap-12 lg:gap-16">
+        <dl className="flex flex-wrap justify-center gap-8 sm:gap-12 lg:gap-16">
           {[
             { number: '30s', label: 'Average Split Time' },
             { number: '100%', label: 'Settlement Rate' },
             { number: '12K+', label: 'Bills Split' },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
-              <div className="text-4xl sm:text-5xl font-black text-white mb-2">{stat.number}</div>
-              <div className="text-base text-white/80">{stat.label}</div>
+              <dt className="sr-only">{stat.label}</dt>
+              <dd className="text-4xl sm:text-5xl font-black text-white mb-2" aria-label={`${stat.number} — ${stat.label}`}>
+                {stat.number}
+              </dd>
+              <span className="text-base text-white/80" aria-hidden="true">{stat.label}</span>
             </div>
           ))}
-        </div>
+        </dl>
       </div>
     </section>
   );
