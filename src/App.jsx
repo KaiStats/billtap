@@ -14,6 +14,7 @@ import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
 import MutationErrorToast from '@/components/MutationErrorToast';
 import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import Home from '@/pages/Home';
+import LandingPage from '@/pages/LandingPage';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { handleDeepLink } from '@/lib/deepLinking';
