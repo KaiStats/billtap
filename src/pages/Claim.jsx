@@ -146,6 +146,7 @@ export default function Claim() {
       p.participant_id === myId ? { ...p, payment_status: "paid" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
+    trackDeviceAction('payment_completed');
     paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
   };
 
