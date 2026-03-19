@@ -44,9 +44,9 @@ const Footer = () => {
         <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 text-slate-500 text-sm text-center">
           <div>© 2026 BillTap. All rights reserved.</div>
           <div className="flex gap-5 text-2xl">
-            <a href="https://twitter.com/billtap" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Twitter">𝕏</a>
-            <a href="https://instagram.com/billtap" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Instagram">📷</a>
-            <a href="https://tiktok.com/@billtap" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="TikTok">🎵</a>
+            <a href="https://twitter.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Twitter">𝕏</a>
+            <a href="https://instagram.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Instagram">📷</a>
+            <a href="https://tiktok.com/@billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="TikTok">🎵</a>
           </div>
         </div>
       </div>
