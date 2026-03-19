@@ -14,13 +14,13 @@ const HeroSection = () => {
 
       <div className="relative z-10 w-full max-w-5xl mx-auto text-center">
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-4 tracking-tight">
-          ⚡ BillTap
+          <span aria-hidden="true">⚡</span> BillTap
         </h1>
 
-        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 leading-snug">
+        <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 leading-snug">
           Split bills in 30 seconds.<br />
           Every. Single. Time.
-        </h2>
+        </p>
 
         <p className="text-lg sm:text-xl text-white/90 mb-10 font-normal">
           No math. No IOUs. No awkward money talk.
@@ -28,14 +28,16 @@ const HeroSection = () => {
 
         <div className="flex flex-col items-center gap-4 mb-14">
           <button
-            className="bg-white text-[#667eea] px-12 py-5 rounded-2xl text-xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 active:translate-y-0 active:shadow-lg w-full max-w-xs sm:w-auto"
+            className="bg-white text-[#667eea] px-12 py-5 rounded-2xl text-xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 active:translate-y-0 active:shadow-lg w-full max-w-xs sm:w-auto focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#667eea]"
             onClick={() => window.location.href = '/NewReceipt'}
+            aria-label="Try BillTap Free — start splitting your bill now"
           >
             Try BillTap Free
           </button>
           <button
-            className="text-white text-base underline cursor-pointer bg-transparent border-0 px-2 py-2 opacity-90 hover:opacity-100"
+            className="text-white text-base underline cursor-pointer bg-transparent border-0 px-4 py-3 min-h-[44px] opacity-90 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg"
             onClick={() => document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+            aria-label="See how BillTap works — scroll to steps section"
           >
             See how it works ↓
           </button>
