@@ -98,6 +98,8 @@ const AuthenticatedApp = () => {
               <LandingPage />
             </AnimatedPage>
           } />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/Home" element={
             <AnimatedPage direction={direction}>
               <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
