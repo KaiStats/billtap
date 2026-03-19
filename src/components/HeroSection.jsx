@@ -3,6 +3,7 @@ import React from 'react';
 const HeroSection = () => {
   return (
     <section
+      aria-label="Hero — BillTap bill splitting app"
       className="relative min-h-screen flex flex-col items-center justify-center px-5 py-16 overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
     >
