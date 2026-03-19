@@ -5,17 +5,24 @@ const Footer = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1 flex flex-col gap-3">
-            <div className="text-3xl font-black">⚡ BillTap</div>
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="text-3xl font-black text-left bg-transparent border-0 cursor-pointer text-white hover:opacity-80 transition-opacity p-0"
+              aria-label="BillTap - back to top"
+            >
+              ⚡ BillTap
+            </button>
             <p className="text-slate-400 text-base leading-relaxed">Split bills in 30 seconds. Every time.</p>
+            <a href="mailto:hello@billtap.app" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">hello@billtap.app</a>
           </div>
 
           {/* Product */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Product</h4>
             <div className="flex flex-col gap-3">
-              {['Features', 'Pricing', 'How It Works', 'Download'].map((item) => (
-                <a key={item} href="#" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">{item}</a>
-              ))}
+              <a href="#how-it-works" onClick={(e) => { e.preventDefault(); document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline">How It Works</a>
+              <a href="#features" onClick={(e) => { e.preventDefault(); document.querySelector('#features')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Features</a>
+              <a href="/NewReceipt" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Try for Free</a>
             </div>
           </div>
 
@@ -23,9 +30,7 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Company</h4>
             <div className="flex flex-col gap-3">
-              {['About', 'Blog', 'Careers', 'Contact'].map((item) => (
-                <a key={item} href="#" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">{item}</a>
-              ))}
+              <a href="mailto:hello@billtap.app" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Contact</a>
             </div>
           </div>
 
@@ -33,9 +38,8 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Legal</h4>
             <div className="flex flex-col gap-3">
-              {['Privacy', 'Terms', 'Security'].map((item) => (
-                <a key={item} href="#" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">{item}</a>
-              ))}
+              <a href="/privacy" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Privacy Policy</a>
+              <a href="/terms" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Terms of Service</a>
             </div>
           </div>
         </div>
