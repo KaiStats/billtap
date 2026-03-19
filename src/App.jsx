@@ -91,6 +91,11 @@ const AuthenticatedApp = () => {
               <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
             </AnimatedPage>
           } />
+          <Route path="/LandingPage" element={
+            <AnimatedPage direction={direction}>
+              <LandingPage />
+            </AnimatedPage>
+          } />
           <Route path="/Home" element={
             <AnimatedPage direction={direction}>
               <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
