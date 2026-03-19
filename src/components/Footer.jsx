@@ -38,8 +38,8 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Legal</h4>
             <div className="flex flex-col gap-3">
-              <a href="/privacy" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Privacy Policy</a>
-              <a href="/terms" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Terms of Service</a>
+              <a href="/privacy" className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">Privacy Policy</a>
+              <a href="/terms" className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">Terms of Service</a>
             </div>
           </div>
         </div>
