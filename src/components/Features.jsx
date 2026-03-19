@@ -9,7 +9,7 @@ const features = [
 
 const Features = () => {
   return (
-    <section className="py-20 lg:py-28 px-5" style={{ background: '#f8fafc' }}>
+    <section id="features" className="py-20 lg:py-28 px-5" style={{ background: '#f8fafc' }}>
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-16">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 mb-4">Why BillTap?</h2>
