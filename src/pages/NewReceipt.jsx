@@ -100,8 +100,16 @@ Return a JSON with:
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
   const total = subtotal + (tax || 0) + (tip || 0);
 
+  const pageUrl = `${window.location.origin}/NewReceipt`;
+
   return (
     <div className="min-h-screen bg-surface p-6">
+      {isDesktop && !dismissedDesktopWarning && (
+        <DesktopWarningModal
+          url={pageUrl}
+          onDismiss={() => setDismissedDesktopWarning(true)}
+        />
+      )}
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
           <h2 className="text-2xl font-black text-foreground">New Split</h2>
