@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import TipSelector from "@/components/TipSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
+import { trackDeviceAction } from "@/lib/deviceAnalytics";
 
 const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
