@@ -47,11 +47,11 @@ const Footer = () => {
         {/* Bottom bar */}
         <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 text-slate-500 text-sm text-center">
           <div>© 2026 BillTap. All rights reserved.</div>
-          <div className="flex gap-5 text-2xl">
-            <a href="https://twitter.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Twitter">𝕏</a>
-            <a href="https://instagram.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="Instagram">📷</a>
-            <a href="https://tiktok.com/@billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline" aria-label="TikTok">🎵</a>
-          </div>
+          <nav aria-label="Social media links" className="flex gap-5">
+            <a href="https://twitter.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline text-2xl min-w-[44px] min-h-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded" aria-label="BillTap on X (Twitter), opens in new tab">𝕏</a>
+            <a href="https://instagram.com/billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline text-2xl min-w-[44px] min-h-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded" aria-label="BillTap on Instagram, opens in new tab">📷</a>
+            <a href="https://tiktok.com/@billtap" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors no-underline text-2xl min-w-[44px] min-h-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded" aria-label="BillTap on TikTok, opens in new tab">🎵</a>
+          </nav>
         </div>
       </div>
     </footer>
