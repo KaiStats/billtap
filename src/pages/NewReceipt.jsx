@@ -24,6 +24,7 @@ export default function NewReceipt() {
   const [tax, setTax] = useState(0);
   const [tip, setTip] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
