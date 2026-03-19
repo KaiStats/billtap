@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import TipSelector from "@/components/TipSelector";
+import DesktopWarningModal from "@/components/DesktopWarningModal";
+
+const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 export default function NewReceipt() {
   const { pushScreen } = useTabNav();
