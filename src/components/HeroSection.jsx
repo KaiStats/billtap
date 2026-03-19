@@ -44,10 +44,13 @@ const HeroSection = () => {
         <div className="w-full max-w-3xl mx-auto rounded-3xl p-2 mb-14"
           style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
           <div
-            className="rounded-2xl flex items-center justify-center text-white text-lg"
+            role="img"
+            aria-label="BillTap app demo: showing a receipt being scanned and split between friends"
+            className="rounded-2xl flex flex-col items-center justify-center text-white gap-3"
             style={{ aspectRatio: '16/9', background: 'rgba(0,0,0,0.2)' }}
           >
-            📱 30-second demo video goes here
+            <span className="text-5xl">📱</span>
+            <span className="text-lg font-medium opacity-80">App demo coming soon</span>
           </div>
         </div>
 
