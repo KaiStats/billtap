@@ -58,6 +58,17 @@ const AuthenticatedApp = () => {
   
   // Disable overscroll bounce on mobile WebViews
   useScrollBehavior();
+
+  // Track page views with device type
+  useEffect(() => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'page_view', {
+        page_path: location.pathname,
+        device_type: isMobile ? 'mobile' : 'desktop',
+      });
+    }
+  }, [location.pathname]);
   
   // Global offline detector
   useNetworkStatus();
