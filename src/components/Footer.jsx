@@ -30,7 +30,7 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Company</h4>
             <div className="flex flex-col gap-3">
-              <a href="mailto:hello@billtap.app" className="text-slate-400 hover:text-white text-sm transition-colors no-underline">Contact</a>
+              <a href="mailto:hello@billtap.app" className="text-slate-400 hover:text-white text-sm transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded">Contact</a>
             </div>
           </div>
 
