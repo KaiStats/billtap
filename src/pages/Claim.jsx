@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
+import { trackDeviceAction } from "@/lib/deviceAnalytics";
 
 function calcMyShare(items, myId, tax, tip) {
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
