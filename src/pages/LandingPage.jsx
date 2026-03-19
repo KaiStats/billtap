@@ -19,6 +19,7 @@ const LandingPage = () => {
       <HowItWorks />
       <Features />
       <FinalCTA />
+      </main>
       <Footer />
     </div>
   );
