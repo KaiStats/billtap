@@ -2,212 +2,67 @@ import React from 'react';
 
 const HeroSection = () => {
   return (
-    <section className="hero">
-      <style>{`
-        .hero {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 40px 20px;
-          position: relative;
-          overflow: hidden;
-        }
+    <section
+      className="relative min-h-screen flex flex-col items-center justify-center px-5 py-16 overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+    >
+      {/* subtle pattern overlay */}
+      <div className="absolute inset-0 opacity-40 pointer-events-none" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E")`
+      }} />
 
-        .hero::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-          opacity: 0.4;
-        }
+      <div className="relative z-10 w-full max-w-5xl mx-auto text-center">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-4 tracking-tight">
+          ⚡ BillTap
+        </h1>
 
-        .hero-content {
-          max-width: 1200px;
-          width: 100%;
-          position: relative;
-          z-index: 1;
-          text-align: center;
-        }
-
-        .logo {
-          font-size: 48px;
-          font-weight: 900;
-          color: white;
-          margin-bottom: 16px;
-          letter-spacing: -1px;
-        }
-
-        .tagline {
-          font-size: 28px;
-          font-weight: 700;
-          color: white;
-          margin-bottom: 12px;
-          line-height: 1.3;
-        }
-
-        .subtagline {
-          font-size: 20px;
-          color: rgba(255, 255, 255, 0.9);
-          margin-bottom: 40px;
-          font-weight: 400;
-        }
-
-        .cta-container {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          align-items: center;
-          margin-bottom: 60px;
-        }
-
-        .cta-primary {
-          background: white;
-          color: #667eea;
-          padding: 20px 48px;
-          border-radius: 16px;
-          font-size: 20px;
-          font-weight: 700;
-          border: none;
-          cursor: pointer;
-          transition: all 0.3s;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-          min-width: 280px;
-        }
-
-        .cta-primary:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
-        }
-
-        .cta-secondary {
-          color: white;
-          font-size: 16px;
-          text-decoration: underline;
-          cursor: pointer;
-          background: none;
-          border: none;
-          padding: 8px;
-        }
-
-        .demo-video {
-          width: 100%;
-          max-width: 800px;
-          height: auto;
-          border-radius: 24px;
-          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(10px);
-          padding: 8px;
-          margin: 0 auto;
-        }
-
-        .stats {
-          display: flex;
-          gap: 48px;
-          justify-content: center;
-          margin-top: 60px;
-          flex-wrap: wrap;
-        }
-
-        .stat {
-          text-align: center;
-        }
-
-        .stat-number {
-          font-size: 48px;
-          font-weight: 900;
-          color: white;
-          margin-bottom: 8px;
-        }
-
-        .stat-label {
-          font-size: 16px;
-          color: rgba(255, 255, 255, 0.8);
-        }
-
-        @media (max-width: 768px) {
-          .logo {
-            font-size: 36px;
-          }
-
-          .tagline {
-            font-size: 24px;
-          }
-
-          .subtagline {
-            font-size: 18px;
-          }
-
-          .cta-primary {
-            width: 100%;
-            max-width: 320px;
-          }
-
-          .stats {
-            gap: 32px;
-          }
-
-          .stat-number {
-            font-size: 36px;
-          }
-        }
-      `}</style>
-
-      <div className="hero-content">
-        <h1 className="logo">⚡ BillTap</h1>
-
-        <h2 className="tagline">
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 leading-snug">
           Split bills in 30 seconds.<br />
           Every. Single. Time.
         </h2>
 
-        <p className="subtagline">
+        <p className="text-lg sm:text-xl text-white/90 mb-10 font-normal">
           No math. No IOUs. No awkward money talk.
         </p>
 
-        <div className="cta-container">
-          <button className="cta-primary" onClick={() => window.location.href = '/NewReceipt'}>
+        <div className="flex flex-col items-center gap-4 mb-14">
+          <button
+            className="bg-white text-[#667eea] px-12 py-5 rounded-2xl text-xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 hover:shadow-3xl w-full max-w-xs sm:w-auto"
+            onClick={() => window.location.href = '/NewReceipt'}
+          >
             Try BillTap Free
           </button>
-          <button className="cta-secondary" onClick={() => document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>
+          <button
+            className="text-white text-base underline cursor-pointer bg-transparent border-0 px-2 py-2 opacity-90 hover:opacity-100"
+            onClick={() => document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+          >
             See how it works ↓
           </button>
         </div>
 
-        <div className="demo-video">
-          <div style={{ 
-            aspectRatio: '16/9', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.2)',
-            borderRadius: '16px',
-            color: 'white',
-            fontSize: '18px'
-          }}>
+        {/* Demo placeholder */}
+        <div className="w-full max-w-3xl mx-auto rounded-3xl p-2 mb-14"
+          style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
+          <div
+            className="rounded-2xl flex items-center justify-center text-white text-lg"
+            style={{ aspectRatio: '16/9', background: 'rgba(0,0,0,0.2)' }}
+          >
             📱 30-second demo video goes here
           </div>
         </div>
 
-        <div className="stats">
-          <div className="stat">
-            <div className="stat-number">30s</div>
-            <div className="stat-label">Average Split Time</div>
-          </div>
-          <div className="stat">
-            <div className="stat-number">100%</div>
-            <div className="stat-label">Settlement Rate</div>
-          </div>
-          <div className="stat">
-            <div className="stat-number">12K+</div>
-            <div className="stat-label">Bills Split</div>
-          </div>
+        {/* Stats */}
+        <div className="flex flex-wrap justify-center gap-8 sm:gap-12 lg:gap-16">
+          {[
+            { number: '30s', label: 'Average Split Time' },
+            { number: '100%', label: 'Settlement Rate' },
+            { number: '12K+', label: 'Bills Split' },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <div className="text-4xl sm:text-5xl font-black text-white mb-2">{stat.number}</div>
+              <div className="text-base text-white/80">{stat.label}</div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
