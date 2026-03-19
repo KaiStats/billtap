@@ -27,7 +27,7 @@ const HeroSection = () => {
 
         <div className="flex flex-col items-center gap-4 mb-14">
           <button
-            className="bg-white text-[#667eea] px-12 py-5 rounded-2xl text-xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 hover:shadow-3xl w-full max-w-xs sm:w-auto"
+            className="bg-white text-[#667eea] px-12 py-5 rounded-2xl text-xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 active:translate-y-0 active:shadow-lg w-full max-w-xs sm:w-auto"
             onClick={() => window.location.href = '/NewReceipt'}
           >
             Try BillTap Free
