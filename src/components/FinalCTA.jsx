@@ -16,7 +16,7 @@ const FinalCTA = () => {
           Join 12,000+ people splitting bills the smart way
         </p>
         <button
-          className="bg-white text-[#667eea] px-14 py-6 rounded-2xl text-xl sm:text-2xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 w-full max-w-xs sm:w-auto"
+          className="bg-white text-[#667eea] px-14 py-6 rounded-2xl text-xl sm:text-2xl font-bold border-0 cursor-pointer transition-all duration-300 shadow-2xl hover:-translate-y-1 active:translate-y-0 active:shadow-lg w-full max-w-xs sm:w-auto"
           onClick={() => window.location.href = '/NewReceipt'}
         >
           Start Splitting for Free
