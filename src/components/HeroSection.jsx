@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
 const HeroSection = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const ua = navigator.userAgent || '';
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(ua));
+  }, []);
+
   return (
     <section
       aria-label="Hero — BillTap bill splitting app"
