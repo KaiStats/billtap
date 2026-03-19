@@ -95,6 +95,7 @@ Return a JSON with:
       status: "waiting"
     });
 
+    trackDeviceAction('split_created');
     pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
   };
 
