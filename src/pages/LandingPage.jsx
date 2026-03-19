@@ -2,6 +2,7 @@ import HeroSection from '@/components/HeroSection';
 import HowItWorks from '@/components/HowItWorks';
 import Features from '@/components/Features';
 import FinalCTA from '@/components/FinalCTA';
+import DownloadApp from '@/components/DownloadApp';
 import Footer from '@/components/Footer';
 
 const LandingPage = () => {
