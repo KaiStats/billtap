@@ -362,8 +362,8 @@
   [role="tab"],
   .clickable,
   .tappable {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 48px;
+    min-width: 48px;
   }
 
   /* Constrain touch targets on larger screens */
