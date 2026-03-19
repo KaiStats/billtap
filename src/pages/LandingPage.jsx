@@ -18,6 +18,7 @@ const LandingPage = () => {
         <HeroSection />
         <HowItWorks />
         <Features />
+        <DownloadApp />
         <FinalCTA />
       </main>
       <Footer />
