@@ -29,12 +29,12 @@ export default function DesktopWarningModal({ url, onDismiss }) {
           </div>
         </div>
         <p className="text-xs text-gray-400 break-all">{url}</p>
-        <a
-          href={url}
-          className="mt-4 block text-[#667eea] text-sm underline hover:opacity-80"
+        <button
+          onClick={onDismiss}
+          className="mt-4 block w-full text-[#667eea] text-sm underline hover:opacity-80 bg-transparent border-0 cursor-pointer"
         >
           Or continue on desktop anyway →
-        </a>
+        </button>
       </div>
     </div>
   );
