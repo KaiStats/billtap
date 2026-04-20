@@ -5,7 +5,7 @@
 
 export async function registerServiceWorker() {
   // Skip registration in development or non-HTTPS
-  if (process.env.NODE_ENV === 'development' && !window.location.hostname === 'localhost') {
+  if (import.meta.env.DEV && !window.location.hostname === 'localhost') {
     console.log('[SW] Skipping registration in development');
     return;
   }
