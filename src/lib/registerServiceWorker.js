@@ -4,9 +4,10 @@
  */
 
 export async function registerServiceWorker() {
-  // Skip registration in development or non-HTTPS
-  if (import.meta.env.DEV && !window.location.hostname === 'localhost') {
-    console.log('[SW] Skipping registration in development');
+  // Skip registration in development, preview, or non-HTTPS
+  const isPreview = window.location.hostname.includes('base44.app') || window.location.hostname.includes('localhost');
+  if (import.meta.env.DEV || isPreview) {
+    console.log('[SW] Skipping registration in dev/preview');
     return;
   }
 
