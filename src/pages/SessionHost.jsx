@@ -13,7 +13,7 @@ export default function SessionHost() {
   const [copied, setCopied] = useState(false);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
-  const claimUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, "")}#/Claim?id=${sessionId}`;
+  const claimUrl = `${window.location.origin}/Claim?id=${sessionId}`;
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -23,22 +23,6 @@ export default function SessionHost() {
 
   useEffect(() => {
     fetchSession();
-    let interval = setInterval(fetchSession, 3000);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        clearInterval(interval);
-      } else {
-        fetchSession();
-        interval = setInterval(fetchSession, 3000);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
   }, [fetchSession]);
 
   useEffect(() => {
@@ -56,19 +40,19 @@ export default function SessionHost() {
   };
 
   const shareViaText = () => {
-    const msg = encodeURIComponent(`Join me to split the bill!\n${claimUrl}`);
+    const msg = encodeURIComponent(`Join me to split the bill on BillTap!\n${claimUrl}`);
     window.location.href = `sms:?body=${msg}`;
   };
 
   const shareViaEmail = () => {
-    const subject = encodeURIComponent("Split our bill with Divvy");
+    const subject = encodeURIComponent("Split our bill with BillTap");
     const body = encodeURIComponent(`Hey! Join me to claim your items:\n${claimUrl}`);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
   const shareNative = async () => {
     if (navigator.share) {
-      await navigator.share({ title: "Split bill with Divvy", text: "Join me to claim your items!", url: claimUrl });
+      await navigator.share({ title: "Split bill with BillTap", text: "Join me to claim your items!", url: claimUrl });
     } else {
       copyLink();
     }
@@ -78,6 +62,15 @@ export default function SessionHost() {
     await base44.entities.Session.update(sessionId, { status: "claiming" });
     pushScreen(createPageUrl(`Claim?id=${sessionId}`));
   };
+
+  if (!sessionId) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold">No session found</p>
+        <p className="text-sm mt-1">Please create a new split first.</p>
+      </div>
+    </div>
+  );
 
   if (!session) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground" role="status" aria-live="polite" aria-busy="true">

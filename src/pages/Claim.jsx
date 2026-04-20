@@ -25,12 +25,13 @@ export default function Claim() {
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
-    let id = localStorage.getItem("divvy_participant_id");
-    if (!id) { id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; localStorage.setItem("divvy_participant_id", id); }
+    let id = localStorage.getItem("billtap_participant_id") || localStorage.getItem("divvy_participant_id");
+    if (!id) { id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; }
+    localStorage.setItem("billtap_participant_id", id);
     return id;
   });
-  const [myName, setMyName] = useState(() => localStorage.getItem("divvy_participant_name") || "");
-  const [nameInput, setNameInput] = useState(() => localStorage.getItem("divvy_participant_name") || "");
+  const [myName, setMyName] = useState(() => localStorage.getItem("billtap_participant_name") || localStorage.getItem("divvy_participant_name") || "");
+  const [nameInput, setNameInput] = useState(() => localStorage.getItem("billtap_participant_name") || localStorage.getItem("divvy_participant_name") || "");
   const [loading, setLoading] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
   const [newItemName, setNewItemName] = useState("");
@@ -78,7 +79,7 @@ export default function Claim() {
   const handleNameBlur = async () => {
     const name = nameInput.trim();
     if (name !== myName) {
-      localStorage.setItem("divvy_participant_name", name);
+      localStorage.setItem("billtap_participant_name", name);
       setMyName(name);
       await ensureJoined(name);
     }
@@ -149,6 +150,15 @@ export default function Claim() {
     trackDeviceAction('payment_completed');
     paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
   };
+
+  if (!sessionId) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold">No session found</p>
+        <p className="text-sm mt-1">Please scan the QR code again to join a split.</p>
+      </div>
+    </div>
+  );
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite" aria-busy="true">

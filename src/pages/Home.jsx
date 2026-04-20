@@ -83,7 +83,7 @@ export default function Home() {
               {sessions.map((session) => (
                 <button
                   key={session.id}
-                  onClick={() => navigate(`/SessionHost`, { state: { sessionId: session.id } })}
+                  onClick={() => navigate(`/ReceiptDetail?id=${session.id}&host=1`)}
                   className="w-full rounded-2xl bg-card border border-border p-5 shadow-sm hover:shadow-md transition-shadow text-left"
                 >
                   <div className="flex items-center justify-between">
@@ -97,10 +97,10 @@ export default function Home() {
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
                           session.status === 'completed'
-                            ? 'bg-success/10 text-success-color'
+                            ? 'bg-success-muted text-success-muted-foreground'
                             : session.status === 'claiming'
-                            ? 'bg-brand/10 text-brand'
-                            : 'bg-warning/10 text-warning-color'
+                            ? 'bg-info-muted text-info-muted-foreground'
+                            : 'bg-warning-muted text-warning-muted-foreground'
                         }`}
                       >
                         {session.status === 'completed' ? 'Done' : session.status === 'claiming' ? 'In Progress' : 'Waiting'}

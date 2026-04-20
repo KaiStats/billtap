@@ -1,7 +1,7 @@
 const Privacy = () => (
   <div className="min-h-screen bg-white px-5 py-16">
     <div className="max-w-2xl mx-auto">
-      <a href="/LandingPage" className="text-[#667eea] text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
+      <a href="/" className="text-[#667eea] text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
       <h1 className="text-4xl font-black text-slate-900 mb-4">Privacy Policy</h1>
       <p className="text-slate-500 text-sm mb-10">Last updated: March 2026</p>
       <div className="prose prose-slate max-w-none space-y-8 text-slate-700 leading-relaxed">

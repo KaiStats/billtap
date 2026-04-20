@@ -39,82 +39,14 @@ export default function ReceiptScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-surface-raised border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-black text-foreground">Split Bill</h1>
-        </div>
-      </div>
-
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Receipt Summary Card */}
-        <div className="bg-card rounded-xl border border-border p-6">
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span className="font-semibold text-foreground">${subtotal.toFixed(2)}</span>
-            </div>
-            {includeTax && (
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Tax</span>
-                <span className="font-semibold text-foreground">${tax.toFixed(2)}</span>
-              </div>
-            )}
-            {tip > 0 && (
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Tip</span>
-                <span className="font-semibold text-foreground">${tip.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="border-t border-border pt-3 flex justify-between items-center">
-              <span className="font-semibold text-foreground">Total</span>
-              <span className="text-2xl font-black text-brand">${total.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tax Toggle */}
-        <div>
-          <TaxToggle taxAmount={tax} onToggle={setIncludeTax} />
-        </div>
-
-        {/* Tip Selector */}
-        <div>
-          <TipSelector subtotal={subtotal} onTipChange={setTip} />
-        </div>
-
-        {/* Split Type Selector */}
-        <div>
-          <SplitTypeSelector onTypeChange={setSplitType} />
-        </div>
-
-        {/* People Selector - Only show for even split */}
-        {splitType === 'even' && (
-          <div>
-            <PeopleSelector initialCount={4} onCountChange={setPeopleCount} />
-          </div>
-        )}
-
-        {/* Payment Method Selector */}
-        <div>
-          <PaymentMethodSelector onMethodChange={setPaymentMethod} />
-        </div>
-
-        {/* Action Buttons */}
-        <div className="pt-6 space-y-3">
-          <Button className="w-full h-14 text-lg font-bold" size="lg">
-            Continue to Payment
-          </Button>
-          <Button 
-            variant="outline" 
-            className="w-full h-14 text-lg font-bold"
-            onClick={handleShare}
-          >
-            <Share2 className="w-5 h-5" />
-            Share Bill
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background flex items-center justify-center px-6">
+      <div className="text-center max-w-sm">
+        <div className="text-5xl mb-4">🧾</div>
+        <h1 className="text-2xl font-black text-foreground mb-2">Legacy Screen</h1>
+        <p className="text-muted-foreground mb-6">This page is no longer in use. Start a new split from the home screen.</p>
+        <Button onClick={() => window.location.href = '/NewReceipt'} className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl h-12 px-8 font-bold">
+          Start a New Split
+        </Button>
       </div>
     </div>
   );

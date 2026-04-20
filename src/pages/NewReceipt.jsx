@@ -40,39 +40,46 @@ export default function NewReceipt() {
 
   const handleParseReceipt = async () => {
     if (!imageFile) return;
-    setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file: imageFile });
-    setUploading(false);
-    setParsing(true);
+    try {
+      setUploading(true);
+      const { file_url } = await base44.integrations.Core.UploadFile({ file: imageFile });
+      setUploading(false);
+      setParsing(true);
 
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
 Return a JSON with:
 - title: short restaurant/store name if visible, else "Receipt"
 - items: array of {name: string, price: number, quantity: number}
 - tax: number (0 if not found)
 - tip: number (0 if not found)
 - total: number`,
-      file_urls: [file_url],
-      response_json_schema: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" } } } },
-          tax: { type: "number" },
-          tip: { type: "number" },
-          total: { type: "number" }
+        file_urls: [file_url],
+        response_json_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" } } } },
+            tax: { type: "number" },
+            tip: { type: "number" },
+            total: { type: "number" }
+          }
         }
-      }
-    });
+      });
 
-    setTitle(result.title || "Receipt");
-    setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
-    setTax(result.tax || 0);
-    setTip(result.tip || 0);
-    setParsing(false);
-    setImageUrl(file_url);
-    setStep(2);
+      setTitle(result.title || "Receipt");
+      setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
+      setTax(result.tax || 0);
+      setTip(result.tip || 0);
+      setImageUrl(file_url);
+      setStep(2);
+    } catch (err) {
+      console.error("Failed to parse receipt:", err);
+      alert("Failed to process receipt. Please try again.");
+    } finally {
+      setUploading(false);
+      setParsing(false);
+    }
   };
 
   const updateItem = (i, field, value) => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item));
@@ -81,22 +88,28 @@ Return a JSON with:
 
   const handleCreateSession = async () => {
     setSaving(true);
-    const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
-    const total = subtotal + (tax || 0) + (tip || 0);
+    try {
+      const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
+      const total = subtotal + (tax || 0) + (tip || 0);
 
-    const session = await base44.entities.Session.create({
-      title,
-      image_url: imageUrl,
-      total_amount: total,
-      tax,
-      tip,
-      items,
-      participants: [],
-      status: "waiting"
-    });
+      const session = await base44.entities.Session.create({
+        title,
+        image_url: imageUrl,
+        total_amount: total,
+        tax,
+        tip,
+        items,
+        participants: [],
+        status: "waiting"
+      });
 
-    trackDeviceAction('split_created');
-    pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
+      trackDeviceAction('split_created');
+      pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
+    } catch (err) {
+      console.error("Failed to create session:", err);
+      alert("Failed to create session. Please try again.");
+      setSaving(false);
+    }
   };
 
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
