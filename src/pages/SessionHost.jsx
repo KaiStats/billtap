@@ -17,8 +17,9 @@ export default function SessionHost() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    if (data[0]) setSession(data[0]);
+    const data = await base44.entities.Session.list("-created_date", 200);
+    const found = data.find(s => s.id === sessionId);
+    if (found) setSession(found);
   }, [sessionId]);
 
   useEffect(() => {

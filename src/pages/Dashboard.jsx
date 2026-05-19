@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { Plus, Receipt, CheckCircle2, Clock, Users } from "lucide-react";
@@ -61,6 +61,20 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  // Real-time updates
+  useEffect(() => {
+    const unsub = base44.entities.Session.subscribe((event) => {
+      if (event.type === 'create') {
+        setSessions(prev => [event.data, ...prev]);
+      } else if (event.type === 'update') {
+        setSessions(prev => prev.map(s => s.id === event.id ? event.data : s));
+      } else if (event.type === 'delete') {
+        setSessions(prev => prev.filter(s => s.id !== event.id));
+      }
+    });
+    return unsub;
+  }, []);
 
   const { totalOwed, totalCollected } = useMemo(() => ({
     totalOwed: sessions.reduce((sum, s) =>

@@ -39,10 +39,11 @@ export default function Claim() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    if (data[0]) {
-      setSession(data[0]);
-      const existing = (data[0].participants || []).find(p => p.participant_id === myId);
+    const data = await base44.entities.Session.list("-created_date", 200);
+    const found = data.find(s => s.id === sessionId);
+    if (found) {
+      setSession(found);
+      const existing = (found.participants || []).find(p => p.participant_id === myId);
       if (existing && existing.name) setMyName(existing.name);
     }
     setLoading(false);
@@ -59,8 +60,8 @@ export default function Claim() {
   }, [sessionId]);
 
   const ensureJoined = async (name) => {
-    const current = await base44.entities.Session.filter({ id: sessionId });
-    const s = current[0];
+    const current = await base44.entities.Session.list("-created_date", 200);
+    const s = current.find(x => x.id === sessionId);
     if (!s) return;
     const alreadyIn = (s.participants || []).find(p => p.participant_id === myId);
     if (!alreadyIn) {

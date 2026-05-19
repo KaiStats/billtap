@@ -26,8 +26,9 @@ export default function ReceiptDetail() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    setSession(data[0] || null);
+    const data = await base44.entities.Session.list("-created_date", 200);
+    const found = data.find(s => s.id === sessionId) || null;
+    setSession(found);
     setLoading(false);
   }, [sessionId]);
 

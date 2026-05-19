@@ -1,23 +1,22 @@
-import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
+import { useTabNav } from '@/lib/TabNavigationContext';
+import { createPageUrl } from '@/utils';
 
 export default function Home() {
-  const navigate = useNavigate();
+  const { pushScreen } = useTabNav();
   const { user } = useAuth();
 
   const { data: sessions = [], refetch } = useQuery({
     queryKey: ['sessions', 'home'],
-    queryFn: async () => {
-      const result = await base44.entities.Session.filter({}, '-updated_date', 3);
-      return result;
-    },
+    queryFn: () => base44.entities.Session.list('-updated_date', 50),
   });
 
+  const recentSessions = sessions.slice(0, 3);
   const totalSessions = sessions.length;
   const completedSessions = sessions.filter(s => s.status === 'completed').length;
 
@@ -45,7 +44,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto px-5 space-y-8 py-8">
         {/* CTA Button */}
         <Button
-          onClick={() => navigate('/NewReceipt')}
+          onClick={() => pushScreen(createPageUrl('NewReceipt'))}
           className="w-full h-16 text-lg font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-lg rounded-2xl"
         >
           <Plus className="w-6 h-6 mr-2" />
@@ -76,14 +75,14 @@ export default function Home() {
         </div>
 
         {/* Recent Sessions */}
-        {sessions.length > 0 && (
+        {recentSessions.length > 0 && (
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-4">Recent Splits</h2>
             <div className="space-y-3">
-              {sessions.map((session) => (
+              {recentSessions.map((session) => (
                 <button
                   key={session.id}
-                  onClick={() => navigate(`/ReceiptDetail?id=${session.id}&host=1`)}
+                  onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
                   className="w-full rounded-2xl bg-card border border-border p-5 shadow-sm hover:shadow-md transition-shadow text-left"
                 >
                   <div className="flex items-center justify-between">
@@ -114,7 +113,7 @@ export default function Home() {
         )}
 
         {/* Empty State */}
-        {sessions.length === 0 && (
+        {recentSessions.length === 0 && (
           <div className="text-center py-12">
             <div className="mb-4">
               <Users className="w-12 h-12 text-muted-foreground mx-auto opacity-50" aria-hidden="true" />
@@ -124,7 +123,7 @@ export default function Home() {
               Create your first split to get started splitting bills with friends
             </p>
             <Button
-              onClick={() => navigate('/NewReceipt')}
+              onClick={() => pushScreen(createPageUrl('NewReceipt'))}
               variant="outline"
               className="mx-auto"
             >
