@@ -1,0 +1,143 @@
+{
+  "name": "Session",
+  "type": "object",
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "description": "Linked receipt ID"
+    },
+    "title": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "description": "Line items with claims",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "claimed_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tax": {
+      "type": "number"
+    },
+    "tip": {
+      "type": "number"
+    },
+    "total_amount": {
+      "type": "number"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "participants": {
+      "type": "array",
+      "description": "People who joined",
+      "items": {
+        "type": "object",
+        "properties": {
+          "participant_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amount_owed": {
+            "type": "number"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "unpaid",
+              "paid"
+            ],
+            "default": "unpaid"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "claiming",
+        "completed"
+      ],
+      "default": "waiting"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "rls": {
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.participants.participant_id": "{{user.id}}"
+        },
+        {
+          "data.participants.participant_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.participants.participant_id": "{{user.id}}"
+        },
+        {
+          "data.participants.participant_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

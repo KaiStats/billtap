@@ -1,0 +1,136 @@
+{
+  "name": "Receipt",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Name or description of the receipt"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Uploaded receipt image URL"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total amount on the receipt"
+    },
+    "tax": {
+      "type": "number",
+      "description": "Tax amount"
+    },
+    "tip": {
+      "type": "number",
+      "description": "Tip amount"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "assigned",
+        "completed"
+      ],
+      "default": "pending"
+    },
+    "items": {
+      "type": "array",
+      "description": "Line items parsed from the receipt",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "assigned_to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "participants": {
+      "type": "array",
+      "description": "People splitting this receipt",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "amount_owed": {
+            "type": "number"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "unpaid",
+              "paid",
+              "pending"
+            ],
+            "default": "unpaid"
+          },
+          "stripe_payment_link": {
+            "type": "string"
+          },
+          "stripe_session_id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "rls": {
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
