@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { createPageUrl } from "@/utils";
-import { CheckCircle2, Clock, Users, Receipt, QrCode } from "lucide-react";
+import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,10 +89,25 @@ export default function ReceiptDetail() {
     </button>
   ) : null;
 
+  const allPaid = participants.length > 0 && participants.every(p => p.payment_status === "paid");
+
   return (
     <div className="min-h-screen bg-surface">
       <AppHeader title={session.title || "Bill Details"} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
       <div className="max-w-2xl mx-auto p-5 space-y-5" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}>
+
+        {/* All Settled Banner */}
+        {allPaid && (
+          <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-r from-success-muted to-success-muted/50">
+            <CardContent className="p-4 flex items-center gap-3">
+              <PartyPopper className="w-6 h-6 text-success" aria-hidden="true" />
+              <div className="flex-1">
+                <p className="font-bold text-success">All Settled! 🎉</p>
+                <p className="text-xs text-success-muted-foreground">Everyone has paid their share</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex items-start justify-between">
           <div>

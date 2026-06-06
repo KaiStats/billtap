@@ -3,14 +3,18 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { QRCodeSVG } from "qrcode.react";
-import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2 } from "lucide-react";
+import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export default function SessionHost() {
   const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [showPaymentSetup, setShowPaymentSetup] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentHandle, setPaymentHandle] = useState("");
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const claimUrl = `${window.location.origin}/Claim?id=${sessionId}`;
@@ -64,6 +68,25 @@ export default function SessionHost() {
     pushScreen(createPageUrl(`Claim?id=${sessionId}`));
   };
 
+  const savePaymentInfo = async () => {
+    if (!paymentMethod || !paymentHandle.trim()) {
+      setShowPaymentSetup(false);
+      return;
+    }
+    await base44.entities.Session.update(sessionId, {
+      host_payment_info: { method: paymentMethod, handle: paymentHandle.trim() }
+    });
+    setShowPaymentSetup(false);
+  };
+
+  const handleStartClaimingClick = () => {
+    if (!session.host_payment_info) {
+      setShowPaymentSetup(true);
+    } else {
+      startClaiming();
+    }
+  };
+
   if (!sessionId) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
       <div>
@@ -99,6 +122,65 @@ export default function SessionHost() {
 
         <Card className="rounded-3xl border-0 shadow-2xl">
           <CardContent className="p-6 space-y-5">
+            {/* Payment Setup Modal */}
+            {showPaymentSetup && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShowPaymentSetup(false)}>
+                <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <DollarSign className="w-5 h-5" />
+                      How should guests pay you?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        variant={paymentMethod === "venmo" ? "default" : "outline"}
+                        onClick={() => setPaymentMethod("venmo")}
+                        className={paymentMethod === "venmo" ? "bg-brand hover:bg-brand/90" : ""}
+                      >
+                        Venmo
+                      </Button>
+                      <Button
+                        variant={paymentMethod === "cashapp" ? "default" : "outline"}
+                        onClick={() => setPaymentMethod("cashapp")}
+                        className={paymentMethod === "cashapp" ? "bg-brand hover:bg-brand/90" : ""}
+                      >
+                        Cash App
+                      </Button>
+                      <Button
+                        variant={paymentMethod === "zelle" ? "default" : "outline"}
+                        onClick={() => setPaymentMethod("zelle")}
+                        className={paymentMethod === "zelle" ? "bg-brand hover:bg-brand/90" : ""}
+                      >
+                        Zelle
+                      </Button>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        {paymentMethod === "zelle" ? "Phone or Email" : "@Username"}
+                      </label>
+                      <Input
+                        value={paymentHandle}
+                        onChange={e => setPaymentHandle(e.target.value)}
+                        placeholder={paymentMethod === "zelle" ? "e.g. (555) 123-4567" : "e.g. @yourname"}
+                        className="rounded-xl"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={savePaymentInfo} className="flex-1 bg-brand hover:bg-brand/90">
+                        Continue
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowPaymentSetup(false)}>
+                        Skip
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* QR Code */}
             <div className="flex flex-col items-center gap-3">
               <div className="bg-surface p-5 rounded-2xl border border-border" role="img" aria-label={`QR code to join bill split: ${session.title}`}>
@@ -157,7 +239,7 @@ export default function SessionHost() {
 
             {/* Primary CTA */}
             <Button
-              onClick={startClaiming}
+              onClick={handleStartClaimingClick}
               className="w-full bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl h-12 text-base shadow-lg"
               aria-label={session.status === "claiming" ? "View claiming progress" : "Claim my items from the bill"}
             >

@@ -67,10 +67,29 @@
             "type": "string",
             "enum": [
               "unpaid",
+              "pending_verification",
               "paid"
             ],
             "default": "unpaid"
           }
+        }
+      }
+    },
+    "host_payment_info": {
+      "type": "object",
+      "description": "Host's preferred payment method",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "venmo",
+            "cashapp",
+            "zelle"
+          ]
+        },
+        "handle": {
+          "type": "string",
+          "description": "@username for Venmo/CashApp, phone/email for Zelle"
         }
       }
     },

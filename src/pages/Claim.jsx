@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Check, Loader2 } from "lucide-react";
+import { Plus, Check, Loader2, ExternalLink, Copy, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 
@@ -36,6 +36,8 @@ export default function Claim() {
   const [addingItem, setAddingItem] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemPrice, setNewItemPrice] = useState("");
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [zelleModalOpen, setZelleModalOpen] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -145,11 +147,42 @@ export default function Claim() {
 
   const markMePaid = () => {
     const updatedParticipants = (session.participants || []).map(p =>
-      p.participant_id === myId ? { ...p, payment_status: "paid" } : p
+      p.participant_id === myId ? { ...p, payment_status: "pending_verification" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
     trackDeviceAction('payment_completed');
     paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
+    setShowPaymentModal(false);
+  };
+
+  const getPaymentLink = () => {
+    const hostInfo = session.host_payment_info;
+    if (!hostInfo || myShare <= 0) return null;
+    
+    const amount = myShare.toFixed(2);
+    const handle = hostInfo.handle.startsWith('@') ? hostInfo.handle : `@${hostInfo.handle}`;
+    const note = encodeURIComponent("BillTap Split");
+    
+    if (hostInfo.method === "venmo") {
+      return `venmo://paycharge?txn=pay&recipients=${handle}&amount=${amount}&note=${note}`;
+    } else if (hostInfo.method === "cashapp") {
+      const cashHandle = hostInfo.handle.startsWith('$') ? hostInfo.handle : `$${hostInfo.handle}`;
+      return `cashapp://cash.app/${cashHandle}/${amount}`;
+    }
+    return null;
+  };
+
+  const handlePaymentClick = () => {
+    const link = getPaymentLink();
+    if (link) {
+      if (session.host_payment_info.method === "zelle") {
+        setZelleModalOpen(true);
+      } else {
+        window.location.href = link;
+      }
+    } else {
+      setShowPaymentModal(true);
+    }
   };
 
   if (!sessionId) return (
@@ -339,6 +372,101 @@ export default function Claim() {
         )}
       </div>
 
+      {/* Payment Modals */}
+      {zelleModalOpen && session.host_payment_info && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setZelleModalOpen(false)}>
+          <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Send via Zelle</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">Send to:</p>
+                <p className="text-lg font-bold text-foreground">{session.host_payment_info.handle}</p>
+                <p className="text-2xl font-black text-brand mt-2">${myShare.toFixed(2)}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(session.host_payment_info.handle);
+                  }}
+                  className="flex-1"
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy
+                </Button>
+                <Button
+                  onClick={() => {
+                    setZelleModalOpen(false);
+                    markMePaid();
+                  }}
+                  className="flex-1 bg-brand hover:bg-brand/90"
+                >
+                  I've Sent Payment
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShowPaymentModal(false)}>
+          <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Smartphone className="w-5 h-5" />
+                Payment Complete
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">You owe</p>
+                <p className="text-3xl font-black text-brand">${myShare.toFixed(2)}</p>
+              </div>
+              {session.host_payment_info ? (
+                <>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Send payment to <strong className="text-foreground">{session.host_payment_info.handle}</strong> via {session.host_payment_info.method === "venmo" ? "Venmo" : session.host_payment_info.method === "cashapp" ? "Cash App" : "Zelle"}
+                  </p>
+                  <Button
+                    onClick={markMePaid}
+                    className="w-full bg-brand hover:bg-brand/90 font-bold rounded-xl h-12"
+                  >
+                    ✓ I've Sent Payment
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Ask {session.participants?.find(p => p.participant_id === session.created_by_id)?.name || "the host"} how they want to be paid
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`I owe $${myShare.toFixed(2)} for ${session.title}`);
+                      }}
+                      className="flex-1"
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy Total
+                    </Button>
+                    <Button
+                      onClick={markMePaid}
+                      className="flex-1 bg-brand hover:bg-brand/90"
+                    >
+                      Mark as Sent
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Sticky bottom bar */}
       <div
         role="region"
@@ -350,7 +478,7 @@ export default function Claim() {
           {myMyClaimed.length > 0 ? (
             <div className="flex justify-between items-center text-sm">
               <div>
-                <div className="font-bold text-foreground">Your share</div>
+                <div className="font-bold text-foreground">You owe</div>
                 <div className="text-xs text-muted-foreground">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
               </div>
               <div className="text-2xl font-black text-brand">${myShare.toFixed(2)}</div>
@@ -358,14 +486,25 @@ export default function Claim() {
           ) : (
             <p className="text-center text-muted-foreground text-sm">Tap items above to claim them</p>
           )}
-          <Button
-            onClick={markMePaid}
-            disabled={myMyClaimed.length === 0 || alreadyPaid}
-            aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay your share of $${myShare.toFixed(2)}` : "Claim at least one item to pay"}
-            className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-success hover:bg-success text-success-muted-foreground" : "bg-brand hover:bg-brand/90 text-brand-foreground"}`}
-          >
-            {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}
-          </Button>
+          {session.host_payment_info && myMyClaimed.length > 0 && !alreadyPaid ? (
+            <Button
+              onClick={handlePaymentClick}
+              disabled={myMyClaimed.length === 0}
+              aria-label={`Pay $${myShare.toFixed(2)} via ${session.host_payment_info.method}`}
+              className="w-full font-bold rounded-xl h-12 text-base bg-brand hover:bg-brand/90 text-brand-foreground flex items-center justify-center gap-2"
+            >
+              Pay ${myShare.toFixed(2)} <ExternalLink className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={markMePaid}
+              disabled={myMyClaimed.length === 0 || alreadyPaid}
+              aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay your share of $${myShare.toFixed(2)}` : "Claim at least one item to pay"}
+              className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-success hover:bg-success text-success-muted-foreground" : "bg-brand hover:bg-brand/90 text-brand-foreground"}`}
+            >
+              {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}
+            </Button>
+          )}
         </div>
       </div>
     </div>
