@@ -93,6 +93,10 @@
         }
       }
     },
+    "expires_at": {
+      "type": "number",
+      "description": "Unix timestamp when session expires (30 days from creation)"
+    },
     "status": {
       "type": "string",
       "enum": [

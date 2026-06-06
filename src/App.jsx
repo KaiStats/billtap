@@ -13,6 +13,7 @@ import ThemeProvider from '@/components/ThemeProvider';
 import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
 import MutationErrorToast from '@/components/MutationErrorToast';
 import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import Home from '@/pages/Home';
 import LandingPage from '@/pages/LandingPage';
 import Privacy from '@/pages/Privacy';
@@ -127,6 +128,7 @@ const AuthenticatedApp = () => {
         </Routes>
       </AnimatePresence>
       <BottomNav />
+      <PWAInstallPrompt />
     </div>
   );
 };

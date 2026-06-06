@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Check, Loader2, ExternalLink, Copy, Smartphone } from "lucide-react";
+import { Plus, Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 
 function calcMyShare(items, myId, tax, tip) {
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
@@ -100,18 +101,44 @@ export default function Claim() {
     }
   );
 
-  const toggleClaim = (itemId) => {
+  const toggleClaim = async (itemId) => {
     if (!session) return;
-    const optimisticItems = session.items.map(item => {
-      if (item.id !== itemId) return item;
-      const claimed = item.claimed_by || [];
-      const already = claimed.includes(myId);
-      return { ...item, claimed_by: already ? claimed.filter(id => id !== myId) : [...claimed, myId] };
+    
+    const item = session.items.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const currentlyClaimed = item.claimed_by || [];
+    const isMine = currentlyClaimed.includes(myId);
+    
+    if (isMine) {
+      const optimisticItems = session.items.map(i => {
+        if (i.id !== itemId) return i;
+        return { ...i, claimed_by: currentlyClaimed.filter(id => id !== myId) };
+      });
+      const optimisticParticipants = (session.participants || []).map(p => ({
+        ...p,
+        amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
+      }));
+      claimMutation.mutate({ optimisticItems, optimisticParticipants });
+      return;
+    }
+    
+    if (currentlyClaimed.length > 0) {
+      const claimer = participants.find(p => p.participant_id === currentlyClaimed[0]);
+      const claimerName = claimer?.name || currentlyClaimed[0];
+      alert(`${claimerName} just grabbed that one!`);
+      return;
+    }
+    
+    const optimisticItems = session.items.map(i => {
+      if (i.id !== itemId) return i;
+      return { ...i, claimed_by: [myId] };
     });
     const optimisticParticipants = (session.participants || []).map(p => ({
       ...p,
       amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
     }));
+    
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
@@ -201,8 +228,19 @@ export default function Claim() {
     </div>
   );
 
+  const isExpired = session.expires_at && session.expires_at < Date.now();
+  
   if (!session) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>
+  );
+  
+  if (isExpired) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold">This session has expired</p>
+        <p className="text-sm mt-1">Sessions are active for 30 days from creation.</p>
+      </div>
+    </div>
   );
 
   const items = session.items || [];
@@ -267,28 +305,34 @@ export default function Claim() {
           const isMine = claimed.includes(myId);
           const itemTotal = item.price * (item.quantity || 1);
           const myCost = isMine ? itemTotal / claimed.length : 0;
+          const isClaimedByOther = claimed.length > 0 && !isMine;
+          const claimerInitial = claimed.length > 0 ? (participants.find(p => p.participant_id === claimed[0])?.name?.[0] || "?") : "";
 
           return (
             <button
               key={item.id}
-              onClick={() => toggleClaim(item.id)}
+              onClick={() => !isClaimedByOther && toggleClaim(item.id)}
               aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
               aria-pressed={isMine}
+              disabled={isClaimedByOther}
               className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${
                 isMine
                   ? "bg-brand-muted border-brand"
-                  : claimed.length > 0
-                  ? "bg-surface border-border opacity-60"
+                  : isClaimedByOther
+                  ? "bg-surface border-border opacity-50 cursor-not-allowed"
                   : "bg-surface-raised border-border hover:border-brand/40"
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? "bg-brand border-brand" : "border-muted-foreground/40"}`}>
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    isMine ? "bg-brand border-brand" : isClaimedByOther ? "bg-muted border-muted" : "border-muted-foreground/40"
+                  }`}>
                     {isMine && <Check className="w-3 h-3 text-brand-foreground" aria-hidden="true" />}
+                    {isClaimedByOther && <span className="text-xs font-bold text-muted-foreground">{claimerInitial}</span>}
                   </div>
                   <div>
-                    <div className={`font-semibold ${isMine ? "text-brand-muted-foreground" : "text-foreground"}`}>
+                    <div className={`font-semibold ${isMine ? "text-brand-muted-foreground" : isClaimedByOther ? "text-muted-foreground line-through" : "text-foreground"}`}>
                       {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
                     </div>
                     {claimed.length > 0 && (
@@ -304,7 +348,7 @@ export default function Claim() {
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <div className="font-bold text-foreground">${itemTotal.toFixed(2)}</div>
+                  <div className={`font-bold ${isClaimedByOther ? "text-muted-foreground" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
                   {isMine && claimed.length > 1 && (
                     <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>
                   )}
@@ -507,6 +551,7 @@ export default function Claim() {
           )}
         </div>
       </div>
+      <PWAInstallPrompt />
     </div>
   );
 }
