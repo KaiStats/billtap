@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
-import { Upload, Loader2, Wand2, X, Plus } from "lucide-react";
+import { Upload, Loader2, Wand2, X, Plus, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,7 @@ export default function NewReceipt() {
   const [tip, setTip] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
+  const [parseValidation, setParseValidation] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -67,11 +68,25 @@ Return a JSON with:
         }
       });
 
+      // Validate the parsed receipt before showing to user
+      const validation = await base44.functions.invoke("validateReceiptParse", {
+        items: result.items || [],
+        tax: result.tax || 0,
+        tip: result.tip || 0,
+        total: result.total || 0
+      });
+
       setTitle(result.title || "Receipt");
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
       setImageUrl(file_url);
+      
+      // Store validation result for UI warning
+      if (validation.data) {
+        setParseValidation(validation.data);
+      }
+      
       setStep(2);
     } catch (err) {
       console.error("Failed to parse receipt:", err);
@@ -199,6 +214,40 @@ Return a JSON with:
         {step === 2 && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-6 space-y-4">
+              {/* Validation Warning */}
+              {parseValidation && parseValidation.confidence === 'low' && (
+                <div className="bg-danger-muted border border-danger/30 rounded-xl p-3 text-danger-muted-foreground font-semibold text-sm flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
+                  <div>
+                    <p className="font-bold">⚠️ We had trouble reading this receipt clearly</p>
+                    <p className="mt-1 text-xs">Please review each item carefully before continuing.</p>
+                    {parseValidation.issues?.sumMismatch && (
+                      <p className="mt-2 text-xs">
+                        • Total mismatch: items add up to ${parseValidation.issues.calculatedTotal}, but receipt shows ${parseValidation.issues.expectedTotal}
+                      </p>
+                    )}
+                    {parseValidation.issues?.suspiciousPatterns?.map((pattern, i) => (
+                      <p key={i} className="text-xs">• {pattern}</p>
+                    ))}
+                    {parseValidation.issues?.ocrErrorPatterns?.map((pattern, i) => (
+                      <p key={i} className="text-xs">• {pattern}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {parseValidation && parseValidation.confidence === 'medium' && (
+                <div className="bg-warning-muted border border-warning/30 rounded-xl p-3 text-warning-muted-foreground font-semibold text-sm flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
+                  <div>
+                    <p className="font-bold">⚠️ Please double-check the items below</p>
+                    {parseValidation.issues?.suspiciousPatterns?.map((pattern, i) => (
+                      <p key={i} className="text-xs mt-1">• {pattern}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-success-muted border border-success/30 rounded-xl p-3 text-success-muted-foreground font-semibold text-sm flex items-center gap-2">
                 ✅ Found {items.length} items — fix anything that looks wrong
               </div>
