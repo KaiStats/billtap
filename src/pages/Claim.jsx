@@ -39,6 +39,8 @@ export default function Claim() {
   const [newItemPrice, setNewItemPrice] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
+  const [nameGateInput, setNameGateInput] = useState("");
+  const [showNameGate, setShowNameGate] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -51,6 +53,17 @@ export default function Claim() {
     }
     setLoading(false);
   }, [sessionId, myId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const stored = localStorage.getItem(`billtap-guest-name-${sessionId}`);
+    if (stored) {
+      setMyName(stored);
+      setNameInput(stored);
+    } else {
+      setShowNameGate(true);
+    }
+  }, [sessionId]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
@@ -77,6 +90,17 @@ export default function Claim() {
         participants: (s.participants || []).map(p => p.participant_id === myId ? { ...p, name } : p)
       });
     }
+  };
+
+  const handleNameGateSubmit = async () => {
+    const name = nameGateInput.trim();
+    if (name.length < 2) return;
+    localStorage.setItem(`billtap-guest-name-${sessionId}`, name);
+    localStorage.setItem("billtap_participant_name", name);
+    setMyName(name);
+    setNameInput(name);
+    setShowNameGate(false);
+    await ensureJoined(name);
   };
 
   const handleNameBlur = async () => {
@@ -360,6 +384,50 @@ export default function Claim() {
           </div>
         )}
       </div>
+
+      {/* Name Gate Modal */}
+      {showNameGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}>
+          <div className="w-full max-w-sm space-y-6 text-center">
+            {/* Logo */}
+            <div className="flex justify-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}>
+                BT
+              </div>
+            </div>
+
+            {/* Headline */}
+            <div className="space-y-2">
+              <h1 className="text-2xl font-black text-white">What's your name?</h1>
+              <p className="text-sm text-white/50">
+                The host wants to know who's paying for what 👀
+              </p>
+            </div>
+
+            {/* Input */}
+            <input
+              autoFocus
+              value={nameGateInput}
+              onChange={e => setNameGateInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && nameGateInput.trim().length >= 2 && handleNameGateSubmit()}
+              placeholder="First name is fine"
+              autoComplete="given-name"
+              className="w-full h-14 rounded-2xl border border-white/10 bg-white/5 px-4 text-center text-lg text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              style={{ fontSize: "16px" }}
+            />
+
+            {/* Submit */}
+            <button
+              onClick={handleNameGateSubmit}
+              disabled={nameGateInput.trim().length < 2}
+              className="w-full h-14 rounded-2xl font-black text-white text-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
+              style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+            >
+              Join the Split →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Zelle Modal */}
       {zelleModalOpen && session.host_payment_info && (
