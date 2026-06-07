@@ -73,10 +73,9 @@ export default function Claim() {
         status: s.status === "waiting" ? "claiming" : s.status
       });
     } else if (name && alreadyIn.name !== name) {
-      const updatedParticipants = (s.participants || []).map(p =>
-        p.participant_id === myId ? { ...p, name } : p
-      );
-      await base44.entities.Session.update(sessionId, { participants: updatedParticipants });
+      await base44.entities.Session.update(sessionId, {
+        participants: (s.participants || []).map(p => p.participant_id === myId ? { ...p, name } : p)
+      });
     }
   };
 
@@ -95,7 +94,7 @@ export default function Claim() {
       return base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
     },
     {
-      onOptimisticState: ({ optimisticItems, optimisticParticipants }) => session,
+      onOptimisticState: () => session,
       onRollback: (snapshot) => setSession(snapshot),
       onSuccess: (updated) => setSession(updated),
     }
@@ -103,53 +102,29 @@ export default function Claim() {
 
   const toggleClaim = async (itemId) => {
     if (!session) return;
-    
     const item = session.items.find(i => i.id === itemId);
     if (!item) return;
-    
     const currentlyClaimed = item.claimed_by || [];
     const isMine = currentlyClaimed.includes(myId);
-    
     if (isMine) {
-      const optimisticItems = session.items.map(i => {
-        if (i.id !== itemId) return i;
-        return { ...i, claimed_by: currentlyClaimed.filter(id => id !== myId) };
-      });
-      const optimisticParticipants = (session.participants || []).map(p => ({
-        ...p,
-        amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
-      }));
+      const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: currentlyClaimed.filter(id => id !== myId) });
+      const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
       claimMutation.mutate({ optimisticItems, optimisticParticipants });
       return;
     }
-    
     if (currentlyClaimed.length > 0) {
       const claimer = participants.find(p => p.participant_id === currentlyClaimed[0]);
-      const claimerName = claimer?.name || currentlyClaimed[0];
-      alert(`${claimerName} just grabbed that one!`);
+      alert(`${claimer?.name || currentlyClaimed[0]} just grabbed that one!`);
       return;
     }
-    
-    const optimisticItems = session.items.map(i => {
-      if (i.id !== itemId) return i;
-      return { ...i, claimed_by: [myId] };
-    });
-    const optimisticParticipants = (session.participants || []).map(p => ({
-      ...p,
-      amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100
-    }));
-    
+    const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [myId] });
+    const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
   const addItemMutation = useMutationOptimistic(
-    ({ updatedItems, total }) =>
-      base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total }),
-    {
-      onOptimisticState: ({ updatedItems, total }) => session,
-      onRollback: (snapshot) => setSession(snapshot),
-      onSuccess: (updated) => setSession(updated),
-    }
+    ({ updatedItems, total }) => base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total }),
+    { onOptimisticState: () => session, onRollback: (s) => setSession(s), onSuccess: (u) => setSession(u) }
   );
 
   const handleAddItem = () => {
@@ -157,19 +132,13 @@ export default function Claim() {
     const newItem = { id: `item-${Date.now()}`, name: newItemName.trim(), price: parseFloat(newItemPrice) || 0, quantity: 1, claimed_by: [] };
     const updatedItems = [...(session.items || []), newItem];
     const subtotal = updatedItems.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0);
-    const total = subtotal + (session.tax || 0) + (session.tip || 0);
-    addItemMutation.mutate({ updatedItems, total });
+    addItemMutation.mutate({ updatedItems, total: subtotal + (session.tax || 0) + (session.tip || 0) });
     setNewItemName(""); setNewItemPrice(""); setAddingItem(false);
   };
 
   const paidMutation = useMutationOptimistic(
-    ({ updatedParticipants, newStatus }) =>
-      base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
-    {
-      onOptimisticState: ({ updatedParticipants, newStatus }) => session,
-      onRollback: (snapshot) => setSession(snapshot),
-      onSuccess: (updated) => setSession(updated),
-    }
+    ({ updatedParticipants, newStatus }) => base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
+    { onOptimisticState: () => session, onRollback: (s) => setSession(s), onSuccess: (u) => setSession(u) }
   );
 
   const markMePaid = () => {
@@ -185,14 +154,11 @@ export default function Claim() {
   const getPaymentLink = () => {
     const hostInfo = session.host_payment_info;
     if (!hostInfo || myShare <= 0) return null;
-    
     const amount = myShare.toFixed(2);
     const handle = hostInfo.handle.startsWith('@') ? hostInfo.handle : `@${hostInfo.handle}`;
     const note = encodeURIComponent("BillTap Split");
-    
-    if (hostInfo.method === "venmo") {
-      return `venmo://paycharge?txn=pay&recipients=${handle}&amount=${amount}&note=${note}`;
-    } else if (hostInfo.method === "cashapp") {
+    if (hostInfo.method === "venmo") return `venmo://paycharge?txn=pay&recipients=${handle}&amount=${amount}&note=${note}`;
+    if (hostInfo.method === "cashapp") {
       const cashHandle = hostInfo.handle.startsWith('$') ? hostInfo.handle : `$${hostInfo.handle}`;
       return `cashapp://cash.app/${cashHandle}/${amount}`;
     }
@@ -202,11 +168,8 @@ export default function Claim() {
   const handlePaymentClick = () => {
     const link = getPaymentLink();
     if (link) {
-      if (session.host_payment_info.method === "zelle") {
-        setZelleModalOpen(true);
-      } else {
-        window.location.href = link;
-      }
+      if (session.host_payment_info.method === "zelle") setZelleModalOpen(true);
+      else window.location.href = link;
     } else {
       setShowPaymentModal(true);
     }
@@ -214,10 +177,7 @@ export default function Claim() {
 
   if (!sessionId) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
-      <div>
-        <p className="text-lg font-semibold">No session found</p>
-        <p className="text-sm mt-1">Please scan the QR code again to join a split.</p>
-      </div>
+      <div><p className="text-lg font-semibold">No session found</p><p className="text-sm mt-1">Please scan the QR code again.</p></div>
     </div>
   );
 
@@ -228,18 +188,11 @@ export default function Claim() {
     </div>
   );
 
-  const isExpired = session.expires_at && session.expires_at < Date.now();
-  
-  if (!session) return (
-    <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>
-  );
-  
+  const isExpired = session?.expires_at && session.expires_at < Date.now();
+  if (!session) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>;
   if (isExpired) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
-      <div>
-        <p className="text-lg font-semibold">This session has expired</p>
-        <p className="text-sm mt-1">Sessions are active for 30 days from creation.</p>
-      </div>
+      <div><p className="text-lg font-semibold">This session has expired</p><p className="text-sm mt-1">Sessions are active for 30 days.</p></div>
     </div>
   );
 
@@ -258,31 +211,28 @@ export default function Claim() {
   };
 
   return (
-    <div className="min-h-screen bg-surface" style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
-      {/* Header */}
-      <div className="bg-surface-raised border-b border-border px-5 py-3 sticky top-0 z-10">
+    <div className="min-h-screen bg-background" style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
+
+      {/* Sticky Header */}
+      <div
+        className="sticky top-0 z-10 px-4 py-3"
+        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+      >
         <div className="max-w-lg mx-auto space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="font-black text-foreground">{session.title}</h1>
-              <p className="text-xs text-muted-foreground">Tap what you ordered 👆</p>
+              <h1 className="font-black text-white text-base">{session.title}</h1>
+              <p className="text-xs text-white/50">Tap what you ordered 👆</p>
             </div>
             <div className="text-right">
-              <div className="text-xs text-muted-foreground">{claimedCount}/{items.length} claimed</div>
-              <div
-                role="progressbar"
-                aria-valuenow={claimedCount}
-                aria-valuemin={0}
-                aria-valuemax={items.length}
-                aria-label="Items claimed"
-                className="w-24 bg-muted rounded-full h-1.5 mt-1"
-              >
-                <div className="bg-brand h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
+              <div className="text-xs text-white/40">{claimedCount}/{items.length} claimed</div>
+              <div role="progressbar" aria-valuenow={claimedCount} aria-valuemin={0} aria-valuemax={items.length} aria-label="Items claimed" className="w-24 bg-white/10 rounded-full h-1.5 mt-1">
+                <div className="h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor="participant-name" className="text-xs text-muted-foreground shrink-0">Your name:</label>
+            <label htmlFor="participant-name" className="text-xs text-white/40 shrink-0">Your name:</label>
             <input
               id="participant-name"
               value={nameInput}
@@ -292,13 +242,14 @@ export default function Claim() {
               placeholder="optional"
               autoComplete="nickname"
               aria-label="Your name (optional)"
-              className="flex-1 h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-foreground"
+              className="flex-1 h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
               style={{ minHeight: "44px", fontSize: "16px" }}
             />
           </div>
         </div>
       </div>
 
+      {/* Items */}
       <div className="max-w-lg mx-auto px-4 py-4 space-y-2">
         {items.map(item => {
           const claimed = item.claimed_by || [];
@@ -315,43 +266,48 @@ export default function Claim() {
               aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
               aria-pressed={isMine}
               disabled={isClaimedByOther}
-              className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${
+              className={`w-full text-left p-4 rounded-2xl transition-all ${
                 isMine
-                  ? "bg-brand-muted border-brand"
+                  ? "border-2 border-brand"
                   : isClaimedByOther
-                  ? "bg-surface border-border opacity-50 cursor-not-allowed"
-                  : "bg-surface-raised border-border hover:border-brand/40"
+                  ? "opacity-50 cursor-not-allowed border-2 border-transparent"
+                  : "border-2 border-transparent hover:border-brand/30"
               }`}
+              style={
+                isMine
+                  ? { background: 'rgba(102,126,234,0.15)' }
+                  : isClaimedByOther
+                  ? { background: 'rgba(255,255,255,0.02)', border: '2px solid transparent' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }
+              }
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                    isMine ? "bg-brand border-brand" : isClaimedByOther ? "bg-muted border-muted" : "border-muted-foreground/40"
+                    isMine ? "bg-brand border-brand" : isClaimedByOther ? "bg-white/10 border-white/20" : "border-white/20"
                   }`}>
-                    {isMine && <Check className="w-3 h-3 text-brand-foreground" aria-hidden="true" />}
-                    {isClaimedByOther && <span className="text-xs font-bold text-muted-foreground">{claimerInitial}</span>}
+                    {isMine && <Check className="w-3 h-3 text-white" aria-hidden="true" />}
+                    {isClaimedByOther && <span className="text-xs font-bold text-white/50">{claimerInitial}</span>}
                   </div>
                   <div>
-                    <div className={`font-semibold ${isMine ? "text-brand-muted-foreground" : isClaimedByOther ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                    <div className={`font-semibold text-sm ${isMine ? "text-white" : isClaimedByOther ? "text-white/30 line-through" : "text-foreground"}`}>
                       {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
                     </div>
                     {claimed.length > 0 && (
                       <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                         {claimed.map(pid => (
-                          <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-brand-muted text-brand-muted-foreground" : "bg-muted text-muted-foreground"}`}>
+                          <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-brand/20 text-brand-muted-foreground" : "bg-white/5 text-white/40"}`}>
                             👤 {getName(pid)}
                           </span>
                         ))}
-                        {claimed.length > 1 && <span className="text-xs text-muted-foreground">÷{claimed.length}</span>}
+                        {claimed.length > 1 && <span className="text-xs text-white/30">÷{claimed.length}</span>}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <div className={`font-bold ${isClaimedByOther ? "text-muted-foreground" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
-                  {isMine && claimed.length > 1 && (
-                    <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>
-                  )}
+                  <div className={`font-bold text-sm ${isClaimedByOther ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
+                  {isMine && claimed.length > 1 && <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>}
                 </div>
               </div>
             </button>
@@ -362,51 +318,32 @@ export default function Claim() {
         {!addingItem ? (
           <button
             onClick={() => setAddingItem(true)}
-            aria-label="Add a missing item to the bill"
-            className="w-full p-3 rounded-2xl border-2 border-dashed border-border text-muted-foreground hover:border-brand/50 hover:text-brand transition-all text-sm font-medium flex items-center justify-center gap-2"
+            aria-label="Add a missing item"
+            className="w-full p-3 rounded-2xl border-2 border-dashed border-white/10 text-white/40 hover:border-brand/40 hover:text-brand transition-all text-sm font-medium flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4" aria-hidden="true" /> Add missing item
           </button>
         ) : (
-          <Card className="rounded-2xl border-0 shadow-sm">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  value={newItemName}
-                  onChange={e => setNewItemName(e.target.value)}
-                  placeholder="Item name"
-                  aria-label="New item name"
-                  className="flex-1 rounded-xl text-sm"
-                  autoFocus
-                />
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  value={newItemPrice}
-                  onChange={e => setNewItemPrice(e.target.value)}
-                  placeholder="$0.00"
-                  aria-label="New item price"
-                  className="w-20 rounded-xl text-sm"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddItem} className="flex-1 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Add</Button>
-                <Button size="sm" variant="outline" onClick={() => setAddingItem(false)} className="rounded-xl">Cancel</Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="flex gap-2">
+              <Input value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Item name" aria-label="New item name" className="flex-1 rounded-xl text-sm" autoFocus />
+              <Input type="number" inputMode="decimal" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} placeholder="$0.00" aria-label="New item price" className="w-20 rounded-xl text-sm" />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleAddItem} className="flex-1 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Add</Button>
+              <Button size="sm" variant="outline" onClick={() => setAddingItem(false)} className="rounded-xl">Cancel</Button>
+            </div>
+          </div>
         )}
 
-        {/* Who else is claiming */}
+        {/* Participants */}
         {participants.length > 1 && (
           <div className="pt-2">
             <p className="text-xs text-muted-foreground font-medium mb-2">In this split:</p>
             <div className="flex gap-2 flex-wrap">
               {participants.map(p => (
-                <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand-muted text-brand-muted-foreground" : "bg-muted text-muted-foreground"}`}>
-                  <div className="w-4 h-4 rounded-full bg-current opacity-60 flex items-center justify-center text-[8px]">
-                    {(p.name || "?")[0].toUpperCase()}
-                  </div>
+                <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand/20 text-brand-muted-foreground border border-brand/30" : "bg-white/5 text-white/50 border border-white/10"}`}>
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-current opacity-60">{(p.name || "?")[0].toUpperCase()}</div>
                   {p.participant_id === myId ? "You" : p.name}
                   {p.payment_status === "paid" && " ✓"}
                 </div>
@@ -416,53 +353,34 @@ export default function Claim() {
         )}
       </div>
 
-      {/* Payment Modals */}
+      {/* Zelle Modal */}
       {zelleModalOpen && session.host_payment_info && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setZelleModalOpen(false)}>
-          <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Send via Zelle</CardTitle>
-            </CardHeader>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setZelleModalOpen(false)}>
+          <Card className="w-full max-w-sm rounded-2xl" onClick={e => e.stopPropagation()}>
+            <CardHeader className="pb-3"><CardTitle className="text-lg">Send via Zelle</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="text-center">
                 <p className="text-sm text-muted-foreground mb-1">Send to:</p>
                 <p className="text-lg font-bold text-foreground">{session.host_payment_info.handle}</p>
-                <p className="text-2xl font-black text-brand mt-2">${myShare.toFixed(2)}</p>
+                <p className="text-3xl font-black text-brand mt-2">${myShare.toFixed(2)}</p>
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(session.host_payment_info.handle);
-                  }}
-                  className="flex-1"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy
+                <Button variant="outline" onClick={() => navigator.clipboard.writeText(session.host_payment_info.handle)} className="flex-1">
+                  <Copy className="w-4 h-4 mr-2" /> Copy
                 </Button>
-                <Button
-                  onClick={() => {
-                    setZelleModalOpen(false);
-                    markMePaid();
-                  }}
-                  className="flex-1 bg-brand hover:bg-brand/90"
-                >
-                  I've Sent Payment
-                </Button>
+                <Button onClick={() => { setZelleModalOpen(false); markMePaid(); }} className="flex-1 bg-brand hover:bg-brand/90">I've Sent Payment</Button>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
 
+      {/* Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShowPaymentModal(false)}>
-          <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowPaymentModal(false)}>
+          <Card className="w-full max-w-sm rounded-2xl" onClick={e => e.stopPropagation()}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Smartphone className="w-5 h-5" />
-                Payment Complete
-              </CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><Smartphone className="w-5 h-5" /> Payment</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="text-center">
@@ -472,37 +390,18 @@ export default function Claim() {
               {session.host_payment_info ? (
                 <>
                   <p className="text-xs text-muted-foreground text-center">
-                    Send payment to <strong className="text-foreground">{session.host_payment_info.handle}</strong> via {session.host_payment_info.method === "venmo" ? "Venmo" : session.host_payment_info.method === "cashapp" ? "Cash App" : "Zelle"}
+                    Send to <strong className="text-foreground">{session.host_payment_info.handle}</strong> via {session.host_payment_info.method === "venmo" ? "Venmo" : session.host_payment_info.method === "cashapp" ? "Cash App" : "Zelle"}
                   </p>
-                  <Button
-                    onClick={markMePaid}
-                    className="w-full bg-brand hover:bg-brand/90 font-bold rounded-xl h-12"
-                  >
-                    ✓ I've Sent Payment
-                  </Button>
+                  <Button onClick={markMePaid} className="w-full bg-brand hover:bg-brand/90 font-bold rounded-xl h-12">✓ I've Sent Payment</Button>
                 </>
               ) : (
                 <>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Ask {session.participants?.find(p => p.participant_id === session.created_by_id)?.name || "the host"} how they want to be paid
-                  </p>
+                  <p className="text-xs text-muted-foreground text-center">Ask the host how they want to be paid</p>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`I owe $${myShare.toFixed(2)} for ${session.title}`);
-                      }}
-                      className="flex-1"
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy Total
+                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(`I owe $${myShare.toFixed(2)} for ${session.title}`)} className="flex-1">
+                      <Copy className="w-4 h-4 mr-2" /> Copy Total
                     </Button>
-                    <Button
-                      onClick={markMePaid}
-                      className="flex-1 bg-brand hover:bg-brand/90"
-                    >
-                      Mark as Sent
-                    </Button>
+                    <Button onClick={markMePaid} className="flex-1 bg-brand hover:bg-brand/90">Mark as Sent</Button>
                   </div>
                 </>
               )}
@@ -511,43 +410,45 @@ export default function Claim() {
         </div>
       )}
 
-      {/* Sticky bottom bar */}
+      {/* Sticky Bottom Bar */}
       <div
         role="region"
         aria-label="Your bill summary"
-        className="fixed bottom-0 left-0 right-0 bg-surface-raised border-t border-border shadow-xl p-4"
-        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+        className="fixed bottom-0 left-0 right-0 shadow-2xl p-4"
+        style={{ background: 'rgba(15,12,41,0.95)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.1)', paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-lg mx-auto space-y-3">
           {myMyClaimed.length > 0 ? (
-            <div className="flex justify-between items-center text-sm">
+            <div className="flex justify-between items-center">
               <div>
-                <div className="font-bold text-foreground">You owe</div>
-                <div className="text-xs text-muted-foreground">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
+                <div className="font-bold text-white text-sm">You owe</div>
+                <div className="text-xs text-white/50">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
               </div>
-              <div className="text-2xl font-black text-brand">${myShare.toFixed(2)}</div>
+              <div className="text-3xl font-black text-brand">${myShare.toFixed(2)}</div>
             </div>
           ) : (
-            <p className="text-center text-muted-foreground text-sm">Tap items above to claim them</p>
+            <p className="text-center text-white/40 text-sm">Tap items above to claim them</p>
           )}
           {session.host_payment_info && myMyClaimed.length > 0 && !alreadyPaid ? (
-            <Button
+            <button
               onClick={handlePaymentClick}
               disabled={myMyClaimed.length === 0}
               aria-label={`Pay $${myShare.toFixed(2)} via ${session.host_payment_info.method}`}
-              className="w-full font-bold rounded-xl h-12 text-base bg-brand hover:bg-brand/90 text-brand-foreground flex items-center justify-center gap-2"
+              className="w-full h-14 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
             >
               Pay ${myShare.toFixed(2)} <ExternalLink className="w-4 h-4" />
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
               onClick={markMePaid}
               disabled={myMyClaimed.length === 0 || alreadyPaid}
-              aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay your share of $${myShare.toFixed(2)}` : "Claim at least one item to pay"}
-              className={`w-full font-bold rounded-xl h-12 text-base ${alreadyPaid ? "bg-success hover:bg-success text-success-muted-foreground" : "bg-brand hover:bg-brand/90 text-brand-foreground"}`}
+              aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim at least one item"}
+              className={`w-full h-14 font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 ${alreadyPaid ? "bg-success text-white" : "text-white hover:-translate-y-0.5 active:translate-y-0"}`}
+              style={alreadyPaid ? {} : { background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
             >
               {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}
-            </Button>
+            </button>
           )}
         </div>
       </div>

@@ -1,55 +1,61 @@
-import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
-import { Plus, Receipt, CheckCircle2, Clock, Users } from "lucide-react";
+import { Plus, Receipt, CheckCircle2, Clock, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import ListLayout from "@/components/ListLayout";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 
-const statusColors = {
-  waiting: "bg-warning-muted text-warning-muted-foreground",
-  claiming: "bg-info-muted text-info-muted-foreground",
-  completed: "bg-success-muted text-success-muted-foreground",
+const statusConfig = {
+  waiting:   { label: "Waiting",     cls: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
+  claiming:  { label: "In Progress", cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20" },
+  completed: { label: "Done",        cls: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" },
 };
 
 const SessionCard = memo(function SessionCard({ session, onClick }) {
-   const paid = (session.participants || []).filter(p => p.payment_status === "paid").length;
-   const total = (session.participants || []).length;
-   return (
-     <button onClick={onClick} aria-label={`${session.title}: $${(session.total_amount || 0).toFixed(2)} - ${paid} of ${total} paid`} className="w-full text-left">
-       <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-        <CardContent className="p-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-brand-muted rounded-xl flex items-center justify-center">
-              <Receipt className="w-6 h-6 text-brand" aria-hidden="true" />
-            </div>
-            <div>
-              <div className="font-bold text-foreground text-base">{session.title}</div>
-              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
-                <Users className="w-3.5 h-3.5" aria-hidden="true" />
-                {total} people · ${(session.total_amount || 0).toFixed(2)}
-              </div>
-            </div>
+  const paid  = (session.participants || []).filter(p => p.payment_status === "paid").length;
+  const total = (session.participants || []).length;
+  const { label, cls } = statusConfig[session.status] || statusConfig.waiting;
+
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`${session.title}: $${(session.total_amount || 0).toFixed(2)} - ${paid} of ${total} paid`}
+      className="w-full text-left rounded-2xl p-4 flex items-center justify-between transition-all"
+      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+      onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.15)'}
+      onMouseLeave={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.07)'}
+    >
+      <div className="flex items-center gap-4">
+        <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shrink-0">
+          <Receipt className="w-5 h-5 text-white" aria-hidden="true" />
+        </div>
+        <div>
+          <div className="font-bold text-foreground text-base">{session.title}</div>
+          <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+            <Users className="w-3.5 h-3.5" aria-hidden="true" />
+            {total} people ·{' '}
+            <span className="text-brand font-semibold">${(session.total_amount || 0).toFixed(2)}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-muted-foreground">{paid}/{total} paid</div>
-            <Badge className={statusColors[session.status] || statusColors.waiting}>
-              {session.status || "waiting"}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="text-right">
+          <div className="text-xs text-muted-foreground mb-1">{paid}/{total} paid</div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`}>{label}</span>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground ml-1" aria-hidden="true" />
+      </div>
     </button>
   );
 });
 
 export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const { pushScreen } = useTabNav();
 
@@ -62,16 +68,11 @@ export default function Dashboard() {
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
-  // Real-time updates
   useEffect(() => {
     const unsub = base44.entities.Session.subscribe((event) => {
-      if (event.type === 'create') {
-        setSessions(prev => [event.data, ...prev]);
-      } else if (event.type === 'update') {
-        setSessions(prev => prev.map(s => s.id === event.id ? event.data : s));
-      } else if (event.type === 'delete') {
-        setSessions(prev => prev.filter(s => s.id !== event.id));
-      }
+      if (event.type === 'create')  setSessions(prev => [event.data, ...prev]);
+      if (event.type === 'update')  setSessions(prev => prev.map(s => s.id === event.id ? event.data : s));
+      if (event.type === 'delete')  setSessions(prev => prev.filter(s => s.id !== event.id));
     });
     return unsub;
   }, []);
@@ -83,63 +84,88 @@ export default function Dashboard() {
       sum + (s.participants || []).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
   }), [sessions]);
 
+  const statCards = [
+    { label: "Bills Split",   value: sessions.length,             icon: Receipt,      color: "from-violet-500 to-purple-600" },
+    { label: "Outstanding",   value: `$${totalOwed.toFixed(2)}`,  icon: Clock,        color: "from-amber-400 to-orange-400" },
+    { label: "Collected",     value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "from-emerald-400 to-teal-500" },
+  ];
+
   return (
     <>
       {loading && <DashboardSkeleton />}
-      {!loading && <ListLayout onRefresh={fetchSessions}>
-        <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto p-5 space-y-5 pb-28">
+      {!loading && (
+        <ListLayout onRefresh={fetchSessions}>
+          <div ref={scrollRef} onScroll={onScroll} className="max-w-4xl mx-auto px-5 space-y-5 pb-28 pt-5">
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: "Bills Split", value: sessions.length, icon: Receipt, iconClass: "text-brand bg-brand-muted" },
-              { label: "Outstanding", value: `$${totalOwed.toFixed(2)}`, icon: Clock, iconClass: "text-warning bg-warning-muted" },
-              { label: "Collected", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, iconClass: "text-success bg-success-muted" },
-            ].map(({ label, value, icon: Icon, iconClass }) => (
-              <Card key={label} className="rounded-2xl border-0 shadow-sm" aria-label={`${label}: ${value}`}>
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${iconClass}`}>
-                    <Icon className="w-6 h-6" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-black text-foreground" aria-hidden="true">{value}</div>
-                    <div className="text-sm text-muted-foreground" aria-hidden="true">{label}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Header */}
-          <div className="flex items-center justify-between pt-2">
-            <div>
-              <h1 className="text-2xl font-black text-foreground">BillTap</h1>
-              <p className="text-muted-foreground text-sm mt-0.5">Your bills &amp; splits</p>
+            {/* Page header */}
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <h1 className="text-2xl font-black text-foreground tracking-tight">Your Bills</h1>
+                <p className="text-muted-foreground text-sm mt-0.5">Your recent splits</p>
+              </div>
+              <button
+                onClick={() => pushScreen(createPageUrl("NewReceipt"))}
+                aria-label="Create new bill split"
+                className="flex items-center gap-2 px-4 h-11 text-white font-bold rounded-xl text-sm shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0"
+                style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+              >
+                <Plus className="w-4 h-4" aria-hidden="true" /> New Split
+              </button>
             </div>
-            <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} aria-label="Create new bill split" className="bg-brand hover:bg-brand/90 text-brand-foreground font-semibold rounded-xl h-12 px-4">
-              <Plus className="mr-2 w-4 h-4" aria-hidden="true" /> New Split
-            </Button>
-          </div>
 
-          {loading ? null : sessions.length === 0 ? (
-            <div className="text-center py-20">
-              <Receipt className="w-16 h-16 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
-              <p className="text-muted-foreground text-lg">No bills yet.</p>
-              <Button onClick={() => pushScreen(createPageUrl("NewReceipt"))} className="mt-4 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Split your first bill</Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {sessions.map((session) => (
-                <SessionCard
-                  key={session.id}
-                  session={session}
-                  onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
-                />
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {statCards.map(({ label, value, icon: Icon, color }) => (
+                <div
+                  key={label}
+                  className="rounded-2xl p-4"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  aria-label={`${label}: ${value}`}
+                >
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-3`}>
+                    <Icon className="w-4 h-4 text-white" aria-hidden="true" />
+                  </div>
+                  <div className="text-xl font-black text-foreground">{value}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+                </div>
               ))}
             </div>
-          )}
-        </div>
-      </ListLayout>}
+
+            {/* Sessions list */}
+            {sessions.length === 0 ? (
+              <div
+                className="text-center py-16 rounded-2xl"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+                  <Receipt className="w-8 h-8 text-white" aria-hidden="true" />
+                </div>
+                <h2 className="text-xl font-bold text-foreground mb-2">No bills yet</h2>
+                <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
+                  Snap a receipt and split it with your table in 30 seconds.
+                </p>
+                <Button
+                  onClick={() => pushScreen(createPageUrl("NewReceipt"))}
+                  className="bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl"
+                >
+                  Split your first bill
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-foreground">All Splits</h2>
+                {sessions.map((session) => (
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </ListLayout>
+      )}
     </>
   );
 }

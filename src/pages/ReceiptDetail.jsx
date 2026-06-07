@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { createPageUrl } from "@/utils";
-import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper } from "lucide-react";
+import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,10 @@ import AppHeader from "@/components/AppHeader";
 import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 
-const statusColors = {
-  unpaid: "bg-danger-muted text-danger-muted-foreground",
-  pending: "bg-warning-muted text-warning-muted-foreground",
-  paid: "bg-success-muted text-success-muted-foreground",
+const paymentStatusConfig = {
+  unpaid:               { cls: "bg-danger-muted text-danger-muted-foreground" },
+  pending_verification: { cls: "bg-warning-muted text-warning-muted-foreground" },
+  paid:                 { cls: "bg-success-muted text-success-muted-foreground" },
 };
 
 export default function ReceiptDetail() {
@@ -22,11 +22,11 @@ export default function ReceiptDetail() {
   const [loading, setLoading] = useState(true);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
-  const isHost = new URLSearchParams(window.location.search).get("host") === "1";
+  const isHost    = new URLSearchParams(window.location.search).get("host") === "1";
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
-    const data = await base44.entities.Session.list("-created_date", 200);
+    const data  = await base44.entities.Session.list("-created_date", 200);
     const found = data.find(s => s.id === sessionId) || null;
     setSession(found);
     setLoading(false);
@@ -46,7 +46,7 @@ export default function ReceiptDetail() {
     ({ updatedParticipants, newStatus }) =>
       base44.entities.Session.update(session.id, { participants: updatedParticipants, status: newStatus }),
     {
-      onOptimisticState: ({ updatedParticipants, newStatus }) => session,
+      onOptimisticState: () => session,
       onRollback: (snapshot) => setSession(snapshot),
       onSuccess: (updated) => setSession(updated),
     }
@@ -61,18 +61,20 @@ export default function ReceiptDetail() {
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-background">
       <AppHeader title="" />
       <ReceiptDetailSkeleton />
     </div>
   );
   if (!session) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>;
 
-  const participants = session.participants || [];
-  const items = session.items || [];
-  const paid = participants.filter(p => p.payment_status === "paid").length;
-  const total = participants.length;
-  const claimedCount = items.filter(i => (i.claimed_by || []).length > 0).length;
+  const participants  = session.participants || [];
+  const items         = session.items || [];
+  const paid          = participants.filter(p => p.payment_status === "paid").length;
+  const total         = participants.length;
+  const claimedCount  = items.filter(i => (i.claimed_by || []).length > 0).length;
+  const allPaid       = participants.length > 0 && participants.every(p => p.payment_status === "paid");
+  const paidPct       = total > 0 ? Math.round((paid / total) * 100) : 0;
 
   const getName = (pid) => {
     const p = participants.find(x => x.participant_id === pid);
@@ -89,83 +91,82 @@ export default function ReceiptDetail() {
     </button>
   ) : null;
 
-  const allPaid = participants.length > 0 && participants.every(p => p.payment_status === "paid");
-
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-background pb-8">
       <AppHeader title={session.title || "Bill Details"} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
-      <div className="max-w-2xl mx-auto p-5 space-y-5" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}>
 
-        {/* All Settled Banner */}
-        {allPaid && (
-          <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-r from-success-muted to-success-muted/50">
-            <CardContent className="p-4 flex items-center gap-3">
-              <PartyPopper className="w-6 h-6 text-success" aria-hidden="true" />
-              <div className="flex-1">
-                <p className="font-bold text-success">All Settled! 🎉</p>
-                <p className="text-xs text-success-muted-foreground">Everyone has paid their share</p>
+      {/* Hero Summary */}
+      <div
+        className="relative overflow-hidden px-5 pt-6 pb-6"
+        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <div style={{ position: 'absolute', top: '-30%', right: '-10%', width: '40vw', height: '40vw', maxWidth: 220, maxHeight: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(102,126,234,0.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          {/* All Settled Banner */}
+          {allPaid && (
+            <div className="flex items-center gap-3 mb-4 px-4 py-3 rounded-2xl" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)' }}>
+              <PartyPopper className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+              <div>
+                <p className="font-bold text-emerald-400 text-sm">All Settled! 🎉</p>
+                <p className="text-xs text-emerald-400/70">Everyone has paid their share</p>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
 
-        <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between mb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3 text-white/60 text-sm flex-wrap">
+                <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" aria-hidden="true" /> {total} people</span>
+                <span className="flex items-center gap-1"><Receipt className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span className="text-white font-bold">${(session.total_amount || 0).toFixed(2)}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-sm flex-wrap">
+                <span className="text-emerald-400 font-semibold">{paid}/{total} paid</span>
+                <span className="text-white/40">{claimedCount}/{items.length} items claimed</span>
+              </div>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${session.status === "completed" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-blue-500/20 text-blue-400 border border-blue-500/30"}`}>
+              {session.status}
+            </span>
+          </div>
+
+          {/* Payment progress bar */}
           <div>
-            <div className="flex items-center gap-3 mt-0 text-muted-foreground text-sm flex-wrap">
-              <span className="flex items-center gap-1"><Users className="w-4 h-4" aria-hidden="true" /> {total} people</span>
-              <span className="flex items-center gap-1"><Receipt className="w-4 h-4" aria-hidden="true" /> ${(session.total_amount || 0).toFixed(2)} total</span>
-              <span className="font-semibold text-success">{paid}/{total} paid</span>
-              <span className="text-muted-foreground">{claimedCount}/{items.length} items claimed</span>
+            <div className="flex justify-between text-xs text-white/40 mb-1">
+              <span>Payments received</span><span>{paidPct}%</span>
+            </div>
+            <div role="progressbar" aria-valuenow={paid} aria-valuemin={0} aria-valuemax={total} aria-label="Payments received" className="w-full bg-white/10 rounded-full h-2">
+              <div className="h-2 rounded-full transition-all" style={{ width: `${paidPct}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
             </div>
           </div>
-          <div>
-            <Badge className={session.status === "completed" ? "bg-success-muted text-success-muted-foreground" : "bg-info-muted text-info-muted-foreground"}>
-              {session.status}
-            </Badge>
-          </div>
         </div>
+      </div>
 
-        {/* Progress bar */}
-        <div>
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Items claimed</span><span>{claimedCount}/{items.length}</span>
-          </div>
-          <div
-            role="progressbar"
-            aria-valuenow={claimedCount}
-            aria-valuemin={0}
-            aria-valuemax={items.length}
-            aria-label="Items claimed"
-            className="w-full bg-muted rounded-full h-2"
-          >
-            <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%` }} />
-          </div>
-        </div>
+      <div className="max-w-2xl mx-auto px-5 py-5 space-y-4">
 
-        {/* Image */}
+        {/* Receipt image */}
         {session.image_url && (
-          <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
-            <img 
-              src={session.image_url} 
-              alt={`Receipt for ${session.title}`} 
-              loading="lazy"
-              decoding="async"
-              className="w-full max-h-64 object-contain bg-muted" 
-            />
-          </Card>
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+            <img src={session.image_url} alt={`Receipt for ${session.title}`} loading="lazy" decoding="async" className="w-full max-h-64 object-contain bg-muted" />
+          </div>
         )}
 
         {/* Items */}
         {items.length > 0 && (
-          <Card className="rounded-2xl border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5"><CardTitle className="text-base">Items</CardTitle></CardHeader>
-            <CardContent className="px-5 pb-5 space-y-2">
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="px-5 pt-4 pb-2">
+              <h2 className="text-lg font-semibold text-foreground">Items</h2>
+            </div>
+            <div className="px-5 pb-5 space-y-2">
               {items.map((item, i) => {
                 const claimed = item.claimed_by || [];
                 return (
-                  <div key={i} className="flex justify-between text-sm items-center">
+                  <div key={i} className="flex justify-between text-sm items-start py-1">
                     <div>
-                      <span className="text-foreground">{item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}</span>
+                      <span className="text-foreground font-medium">{item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}</span>
                       {claimed.length > 0 && (
                         <div className="flex gap-1 mt-0.5 flex-wrap">
                           {claimed.map(pid => (
@@ -174,12 +175,12 @@ export default function ReceiptDetail() {
                         </div>
                       )}
                     </div>
-                    <span className="font-semibold text-foreground">${(item.price * (item.quantity || 1)).toFixed(2)}</span>
+                    <span className="font-semibold text-foreground shrink-0 ml-4">${(item.price * (item.quantity || 1)).toFixed(2)}</span>
                   </div>
                 );
               })}
               {session.tax > 0 && (
-                <div className="flex justify-between text-sm text-muted-foreground pt-1 border-t border-border">
+                <div className="flex justify-between text-sm text-muted-foreground pt-2 border-t border-border">
                   <span>Tax</span><span>${session.tax.toFixed(2)}</span>
                 </div>
               )}
@@ -191,39 +192,49 @@ export default function ReceiptDetail() {
               <div className="flex justify-between font-black text-base pt-2 border-t border-border">
                 <span>Total</span><span className="text-brand">${(session.total_amount || 0).toFixed(2)}</span>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
         {/* Participants */}
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardHeader className="pb-2 pt-5 px-5"><CardTitle className="text-base">Who owes what</CardTitle></CardHeader>
-          <CardContent className="px-5 pb-5 space-y-3">
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-5 pt-4 pb-2">
+            <h2 className="text-lg font-semibold text-foreground">Who owes what</h2>
+          </div>
+          <div className="px-5 pb-5 space-y-3">
             {participants.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-3">No one has joined yet. Share the QR code!</p>
+              <p className="text-muted-foreground text-sm text-center py-4">No one has joined yet. Share the QR code!</p>
             ) : participants.map((p) => (
-              <div key={p.participant_id} className="flex items-center justify-between p-3 bg-surface rounded-xl">
+              <div
+                key={p.participant_id}
+                className="flex items-center justify-between p-4 rounded-xl"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+              >
                 <div>
                   <div className="font-semibold text-foreground">{p.name}</div>
-                  <div className="text-brand font-black text-lg mt-0.5">${(p.amount_owed || 0).toFixed(2)}</div>
+                  <div className="text-brand font-black text-xl mt-0.5">${(p.amount_owed || 0).toFixed(2)}</div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <Badge className={statusColors[p.payment_status] || statusColors.unpaid}>
+                  <Badge className={paymentStatusConfig[p.payment_status]?.cls || paymentStatusConfig.unpaid.cls}>
                     {p.payment_status === "paid"
                       ? <><CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />{p.payment_status}</>
-                      : <><Clock className="w-3 h-3 mr-1" aria-hidden="true" />{p.payment_status}</>
-                    }
+                      : <><Clock className="w-3 h-3 mr-1" aria-hidden="true" />{p.payment_status}</>}
                   </Badge>
                   {p.payment_status !== "paid" && isHost && (
-                    <Button size="sm" onClick={() => markAsPaid(p.participant_id)} aria-label={`Mark ${p.name} as paid for $${(p.amount_owed || 0).toFixed(2)}`} className="h-11 text-sm px-4 bg-success hover:bg-success/90 text-white rounded-xl">
+                    <Button
+                      size="sm"
+                      onClick={() => markAsPaid(p.participant_id)}
+                      aria-label={`Mark ${p.name} as paid`}
+                      className="h-9 text-xs px-4 bg-success hover:bg-success/90 text-white rounded-xl"
+                    >
                       Mark Paid
                     </Button>
                   )}
                 </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
