@@ -151,28 +151,36 @@ export default function Claim() {
     setShowPaymentModal(false);
   };
 
-  const getPaymentLink = () => {
-    const hostInfo = session.host_payment_info;
-    if (!hostInfo || myShare <= 0) return null;
-    const amount = myShare.toFixed(2);
-    const handle = hostInfo.handle.startsWith('@') ? hostInfo.handle : `@${hostInfo.handle}`;
-    const note = encodeURIComponent("BillTap Split");
-    if (hostInfo.method === "venmo") return `venmo://paycharge?txn=pay&recipients=${handle}&amount=${amount}&note=${note}`;
-    if (hostInfo.method === "cashapp") {
-      const cashHandle = hostInfo.handle.startsWith('$') ? hostInfo.handle : `$${hostInfo.handle}`;
-      return `cashapp://cash.app/${cashHandle}/${amount}`;
-    }
-    return null;
-  };
-
   const handlePaymentClick = () => {
-    const link = getPaymentLink();
-    if (link) {
-      if (session.host_payment_info.method === "zelle") setZelleModalOpen(true);
-      else window.location.href = link;
-    } else {
-      setShowPaymentModal(true);
+    const hostInfo = session.host_payment_info;
+    if (!hostInfo) { setShowPaymentModal(true); return; }
+
+    const amount = myShare.toFixed(2);
+
+    if (hostInfo.method === "venmo") {
+      const handle = hostInfo.handle.replace(/^@/, '');
+      const deepLink = `venmo://paycharge?txn=pay&recipients=@${handle}&amount=${amount}&note=BillTap%20Split`;
+      const webFallback = `https://venmo.com/u/${handle}?txn=pay&amount=${amount}&note=BillTap%20Split`;
+      window.location.href = deepLink;
+      setTimeout(() => window.open(webFallback, '_blank'), 2000);
+      return;
     }
+
+    if (hostInfo.method === "cashapp") {
+      const handle = hostInfo.handle.replace(/^\$/, '');
+      const deepLink = `cashapp://cash.app/$${handle}/${amount}`;
+      const webFallback = `https://cash.app/$${handle}`;
+      window.location.href = deepLink;
+      setTimeout(() => window.open(webFallback, '_blank'), 2000);
+      return;
+    }
+
+    if (hostInfo.method === "zelle") {
+      setZelleModalOpen(true);
+      return;
+    }
+
+    setShowPaymentModal(true);
   };
 
   if (!sessionId) return (
