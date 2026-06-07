@@ -19,7 +19,7 @@ const FinalCTA = () => {
           </span>
         </h2>
         <p className="text-xl text-white/70 mb-10">
-          Join 12,000+ people splitting bills the smart way
+          Pay via Venmo, Cash App, or Zelle — no sign-up needed
         </p>
         <button
           className="text-white font-black text-xl px-14 py-6 rounded-2xl border-0 cursor-pointer transition-all duration-200 shadow-2xl hover:-translate-y-1 active:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white w-full max-w-xs sm:w-auto"
@@ -30,7 +30,7 @@ const FinalCTA = () => {
           Start Splitting for Free →
         </button>
         <p className="mt-6 text-white/40 text-sm">
-          ✓ No credit card &nbsp;•&nbsp; ✓ Any device &nbsp;•&nbsp; ✓ Free forever
+          ✓ No credit card &nbsp;•&nbsp; ✓ Any device &nbsp;•&nbsp; ✓ Free to use
         </p>
       </div>
     </section>

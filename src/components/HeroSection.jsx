@@ -45,9 +45,9 @@ const HeroSection = () => {
         </div>
 
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-white mb-5 tracking-tight leading-none">
-          Split Bills in<br />
+          Split Bills,<br />
           <span style={{ background: 'linear-gradient(90deg, #f5576c, #f093fb, #667eea)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>
-            30 Seconds
+            Instantly
           </span>
         </h1>
 
@@ -71,7 +71,7 @@ const HeroSection = () => {
             </>
           ) : (
             <>
-              <p className="text-white/80 text-base font-medium">Download on your phone 👇</p>
+              <p className="text-white/80 text-base font-medium">Try it free 👇</p>
               <StoreBadges />
             </>
           )}
@@ -113,13 +113,13 @@ const HeroSection = () => {
         {/* Stats */}
         <dl className="flex flex-wrap justify-center gap-10 sm:gap-16">
           {[
-            { number: '30s', label: 'Avg Split Time' },
-            { number: '100%', label: 'Settlement Rate' },
-            { number: '12K+', label: 'Bills Split' },
+            { number: '🤖', label: 'AI Receipt Scanning' },
+            { number: '🔴', label: 'Live Multiplayer Sync' },
+            { number: '📱', label: 'No App Download Needed' },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
               <dt className="sr-only">{stat.label}</dt>
-              <dd className="text-4xl sm:text-5xl font-black text-white mb-1">{stat.number}</dd>
+              <dd className="text-4xl sm:text-5xl font-black text-white mb-1 leading-none">{stat.number}</dd>
               <span className="text-sm text-white/50 font-medium uppercase tracking-widest">{stat.label}</span>
             </div>
           ))}

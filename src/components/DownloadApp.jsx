@@ -14,7 +14,7 @@ const DownloadApp = () => {
         <h2 id="download-heading" className="text-4xl sm:text-5xl font-black text-white mb-3">
           BillTap in your pocket
         </h2>
-        <p className="text-lg text-white/50 mb-12">Available for iPhone and Android. Free forever.</p>
+        <p className="text-lg text-white/50 mb-12">Works on any phone — no download required. Free to use.</p>
 
         <div className="flex flex-wrap justify-center gap-4 mb-14">
           <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer"
