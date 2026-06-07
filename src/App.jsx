@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-route
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import { AnimatePresence, motion } from 'framer-motion';
 import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
@@ -19,9 +20,15 @@ import LandingPage from '@/pages/LandingPage';
 import IconGenerator from '@/pages/IconGenerator';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
+import Claim from '@/pages/Claim';
+import NewReceipt from '@/pages/NewReceipt';
+import Dashboard from '@/pages/Dashboard';
+import SessionHost from '@/pages/SessionHost';
+import ReceiptDetail from '@/pages/ReceiptDetail';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { handleDeepLink } from '@/lib/deepLinking';
+import { Navigate } from 'react-router-dom';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -101,11 +108,7 @@ const AuthenticatedApp = () => {
     <div className="flex flex-col min-h-screen">
       <AnimatePresence mode="wait" onExitComplete={() => null}>
         <Routes location={location} key={location.pathname}>
-          <Route path="/" element={
-            <AnimatedPage direction={direction}>
-              <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
-            </AnimatedPage>
-          } />
+          {/* Public routes */}
           <Route path="/LandingPage" element={
             <AnimatedPage direction={direction}>
               <LandingPage />
@@ -114,16 +117,58 @@ const AuthenticatedApp = () => {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/icon-generator" element={<IconGenerator />} />
-          <Route path="/Home" element={
+          <Route path="/Claim" element={
             <AnimatedPage direction={direction}>
-              <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
+              <Claim />
             </AnimatedPage>
           } />
-          {Object.entries(Pages).map(([path, Page]) => (
-            <Route key={path} path={`/${path}`} element={
+
+          {/* Protected host routes */}
+          <Route element={
+            <ProtectedRoute unauthenticatedElement={<Navigate to="/LandingPage" replace />} />
+          }>
+            <Route path="/" element={
               <AnimatedPage direction={direction}>
-                <LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>
+                <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
               </AnimatedPage>
+            } />
+            <Route path="/Home" element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
+              </AnimatedPage>
+            } />
+            <Route path="/NewReceipt" element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName="NewReceipt"><NewReceipt /></LayoutWrapper>
+              </AnimatedPage>
+            } />
+            <Route path="/Dashboard" element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName="Dashboard"><Dashboard /></LayoutWrapper>
+              </AnimatedPage>
+            } />
+            <Route path="/SessionHost" element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName="SessionHost"><SessionHost /></LayoutWrapper>
+              </AnimatedPage>
+            } />
+            <Route path="/ReceiptDetail" element={
+              <AnimatedPage direction={direction}>
+                <LayoutWrapper currentPageName="ReceiptDetail"><ReceiptDetail /></LayoutWrapper>
+              </AnimatedPage>
+            } />
+          </Route>
+
+          {/* Pages from config (protected by default) */}
+          {Object.entries(Pages).filter(([path]) => 
+            !['Claim', 'LandingPage', 'Privacy', 'Terms', 'IconGenerator'].includes(path)
+          ).map(([path, Page]) => (
+            <Route key={path} path={`/${path}`} element={
+              <ProtectedRoute unauthenticatedElement={<Navigate to="/LandingPage" replace />}>
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>
+                </AnimatedPage>
+              </ProtectedRoute>
             } />
           ))}
           <Route path="*" element={<PageNotFound />} />
