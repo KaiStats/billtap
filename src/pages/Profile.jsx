@@ -8,13 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Trash2, LogOut, User, AlertTriangle } from "lucide-react";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const handleLogout = () => {
-    base44.auth.logout();
+    console.log("[USER_LOGOUT]", user?.email);
+    logout();
   };
 
   const handleDeleteAccount = async () => {
@@ -31,7 +33,18 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <AppHeader title="Profile" />
+      <AppHeader
+        title="Profile"
+        rightAction={
+          <button
+            onClick={handleLogout}
+            aria-label="Sign out"
+            className="p-2 rounded-xl text-muted-foreground hover:text-destructive hover:bg-danger-muted transition-colors"
+          >
+            <LogOut className="w-5 h-5" aria-hidden="true" />
+          </button>
+        }
+      />
 
       <div className="max-w-lg mx-auto p-5 space-y-5 pb-28">
         {/* User info */}
@@ -47,18 +60,47 @@ export default function Profile() {
           </CardContent>
         </Card>
 
-        {/* Actions */}
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="p-2 space-y-1">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 min-h-[44px] rounded-xl text-foreground hover:bg-accent active:bg-accent/80 transition-colors text-left"
-            >
-              <LogOut className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-              <span className="font-medium">Sign Out</span>
-            </button>
-          </CardContent>
-        </Card>
+        {/* Sign Out */}
+        <Button
+          variant="outline"
+          onClick={() => setShowLogoutConfirm(true)}
+          className="w-full h-12 rounded-2xl border-destructive/40 text-destructive hover:bg-danger-muted hover:border-destructive hover:text-destructive font-semibold gap-2"
+        >
+          <LogOut className="w-5 h-5" aria-hidden="true" />
+          Sign Out
+        </Button>
+
+        {/* Sign Out Confirmation Dialog */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 pb-8">
+            <div className="bg-card rounded-2xl p-6 w-full max-w-sm shadow-xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-danger-muted flex items-center justify-center shrink-0">
+                  <LogOut className="w-5 h-5 text-destructive" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="font-bold text-foreground">Sign out of BillTap?</div>
+                  <div className="text-sm text-muted-foreground">You can sign back in anytime.</div>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 h-11 rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleLogout}
+                  className="flex-1 h-11 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold"
+                >
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Danger zone */}
         <Card className="rounded-2xl border-0 shadow-sm border border-destructive/20">
