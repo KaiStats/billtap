@@ -1,7 +1,7 @@
 const features = [
   { icon: '⚡', color: 'from-yellow-400 to-orange-400', title: 'Lightning Fast', description: '30 seconds from photo to payment. Faster than anyone at the table can open Venmo.' },
   { icon: '🎯', color: 'from-violet-500 to-purple-600', title: 'Perfectly Fair', description: 'Proportional tax and tip. You pay exactly for what you ordered. Zero rounding arguments.' },
-  { icon: '🔒', color: 'from-blue-400 to-cyan-400', title: '100% Secure', description: 'Powered by Stripe. Your card info is encrypted and never stored on our servers.' },
+  { icon: '🔒', color: 'from-blue-400 to-cyan-400', title: '100% Secure', description: 'Your session data stays private. Guests only see the shared bill — never each other\'s payment details.' },
   { icon: '👥', color: 'from-pink-500 to-rose-400', title: 'Works for Groups', description: '2–50 people. No app download for guests. Just scan the QR and claim items.' },
   { icon: '🚫', color: 'from-emerald-400 to-teal-500', title: 'No IOUs', description: 'Everyone pays at the table. 100% settlement rate. No chasing friends later.' },
   { icon: '🧠', color: 'from-indigo-400 to-violet-500', title: 'AI-Powered', description: 'Reads any receipt in 3 seconds — printed, handwritten, or crumpled. Magic.' },

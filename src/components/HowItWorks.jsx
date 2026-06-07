@@ -5,7 +5,7 @@ const steps = [
     color: 'from-violet-500 to-purple-600',
     glow: 'rgba(139,92,246,0.3)',
     title: 'Snap the receipt',
-    description: 'Take a photo of your bill. Our AI reads every line item in under 3 seconds — even handwritten ones.',
+    description: 'Take a photo of your bill. Our AI reads every line item automatically — even handwritten ones.',
   },
   {
     number: '02',
@@ -21,7 +21,7 @@ const steps = [
     color: 'from-emerald-400 to-teal-500',
     glow: 'rgba(52,211,153,0.3)',
     title: 'Pay your exact share',
-    description: 'Tax and tip split proportionally to what you ordered. Pay with Apple Pay, Google Pay, or card. Done.',
+    description: 'Tax and tip split proportionally to what you ordered. Send your share via Venmo, Cash App, or Zelle. Done.',
   },
 ];
 
