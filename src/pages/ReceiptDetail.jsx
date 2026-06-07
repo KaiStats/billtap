@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { createPageUrl } from "@/utils";
-import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, ChevronRight } from "lucide-react";
+import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, Share2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ const paymentStatusConfig = {
 
 export default function ReceiptDetail() {
   const { pushScreen } = useTabNav();
+  const { toast } = useToast();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +53,20 @@ export default function ReceiptDetail() {
       onSuccess: (updated) => setSession(updated),
     }
   );
+
+  const handleShareBillTap = async () => {
+    const shareData = {
+      title: "BillTap — Split bills the fair way",
+      text: "Just split a restaurant bill with BillTap — everyone paid exactly what they ordered. Try it free:",
+      url: "https://billtap.app",
+    };
+    if (navigator.share) {
+      await navigator.share(shareData);
+    } else {
+      await navigator.clipboard.writeText("https://billtap.app");
+      toast({ description: "Link copied — share billtap.app with your friends" });
+    }
+  };
 
   const markAsPaid = (participantId) => {
     const updatedParticipants = session.participants.map(p =>
@@ -106,12 +122,22 @@ export default function ReceiptDetail() {
         <div className="relative z-10 max-w-2xl mx-auto">
           {/* All Settled Banner */}
           {allPaid && (
-            <div className="flex items-center gap-3 mb-4 px-4 py-3 rounded-2xl" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)' }}>
-              <PartyPopper className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-              <div>
-                <p className="font-bold text-emerald-400 text-sm">All Settled! 🎉</p>
-                <p className="text-xs text-emerald-400/70">Everyone has paid their share</p>
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)' }}>
+                <PartyPopper className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+                <div>
+                  <p className="font-bold text-emerald-400 text-sm">All Settled! 🎉</p>
+                  <p className="text-xs text-emerald-400/70">Everyone has paid their share</p>
+                </div>
               </div>
+              <Button
+                onClick={handleShareBillTap}
+                variant="outline"
+                className="w-full border-brand text-brand hover:bg-brand-muted rounded-2xl h-11 font-semibold"
+              >
+                <Share2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                Share BillTap with friends
+              </Button>
             </div>
           )}
 
