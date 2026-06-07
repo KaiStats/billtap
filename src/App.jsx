@@ -16,6 +16,7 @@ import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import Home from '@/pages/Home';
 import LandingPage from '@/pages/LandingPage';
+import IconGenerator from '@/pages/IconGenerator';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
@@ -112,6 +113,7 @@ const AuthenticatedApp = () => {
           } />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/icon-generator" element={<IconGenerator />} />
           <Route path="/Home" element={
             <AnimatedPage direction={direction}>
               <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
