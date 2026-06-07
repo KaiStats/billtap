@@ -81,6 +81,9 @@ Return a JSON with:
       setImageUrl(file_url);
       if (validation.data) setParseValidation(validation.data);
       setStep(2);
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'receipt_scanned', { items_count: (result.items || []).length });
+      }
     } catch (err) {
       console.error("Failed to parse receipt:", err);
       alert("Failed to process receipt. Please try again.");
@@ -110,6 +113,9 @@ Return a JSON with:
         title, image_url: imageUrl, total_amount: total, tax, tip, items, participants: [], status: "waiting", expires_at: expiresAt
       });
       trackDeviceAction('split_created');
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'session_created', { session_id: session.id });
+      }
       pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
     } catch (err) {
       console.error("Failed to create session:", err);

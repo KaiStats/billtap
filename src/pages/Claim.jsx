@@ -101,6 +101,9 @@ export default function Claim() {
     setNameInput(name);
     setShowNameGate(false);
     await ensureJoined(name);
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'guest_joined', { session_id: sessionId });
+    }
   };
 
   const handleNameBlur = async () => {
@@ -144,6 +147,9 @@ export default function Claim() {
     const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [myId] });
     const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'item_claimed', { item_name: item.name, amount: item.price });
+    }
   };
 
   const addItemMutation = useMutationOptimistic(
@@ -180,6 +186,10 @@ export default function Claim() {
     if (!hostInfo) { setShowPaymentModal(true); return; }
 
     const amount = myShare.toFixed(2);
+
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'payment_initiated', { amount: myShare, method: hostInfo.method });
+    }
 
     if (hostInfo.method === "venmo") {
       const handle = hostInfo.handle.replace(/^@/, '');
