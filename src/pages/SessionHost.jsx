@@ -18,7 +18,6 @@ export default function SessionHost() {
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const claimUrl = `${window.location.origin}/Claim?id=${sessionId}`;
-  if (sessionId && typeof window.gtag === 'function') window.gtag('event', 'session_created', { session_id: sessionId });
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;

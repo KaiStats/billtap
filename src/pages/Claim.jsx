@@ -100,7 +100,6 @@ export default function Claim() {
     setMyName(name);
     setNameInput(name);
     setShowNameGate(false);
-    if (typeof window.gtag === 'function') window.gtag('event', 'guest_joined', { session_id: sessionId });
     await ensureJoined(name);
   };
 
@@ -144,7 +143,6 @@ export default function Claim() {
     }
     const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [myId] });
     const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
-    if (typeof window.gtag === 'function') window.gtag('event', 'item_claimed', { item_name: item.name, amount: item.price });
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
   };
 
@@ -180,7 +178,6 @@ export default function Claim() {
   const handlePaymentClick = () => {
     const hostInfo = session.host_payment_info;
     if (!hostInfo) { setShowPaymentModal(true); return; }
-    if (typeof window.gtag === 'function') window.gtag('event', 'payment_initiated', { amount: myShare, method: hostInfo.method });
 
     const amount = myShare.toFixed(2);
 
