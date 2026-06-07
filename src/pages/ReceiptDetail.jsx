@@ -24,7 +24,9 @@ export default function ReceiptDetail() {
   const [loading, setLoading] = useState(true);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
-  const isHost    = new URLSearchParams(window.location.search).get("host") === "1";
+  const isHostParam = new URLSearchParams(window.location.search).get("host") === "1";
+  if (isHostParam && sessionId) localStorage.setItem(`billtap-host-${sessionId}`, "true");
+  const isHost = isHostParam || localStorage.getItem(`billtap-host-${sessionId}`) === "true";
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
