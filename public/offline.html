@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Offline — BillTap</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #0a0a0a;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+      padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+      text-align: center;
+    }
+
+    .icon {
+      width: 72px;
+      height: 72px;
+      margin-bottom: 1.5rem;
+    }
+
+    .wordmark {
+      font-size: 1.75rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      margin-bottom: 0.25rem;
+    }
+
+    .wordmark span {
+      color: #7c3aed;
+    }
+
+    .tagline {
+      font-size: 0.8rem;
+      color: #555;
+      margin-bottom: 2.5rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .wifi-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 1.5rem;
+      opacity: 0.35;
+    }
+
+    .headline {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.4;
+      max-width: 28ch;
+      margin-bottom: 0.75rem;
+    }
+
+    .subtext {
+      font-size: 0.9rem;
+      color: #888;
+      line-height: 1.6;
+      max-width: 34ch;
+      margin-bottom: 2.5rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: #7c3aed;
+      color: #ffffff;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 0.75rem;
+      padding: 0.875rem 2.5rem;
+      cursor: pointer;
+      min-height: 52px;
+      min-width: 180px;
+      transition: background 0.15s ease, transform 0.1s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn:hover { background: #6d28d9; }
+    .btn:active { transform: scale(0.97); }
+
+    .saved-note {
+      margin-top: 2rem;
+      font-size: 0.78rem;
+      color: #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+
+    .saved-note::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #7c3aed;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BillTap wordmark -->
+  <div class="wordmark">Bill<span>Tap</span></div>
+  <div class="tagline">Split bills in 30 seconds</div>
+
+  <!-- No-wifi icon -->
+  <svg class="wifi-icon" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <line x1="2" y1="2" x2="22" y2="22"/>
+    <path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+    <path d="M5 12.55a11 11 0 0 1 5.9-2.9"/>
+    <path d="M14.1 9.65a11 11 0 0 1 4.9 2.9"/>
+    <path d="M1.5 8.5A17 17 0 0 1 8.1 5.2"/>
+    <path d="M15.9 5.2A17 17 0 0 1 22.5 8.5"/>
+    <circle cx="12" cy="20" r="1" fill="#ffffff" stroke="none"/>
+  </svg>
+
+  <h1 class="headline">You're offline</h1>
+  <p class="subtext">BillTap needs a connection to split bills in real time. Check your Wi-Fi or cellular signal and try again.</p>
+
+  <button class="btn" onclick="window.location.reload()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="23 4 23 10 17 10"/>
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    </svg>
+    Try Again
+  </button>
+
+  <p class="saved-note">Your session data is saved — reconnect to continue.</p>
+
+</body>
+</html>

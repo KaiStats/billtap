@@ -1,94 +1,82 @@
-const CACHE_NAME = 'billtap-v1';
-const CORE_FILES = [
+const CACHE_NAME = 'billtap-v3';
+
+const PRECACHE_URLS = [
   '/',
-  '/index.html',
+  '/offline.html',
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon.svg',
 ];
 
-// Install event - cache core files
+// Install: precache critical assets including offline.html
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Installed — billtap-v1');
-        return cache.addAll(CORE_FILES);
-      })
-      .catch((err) => {
-        console.error('[SW] Cache install failed:', err);
-      })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
+  self.skipWaiting();
 });
 
-// Fetch event - cache-first strategy
-self.addEventListener('fetch', (event) => {
-  const request = event.request;
-  
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-  
-  // Skip chrome-extension and other non-http requests
-  if (!request.url.startsWith('http')) return;
-  
-  event.respondWith(
-    caches.match(request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          console.log('[SW] Cache hit:', request.url);
-          return cachedResponse;
-        }
-        
-        console.log('[SW] Network fetch:', request.url);
-        return fetch(request)
-          .then((networkResponse) => {
-            // Don't cache failed responses or non-success status
-            if (!networkResponse || networkResponse.status !== 200) {
-              return networkResponse;
-            }
-            
-            // Clone the response for caching
-            const responseToCache = networkResponse.clone();
-            
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(request, responseToCache);
-              })
-              .catch((err) => {
-                console.error('[SW] Cache put failed:', err);
-              });
-            
-            return networkResponse;
-          })
-          .catch((err) => {
-            console.log('[SW] Offline — serving fallback');
-            // Return offline fallback
-            return new Response(
-              '<html><body><h1>You are offline</h1><p>BillTap requires an internet connection.</p></body></html>',
-              {
-                status: 503,
-                headers: { 'Content-Type': 'text/html' }
-              }
-            );
-          });
-      })
-  );
-});
-
-// Activate event - cleanup old caches
+// Activate: clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => name !== CACHE_NAME)
-            .map((name) => {
-              console.log('[SW] Deleting old cache:', name);
-              return caches.delete(name);
-            })
-        );
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+// Fetch: network-first for API/dynamic, cache-first for static assets
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip non-GET and cross-origin requests
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // Skip base44 API / SDK calls — never cache these
+  if (url.pathname.startsWith('/api/') || url.hostname.includes('base44')) return;
+
+  // For navigation requests: network-first, fall back to offline.html
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .catch(async () => {
+          const offlineResponse = await caches.match('/offline.html');
+          return offlineResponse || new Response('Offline', { status: 503 });
+        })
+    );
+    return;
+  }
+
+  // For static assets (JS, CSS, images): cache-first
+  if (
+    url.pathname.match(/\.(js|css|png|svg|ico|woff2?|ttf)$/)
+  ) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        }).catch(async () => {
+          const offlineResponse = await caches.match('/offline.html');
+          return offlineResponse || new Response('Offline', { status: 503 });
+        });
       })
-      .then(() => {
-        console.log('[SW] Activated — old caches cleaned');
-        return self.clients.claim();
-      })
+    );
+    return;
+  }
+
+  // Default: network only (don't cache dynamic routes)
+  event.respondWith(
+    fetch(request).catch(async () => {
+      const offlineResponse = await caches.match('/offline.html');
+      return offlineResponse || new Response('Offline', { status: 503 });
+    })
   );
 });
