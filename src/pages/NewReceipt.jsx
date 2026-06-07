@@ -74,8 +74,10 @@ Return a JSON with:
         total: result.total || 0
       });
 
+      const parsedItems = (result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] }));
+      if (typeof window.gtag === 'function') window.gtag('event', 'receipt_scanned', { items_count: parsedItems.length });
       setTitle(result.title || "Receipt");
-      setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
+      setItems(parsedItems);
       setTax(result.tax || 0);
       setTip(result.tip || 0);
       setImageUrl(file_url);
