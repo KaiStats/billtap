@@ -109,6 +109,11 @@ const AuthenticatedApp = () => {
       <AnimatePresence mode="wait" onExitComplete={() => null}>
         <Routes location={location} key={location.pathname}>
           {/* Public routes */}
+          <Route path="/" element={
+            <AnimatedPage direction={direction}>
+              <LandingPage />
+            </AnimatedPage>
+          } />
           <Route path="/LandingPage" element={
             <AnimatedPage direction={direction}>
               <LandingPage />
@@ -127,7 +132,7 @@ const AuthenticatedApp = () => {
           <Route element={
             <ProtectedRoute unauthenticatedElement={<Navigate to="/LandingPage" replace />} />
           }>
-            <Route path="/" element={
+            <Route path="/Home" element={
               <AnimatedPage direction={direction}>
                 <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
               </AnimatedPage>
