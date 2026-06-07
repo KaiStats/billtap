@@ -1,12 +1,14 @@
 {
-  "name": "BillTap — Split Bills Instantly",
+  "name": "BillTap",
   "short_name": "BillTap",
-  "description": "Split restaurant bills in 30 seconds. Scan receipt, share QR, everyone pays their exact share.",
+  "description": "Split bills at the table. Scan receipt, claim your items, pay your share.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#667eea",
   "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["finance", "utilities"],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -19,16 +21,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    }
-  ],
-  "categories": ["finance", "utilities"],
-  "shortcuts": [
-    {
-      "name": "New Split",
-      "short_name": "Split",
-      "description": "Create a new bill split",
-      "url": "/NewReceipt",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
