@@ -47,6 +47,7 @@ export default function NewReceipt() {
       setParsing(true);
 
       const result = await base44.integrations.Core.InvokeLLM({
+        model: "gemini_3_flash",
         prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
 Return a JSON with:
 - title: short restaurant/store name if visible, else "Receipt"
