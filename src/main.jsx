@@ -17,8 +17,8 @@ Sentry.init({
     return event;
   },
   integrations: [
-    new Sentry.BrowserTracing(),
-    new Sentry.Replay({
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration({
       maskAllText: false,
       blockAllMedia: false,
     }),
