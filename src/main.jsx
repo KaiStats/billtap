@@ -7,22 +7,7 @@ import '@/index.css'
 import { registerServiceWorker } from '@/lib/registerServiceWorker'
 
 Sentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN || "",
-  environment: import.meta.env.MODE || "production",
-  tracesSampleRate: 0.1,
-  replaysSessionSampleRate: 0.05,
-  replaysOnErrorSampleRate: 1.0,
-  beforeSend(event) {
-    if (import.meta.env.MODE === "development") return null;
-    return event;
-  },
-  integrations: [
-    Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration({
-      maskAllText: false,
-      blockAllMedia: false,
-    }),
-  ],
+  dsn: "https://2d6bc6bc301da49be092401a0c9eb90c@o4510642913607680.ingest.us.sentry.io/4511544951701504",
 });
 
 // Register PWA service worker for offline support and caching
