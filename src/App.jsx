@@ -16,7 +16,7 @@ import MutationErrorToast from '@/components/MutationErrorToast';
 import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import Home from '@/pages/Home';
-import LandingPage from '@/pages/LandingPage';
+import Landing from '@/pages/Landing';
 import IconGenerator from '@/pages/IconGenerator';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
@@ -111,12 +111,7 @@ const AuthenticatedApp = () => {
           {/* Public routes */}
           <Route path="/" element={
             <AnimatedPage direction={direction}>
-              <LandingPage />
-            </AnimatedPage>
-          } />
-          <Route path="/LandingPage" element={
-            <AnimatedPage direction={direction}>
-              <LandingPage />
+              <Landing />
             </AnimatedPage>
           } />
           <Route path="/privacy" element={<Privacy />} />
