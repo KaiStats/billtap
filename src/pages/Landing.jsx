@@ -312,19 +312,16 @@ export default function Landing() {
             <div className="card-hover p-8 rounded-2xl border-2" style={{ background: "#1e2533", borderColor: "#00c896" }}>
               <div className="mb-6">
                 <h3 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "#f2f2f4" }}>Free</h3>
-                <p className="text-lg" style={{ color: "#8b90a8" }}>Unlimited splits · Forever</p>
-              </div>
-              <div className="mb-6 p-4 rounded-lg" style={{ background: "rgba(0, 200, 150, 0.1)", border: "1px solid rgba(0, 200, 150, 0.3)" }}>
-                <p className="text-sm font-semibold" style={{ color: "#00c896" }}>✓ No usage limits — split as many bills as you want</p>
+                <p className="text-lg" style={{ color: "#8b90a8" }}>Great for occasional dinners</p>
               </div>
               <ul className="space-y-3 mb-8">
                 {[
-                  "All 3 split modes (Even, Itemized, Custom)",
-                  "AI receipt scanning (first 5 per month)",
-                  "QR code generation & sharing",
-                  "Real-time settlement tracking",
-                  "30-day bill history",
-                  "Venmo/Cash App/Zelle integration",
+                  "Up to 3 splits per month",
+                  "Manual item entry (no AI scanning)",
+                  "All 3 split modes",
+                  "QR code generation",
+                  "7-day bill history",
+                  "Payment tracking",
                 ].map(feature => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#00c896" }} />
@@ -333,46 +330,52 @@ export default function Landing() {
                 ))}
               </ul>
               <button className="w-full py-4 rounded-xl font-semibold text-base border-2 transition-all hover:border-green-400" style={{ borderColor: "#00c896", color: "#00c896", background: "transparent" }}>
-                Start Free — No Credit Card
+                Start Free
               </button>
+              <p className="text-xs text-center mt-4" style={{ color: "#8b90a8" }}>Perfect for trying it out</p>
             </div>
             
             {/* PRO */}
             <div className="card-hover p-8 rounded-2xl border-2 relative" style={{ background: "#1e2533", borderColor: "#d4af37" }}>
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-semibold" style={{ background: "#d4af37", color: "#0a0e1a" }}>
-                Best Value
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold text-white" style={{ background: "linear-gradient(135deg, #d4af37, #f5e6c6)", color: "#0a0e1a" }}>
+                🔥 Most Popular
               </div>
               <div className="mb-6">
                 <h3 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "#f2f2f4" }}>Pro</h3>
-                <p className="text-lg" style={{ color: "#8b90a8" }}>$3.99/mo or $29/year</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-3xl font-black" style={{ color: "#d4af37" }}>$3.99</p>
+                  <p className="text-lg" style={{ color: "#8b90a8" }}>per month</p>
+                </div>
+                <p className="text-sm" style={{ color: "#8b90a8" }}>or $29/year (save 39%)</p>
               </div>
-              <div className="mb-6 p-4 rounded-lg" style={{ background: "rgba(212, 175, 55, 0.1)", border: "1px solid rgba(212, 175, 55, 0.3)" }}>
-                <p className="text-sm font-semibold" style={{ color: "#d4af37" }}>For power users & frequent splitters</p>
+              <div className="mb-6 p-4 rounded-lg" style={{ background: "linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(212, 175, 55, 0.05))", border: "1px solid rgba(212, 175, 55, 0.4)" }}>
+                <p className="text-sm font-bold" style={{ color: "#d4af37" }}>⚡ Unlock AI scanning + unlimited splits</p>
               </div>
               <ul className="space-y-3 mb-8">
                 {[
-                  "Everything in Free, plus:",
-                  "Unlimited bill history (keep forever)",
-                  "Unlimited AI receipt scanning",
-                  "Recurring splits (perfect for roommates)",
-                  "CSV export for expense tracking",
-                  "Priority email support",
+                  "✓ Unlimited splits (no monthly cap)",
+                  "✓ AI receipt scanning (instant, no typing)",
+                  "✓ Keep all bills forever (no expiry)",
+                  "✓ Recurring splits for roommates",
+                  "✓ CSV export for taxes & expenses",
+                  "✓ Priority support (24hr response)",
                 ].map(feature => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#d4af37" }} />
-                    <span className="text-sm md:text-base" style={{ color: "#8b90a8" }}>{feature}</span>
+                    <span className="text-sm md:text-base font-medium" style={{ color: "#f2f2f4" }}>{feature}</span>
                   </li>
                 ))}
               </ul>
-              <button className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:opacity-90" style={{ background: "#d4af37", color: "#0a0e1a" }}>
+              <button className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90" style={{ background: "#d4af37", color: "#0a0e1a" }}>
                 Start 14-Day Free Trial
               </button>
+              <p className="text-xs text-center mt-3" style={{ color: "#8b90a8" }}>No charge until trial ends</p>
             </div>
           </div>
           
-          <div className="mt-8 p-4 rounded-lg text-center" style={{ background: "rgba(139, 144, 168, 0.1)", border: "1px solid rgba(139, 144, 168, 0.3)" }}>
-            <p className="text-sm md:text-base font-medium" style={{ color: "#8b90a8" }}>
-              <span className="text-green-400">Free = unlimited splits forever</span> · Pro adds unlimited history & AI scans · Cancel anytime
+          <div className="mt-8 p-4 rounded-lg text-center" style={{ background: "rgba(212, 175, 55, 0.1)", border: "1px solid rgba(212, 175, 55, 0.3)" }}>
+            <p className="text-sm md:text-base font-medium" style={{ color: "#f2f2f4" }}>
+              <span className="text-yellow-400">Free: 3 splits/month</span> · <span className="text-yellow-400">Pro: Unlimited + AI scanning</span> · Cancel anytime
             </p>
           </div>
         </div>
