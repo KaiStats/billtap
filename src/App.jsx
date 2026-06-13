@@ -103,6 +103,7 @@ const AuthenticatedApp = () => {
   }
 
   const direction = directionRef.current;
+  const hideNav = ['/', '/privacy', '/terms', '/icon-generator'].includes(location.pathname);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -174,7 +175,7 @@ const AuthenticatedApp = () => {
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </AnimatePresence>
-      <BottomNav />
+      {!hideNav && <BottomNav />}
       <PWAInstallPrompt />
     </div>
   );
