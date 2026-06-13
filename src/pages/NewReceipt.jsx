@@ -101,18 +101,15 @@ Return a JSON with:
   const handleCreateSession = async () => {
     setSaving(true);
     try {
-      const rateLimitRes = await base44.functions.invoke("checkSessionRateLimit", {});
-      if (!rateLimitRes.data.allowed) {
-        alert(rateLimitRes.data.message);
+      const res = await base44.functions.invoke("createSession", {
+        title, image_url: imageUrl, items, tax, tip
+      });
+      if (res.data?.error) {
+        alert(res.data.error);
         setSaving(false);
         return;
       }
-      const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
-      const total = subtotal + (tax || 0) + (tip || 0);
-      const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
-      const session = await base44.entities.Session.create({
-        title, image_url: imageUrl, total_amount: total, tax, tip, items, participants: [], status: "waiting", expires_at: expiresAt
-      });
+      const session = res.data.session;
       trackDeviceAction('split_created');
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'session_created', { session_id: session.id });

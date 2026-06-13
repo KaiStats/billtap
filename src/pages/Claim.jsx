@@ -92,20 +92,12 @@ export default function Claim() {
   }, [sessionId]);
 
   const ensureJoined = async (name) => {
-    const current = await base44.entities.Session.list("-created_date", 200);
-    const s = current.find(x => x.id === sessionId);
-    if (!s) return;
-    const alreadyIn = (s.participants || []).find(p => p.participant_id === myId);
-    if (!alreadyIn) {
-      await base44.entities.Session.update(sessionId, {
-        participants: [...(s.participants || []), { participant_id: myId, name: name || "Anonymous", amount_owed: 0, payment_status: "unpaid" }],
-        status: s.status === "waiting" ? "claiming" : s.status
-      });
-    } else if (name && alreadyIn.name !== name) {
-      await base44.entities.Session.update(sessionId, {
-        participants: (s.participants || []).map(p => p.participant_id === myId ? { ...p, name } : p)
-      });
-    }
+    const res = await base44.functions.invoke("joinSession", {
+      session_id: sessionId,
+      participant_id: myId,
+      name: name || "Anonymous",
+    });
+    if (res.data?.session) setSession(res.data.session);
   };
 
   const handleNameGateSubmit = async () => {
@@ -133,8 +125,14 @@ export default function Claim() {
 
   const claimMutation = useMutationOptimistic(
     async ({ optimisticItems, optimisticParticipants }) => {
-      await ensureJoined(nameInput.trim() || myName || "Anonymous");
-      return base44.entities.Session.update(sessionId, { items: optimisticItems, participants: optimisticParticipants });
+      const res = await base44.functions.invoke("joinSession", {
+        session_id: sessionId,
+        participant_id: myId,
+        name: nameInput.trim() || myName || "Anonymous",
+        items: optimisticItems,
+        participants: optimisticParticipants,
+      });
+      return res.data?.session;
     },
     {
       onOptimisticState: () => session,

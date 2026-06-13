@@ -1,0 +1,55 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+Deno.serve(async (req) => {
+  const base44 = createClientFromRequest(req);
+  const user = await base44.auth.me();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { title, image_url, items, tax, tip } = await req.json();
+
+  // Validate inputs
+  if (!title || !Array.isArray(items) || items.length === 0) {
+    return Response.json({ error: 'title and items are required' }, { status: 400 });
+  }
+
+  // Validate items
+  for (const item of items) {
+    if (!item.name || typeof item.price !== 'number' || item.price < 0) {
+      return Response.json({ error: `Invalid item: ${JSON.stringify(item)}` }, { status: 400 });
+    }
+    if (item.price > 10000) {
+      return Response.json({ error: `Item price too high: ${item.name}` }, { status: 400 });
+    }
+  }
+
+  if ((tax || 0) < 0 || (tip || 0) < 0) {
+    return Response.json({ error: 'tax and tip must be non-negative' }, { status: 400 });
+  }
+
+  // Check rate limit
+  const rateLimitRes = await base44.functions.invoke('checkSessionRateLimit', {});
+  if (!rateLimitRes.allowed) {
+    return Response.json({ error: rateLimitRes.message || 'Rate limit exceeded' }, { status: 429 });
+  }
+
+  // Compute total server-side
+  const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
+  const total = subtotal + (tax || 0) + (tip || 0);
+
+  // Set expiry server-side (30 days)
+  const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
+
+  const session = await base44.entities.Session.create({
+    title: title.trim().slice(0, 100),
+    image_url: image_url || null,
+    total_amount: Math.round(total * 100) / 100,
+    tax: Math.round((tax || 0) * 100) / 100,
+    tip: Math.round((tip || 0) * 100) / 100,
+    items,
+    participants: [],
+    status: 'waiting',
+    expires_at: expiresAt,
+  });
+
+  return Response.json({ session });
+});
