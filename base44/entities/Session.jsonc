@@ -9,9 +9,19 @@
     "title": {
       "type": "string"
     },
+    "split_mode": {
+      "type": "string",
+      "enum": [
+        "itemized",
+        "even",
+        "custom"
+      ],
+      "default": "itemized",
+      "description": "How the bill is split: itemized (by items), even (equal), or custom (percentages/amounts)"
+    },
     "items": {
       "type": "array",
-      "description": "Line items with claims",
+      "description": "Line items with claims (itemized mode only)",
       "items": {
         "type": "object",
         "properties": {
@@ -71,6 +81,14 @@
               "paid"
             ],
             "default": "unpaid"
+          },
+          "split_percentage": {
+            "type": "number",
+            "description": "Percentage of total for custom split mode"
+          },
+          "split_amount": {
+            "type": "number",
+            "description": "Fixed amount for custom split mode"
           }
         }
       }
@@ -105,6 +123,23 @@
         "completed"
       ],
       "default": "waiting"
+    },
+    "custom_split_config": {
+      "type": "object",
+      "description": "Configuration for custom split mode (percentages or fixed amounts)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "percentage",
+            "amount"
+          ]
+        },
+        "values": {
+          "type": "object",
+          "description": "Map of participant_id to percentage or amount"
+        }
+      }
     }
   },
   "required": [

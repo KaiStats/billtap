@@ -5,11 +5,23 @@ Deno.serve(async (req) => {
   const user = await base44.auth.me();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { title, image_url, items, tax, tip } = await req.json();
+  const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal } = await req.json();
 
   // Validate inputs
-  if (!title || !Array.isArray(items) || items.length === 0) {
-    return Response.json({ error: 'title and items are required' }, { status: 400 });
+  if (!title) {
+    return Response.json({ error: 'title is required' }, { status: 400 });
+  }
+
+  // For even/custom modes, total_amount can be provided directly
+  const validModes = ['itemized', 'even', 'custom'];
+  const mode = split_mode || 'itemized';
+  if (!validModes.includes(mode)) {
+    return Response.json({ error: 'Invalid split mode' }, { status: 400 });
+  }
+
+  // Itemized mode requires items array
+  if (mode === 'itemized' && (!Array.isArray(items) || items.length === 0)) {
+    return Response.json({ error: 'items are required for itemized split' }, { status: 400 });
   }
 
   // Validate items
@@ -33,8 +45,18 @@ Deno.serve(async (req) => {
   }
 
   // Compute total server-side
-  const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
-  const total = subtotal + (tax || 0) + (tip || 0);
+  let total;
+  let processedItems = items || [];
+
+  if (mode === 'itemized') {
+    const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
+    total = subtotal + (tax || 0) + (tip || 0);
+  } else {
+    // even or custom mode - use provided total or calculate from items
+    total = customTotal || (items || []).reduce((s, item) => s + (item.price * (item.quantity || 1)), 0) + (tax || 0) + (tip || 0);
+    // For even/custom, items are optional metadata
+    processedItems = items || [];
+  }
 
   // Set expiry server-side (30 days)
   const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
@@ -42,10 +64,11 @@ Deno.serve(async (req) => {
   const session = await base44.entities.Session.create({
     title: title.trim().slice(0, 100),
     image_url: image_url || null,
+    split_mode: mode,
     total_amount: Math.round(total * 100) / 100,
     tax: Math.round((tax || 0) * 100) / 100,
     tip: Math.round((tip || 0) * 100) / 100,
-    items,
+    items: processedItems,
     participants: [],
     status: 'waiting',
     expires_at: expiresAt,

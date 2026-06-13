@@ -22,12 +22,17 @@ function calcMyShare(items, myId, tax, tip) {
   return mySubtotal + (tax || 0) * ratio + (tip || 0) * ratio;
 }
 
+function calcEvenShare(totalAmount, participantCount) {
+  if (participantCount === 0) return 0;
+  return Math.round((totalAmount / participantCount) * 100) / 100;
+}
+
 export default function Claim() {
   const params = new URLSearchParams(window.location.search);
   const qrToken = params.get("token");
   const legacyId = params.get("id");
-  const [sessionId, setSessionId] = useState(legacyId); // will be set after token verification
-  const [tokenVerified, setTokenVerified] = useState(!qrToken); // legacy links skip verification
+  const [sessionId, setSessionId] = useState(legacyId);
+  const [tokenVerified, setTokenVerified] = useState(!qrToken);
   const [tokenError, setTokenError] = useState(null);
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
@@ -45,7 +50,6 @@ export default function Claim() {
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
 
-  // Verify QR token if present, extract session_id
   useEffect(() => {
     if (!qrToken) return;
     base44.functions.invoke("verifyQRToken", { qr_token: qrToken }).then(res => {
@@ -154,7 +158,7 @@ export default function Claim() {
       return;
     }
     if (currentlyClaimed.length > 0) {
-      const claimer = participants.find(p => p.participant_id === currentlyClaimed[0]);
+      const claimer = (session.participants || []).find(p => p.participant_id === currentlyClaimed[0]);
       alert(`${claimer?.name || currentlyClaimed[0]} just grabbed that one!`);
       return;
     }
@@ -165,7 +169,6 @@ export default function Claim() {
       window.gtag('event', 'item_claimed', { item_name: item.name, amount: item.price });
     }
   };
-
 
   const paidMutation = useMutationOptimistic(
     ({ updatedParticipants, newStatus }) => base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
@@ -254,9 +257,24 @@ export default function Claim() {
 
   const items = session.items || [];
   const participants = session.participants || [];
+  const splitMode = session.split_mode || "itemized";
   const claimedCount = items.filter(i => (i.claimed_by || []).length > 0).length;
-  const myShare = calcMyShare(items, myId, session.tax, session.tip);
-  const myMyClaimed = items.filter(i => (i.claimed_by || []).includes(myId));
+  
+  // Calculate share based on split mode
+  let myShare = 0;
+  let myMyClaimed = [];
+  
+  if (splitMode === "even") {
+    myShare = calcEvenShare(session.total_amount || 0, participants.length);
+  } else if (splitMode === "custom") {
+    const me = participants.find(p => p.participant_id === myId);
+    myShare = me?.amount_owed || 0;
+  } else {
+    // itemized mode
+    myShare = calcMyShare(items, myId, session.tax, session.tip);
+    myMyClaimed = items.filter(i => (i.claimed_by || []).includes(myId));
+  }
+  
   const meParticipant = participants.find(p => p.participant_id === myId);
   const alreadyPaid = meParticipant?.payment_status === "paid";
 
@@ -268,7 +286,6 @@ export default function Claim() {
 
   return (
     <div className="min-h-screen bg-background" style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
-
       {/* Sticky Header */}
       <div
         className="sticky top-0 z-10 px-4 py-3"
@@ -278,14 +295,18 @@ export default function Claim() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-black text-white text-base">{session.title}</h1>
-              <p className="text-xs text-white/50">Tap what you ordered 👆</p>
+              <p className="text-xs text-white/50">
+                {splitMode === "itemized" ? "Tap what you ordered 👆" : splitMode === "even" ? "Split equally among guests" : "Custom split"}
+              </p>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-white/40">{claimedCount}/{items.length} claimed</div>
-              <div role="progressbar" aria-valuenow={claimedCount} aria-valuemin={0} aria-valuemax={items.length} aria-label="Items claimed" className="w-24 bg-white/10 rounded-full h-1.5 mt-1">
-                <div className="h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
+            {splitMode === "itemized" && (
+              <div className="text-right">
+                <div className="text-xs text-white/40">{claimedCount}/{items.length} claimed</div>
+                <div role="progressbar" aria-valuenow={claimedCount} aria-valuemin={0} aria-valuemax={items.length} aria-label="Items claimed" className="w-24 bg-white/10 rounded-full h-1.5 mt-1">
+                  <div className="h-1.5 rounded-full transition-all" style={{ width: `${items.length > 0 ? (claimedCount / items.length) * 100 : 0}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <label htmlFor="participant-name" className="text-xs text-white/40 shrink-0">Your name:</label>
@@ -305,129 +326,146 @@ export default function Claim() {
         </div>
       </div>
 
-      {/* Items */}
-      <div className="max-w-lg mx-auto px-4 py-4 space-y-2">
-        {items.map(item => {
-          const claimed = item.claimed_by || [];
-          const isMine = claimed.includes(myId);
-          const itemTotal = item.price * (item.quantity || 1);
-          const myCost = isMine ? itemTotal / claimed.length : 0;
-          const isClaimedByOther = claimed.length > 0 && !isMine;
-          const claimerInitial = claimed.length > 0 ? (participants.find(p => p.participant_id === claimed[0])?.name?.[0] || "?") : "";
+      {/* Items - Only for itemized mode */}
+      {splitMode === "itemized" && (
+        <div className="max-w-lg mx-auto px-4 py-4 space-y-2">
+          {items.map(item => {
+            const claimed = item.claimed_by || [];
+            const isMine = claimed.includes(myId);
+            const itemTotal = item.price * (item.quantity || 1);
+            const myCost = isMine ? itemTotal / claimed.length : 0;
+            const isClaimedByOther = claimed.length > 0 && !isMine;
+            const claimerInitial = claimed.length > 0 ? ((participants || []).find(p => p.participant_id === claimed[0])?.name?.[0] || "?") : "";
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => !isClaimedByOther && toggleClaim(item.id)}
-              aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
-              aria-pressed={isMine}
-              disabled={isClaimedByOther}
-              className={`w-full text-left p-4 rounded-2xl transition-all ${
-                isMine
-                  ? "border-2 border-brand"
-                  : isClaimedByOther
-                  ? "opacity-50 cursor-not-allowed border-2 border-transparent"
-                  : "border-2 border-transparent hover:border-brand/30"
-              }`}
-              style={
-                isMine
-                  ? { background: 'rgba(102,126,234,0.15)' }
-                  : isClaimedByOther
-                  ? { background: 'rgba(255,255,255,0.02)', border: '2px solid transparent' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }
-              }
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                    isMine ? "bg-brand border-brand" : isClaimedByOther ? "bg-white/10 border-white/20" : "border-white/20"
-                  }`}>
-                    {isMine && <Check className="w-3 h-3 text-white" aria-hidden="true" />}
-                    {isClaimedByOther && <span className="text-xs font-bold text-white/50">{claimerInitial}</span>}
-                  </div>
-                  <div>
-                    <div className={`font-semibold text-sm ${isMine ? "text-white" : isClaimedByOther ? "text-white/30 line-through" : "text-foreground"}`}>
-                      {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
+            return (
+              <button
+                key={item.id}
+                onClick={() => !isClaimedByOther && toggleClaim(item.id)}
+                aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
+                aria-pressed={isMine}
+                disabled={isClaimedByOther}
+                className={`w-full text-left p-4 rounded-2xl transition-all ${
+                  isMine
+                    ? "border-2 border-brand"
+                    : isClaimedByOther
+                    ? "opacity-50 cursor-not-allowed border-2 border-transparent"
+                    : "border-2 border-transparent hover:border-brand/30"
+                }`}
+                style={
+                  isMine
+                    ? { background: 'rgba(102,126,234,0.15)' }
+                    : isClaimedByOther
+                    ? { background: 'rgba(255,255,255,0.02)', border: '2px solid transparent' }
+                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      isMine ? "bg-brand border-brand" : isClaimedByOther ? "bg-white/10 border-white/20" : "border-white/20"
+                    }`}>
+                      {isMine && <Check className="w-3 h-3 text-white" aria-hidden="true" />}
+                      {isClaimedByOther && <span className="text-xs font-bold text-white/50">{claimerInitial}</span>}
                     </div>
-                    {claimed.length > 0 && (
-                      <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                        {claimed.map(pid => (
-                          <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-brand/20 text-brand-muted-foreground" : "bg-white/5 text-white/40"}`}>
-                            👤 {getName(pid)}
-                          </span>
-                        ))}
-                        {claimed.length > 1 && <span className="text-xs text-white/30">÷{claimed.length}</span>}
+                    <div>
+                      <div className={`font-semibold text-sm ${isMine ? "text-white" : isClaimedByOther ? "text-white/30 line-through" : "text-foreground"}`}>
+                        {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
                       </div>
-                    )}
+                      {claimed.length > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          {claimed.map(pid => (
+                            <span key={pid} className={`text-xs px-1.5 py-0.5 rounded-full ${pid === myId ? "bg-brand/20 text-brand-muted-foreground" : "bg-white/5 text-white/40"}`}>
+                              👤 {getName(pid)}
+                            </span>
+                          ))}
+                          {claimed.length > 1 && <span className="text-xs text-white/30">÷{claimed.length}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <div className={`font-bold text-sm ${isClaimedByOther ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
+                    {isMine && claimed.length > 1 && <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>}
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-2">
-                  <div className={`font-bold text-sm ${isClaimedByOther ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
-                  {isMine && claimed.length > 1 && <div className="text-xs text-brand font-semibold">You: ${myCost.toFixed(2)}</div>}
-                </div>
+              </button>
+            );
+          })}
+
+          {/* Add Item Section — HOSTS ONLY */}
+          {!qrToken && (
+            <div className="pt-2 border-t border-white/10">
+              <button
+                onClick={() => {/* TODO: open add-item modal or navigate to edit */}}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-white/20 text-white/50 hover:border-brand hover:text-brand transition-all font-semibold text-sm"
+                aria-label="Add a new item to the bill"
+              >
+                + Add Item
+              </button>
+            </div>
+          )}
+
+          {/* Guest-only notice */}
+          {qrToken && (
+            <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs space-y-1">
+              <p className="font-semibold">🔒 Guest Mode</p>
+              <p>You're claiming items from this bill. Only the host can add or edit items.</p>
+            </div>
+          )}
+
+          {/* Participants */}
+          {(participants || []).length > 1 && (
+            <div className="pt-2">
+              <p className="text-xs text-muted-foreground font-medium mb-2">In this split:</p>
+              <div className="flex gap-2 flex-wrap">
+                {participants.map(p => (
+                  <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand/20 text-brand-muted-foreground border border-brand/30" : "bg-white/5 text-white/50 border border-white/10"}`}>
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-current opacity-60">{(p.name || "?")[0].toUpperCase()}</div>
+                    {p.participant_id === myId ? "You" : p.name}
+                    {p.payment_status === "paid" && " ✓"}
+                  </div>
+                ))}
               </div>
-            </button>
-          );
-        })}
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Add Item Section — HOSTS ONLY */}
-        {!qrToken && (
-          <div className="pt-2 border-t border-white/10">
-            <button
-              onClick={() => {/* TODO: open add-item modal or navigate to edit */}}
-              className="w-full py-3 rounded-2xl border-2 border-dashed border-white/20 text-white/50 hover:border-brand hover:text-brand transition-all font-semibold text-sm"
-              aria-label="Add a new item to the bill"
-            >
-              + Add Item
-            </button>
-          </div>
-        )}
-
-        {/* Guest-only notice */}
-        {qrToken && (
-          <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs space-y-1">
-            <p className="font-semibold">🔒 Guest Mode</p>
-            <p>You're claiming items from this bill. Only the host can add or edit items.</p>
-          </div>
-        )}
-
-        {/* Participants */}
-        {participants.length > 1 && (
-          <div className="pt-2">
-            <p className="text-xs text-muted-foreground font-medium mb-2">In this split:</p>
-            <div className="flex gap-2 flex-wrap">
-              {participants.map(p => (
-                <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand/20 text-brand-muted-foreground border border-brand/30" : "bg-white/5 text-white/50 border border-white/10"}`}>
-                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-current opacity-60">{(p.name || "?")[0].toUpperCase()}</div>
-                  {p.participant_id === myId ? "You" : p.name}
-                  {p.payment_status === "paid" && " ✓"}
-                </div>
-              ))}
+      {/* Even/Custom Split Info */}
+      {splitMode !== "itemized" && (
+        <div className="max-w-lg mx-auto px-4 py-6">
+          <div className="rounded-2xl p-6 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="text-5xl mb-4">{splitMode === "even" ? "⚖️" : "📊"}</div>
+            <h2 className="text-xl font-bold text-white mb-2">
+              {splitMode === "even" ? "Even Split" : "Custom Split"}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {splitMode === "even" 
+                ? `The total bill of $${(session.total_amount || 0).toFixed(2)} is split equally among ${participants.length} participant${participants.length !== 1 ? "s" : ""}.`
+                : "Your share has been set by the host."
+              }
+            </p>
+            <div className="mt-6 p-4 rounded-xl" style={{ background: 'rgba(102,126,234,0.1)', border: '1px solid rgba(102,126,234,0.3)' }}>
+              <p className="text-xs text-white/50 mb-1">Your share</p>
+              <p className="text-4xl font-black text-brand">${myShare.toFixed(2)}</p>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Name Gate Modal */}
       {showNameGate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}>
           <div className="w-full max-w-sm space-y-6 text-center">
-            {/* Logo */}
             <div className="flex justify-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}>
                 BT
               </div>
             </div>
-
-            {/* Headline */}
             <div className="space-y-2">
               <h1 className="text-2xl font-black text-white">What's your name?</h1>
-              <p className="text-sm text-white/50">
-                The host wants to know who's paying for what 👀
-              </p>
+              <p className="text-sm text-white/50">The host wants to know who's paying for what 👀</p>
             </div>
-
-            {/* Input */}
             <input
               autoFocus
               value={nameGateInput}
@@ -438,8 +476,6 @@ export default function Claim() {
               className="w-full h-14 rounded-2xl border border-white/10 bg-white/5 px-4 text-center text-lg text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               style={{ fontSize: "16px" }}
             />
-
-            {/* Submit */}
             <button
               onClick={handleNameGateSubmit}
               disabled={nameGateInput.trim().length < 2}
@@ -517,21 +553,33 @@ export default function Claim() {
         style={{ background: 'rgba(15,12,41,0.95)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.1)', paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-lg mx-auto space-y-3">
-          {myMyClaimed.length > 0 ? (
+          {splitMode === "itemized" ? (
+            myMyClaimed.length > 0 ? (
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-white text-sm">You owe</div>
+                  <div className="text-xs text-white/50">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
+                </div>
+                <div className="text-3xl font-black text-brand">${myShare.toFixed(2)}</div>
+              </div>
+            ) : (
+              <p className="text-center text-white/40 text-sm">Tap items above to claim them</p>
+            )
+          ) : (
             <div className="flex justify-between items-center">
               <div>
                 <div className="font-bold text-white text-sm">You owe</div>
-                <div className="text-xs text-white/50">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
+                <div className="text-xs text-white/50">
+                  {splitMode === "even" ? `${participants.length} way split` : "Custom amount"}
+                </div>
               </div>
               <div className="text-3xl font-black text-brand">${myShare.toFixed(2)}</div>
             </div>
-          ) : (
-            <p className="text-center text-white/40 text-sm">Tap items above to claim them</p>
           )}
-          {session.host_payment_info && myMyClaimed.length > 0 && !alreadyPaid ? (
+          {session.host_payment_info && (splitMode === "itemized" ? myMyClaimed.length > 0 : true) && !alreadyPaid ? (
             <button
               onClick={handlePaymentClick}
-              disabled={myMyClaimed.length === 0}
+              disabled={splitMode === "itemized" && myMyClaimed.length === 0}
               aria-label={`Pay $${myShare.toFixed(2)} via ${session.host_payment_info.method}`}
               className="w-full h-14 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
@@ -541,12 +589,12 @@ export default function Claim() {
           ) : (
             <button
               onClick={markMePaid}
-              disabled={myMyClaimed.length === 0 || alreadyPaid}
-              aria-label={alreadyPaid ? "Payment complete" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim at least one item"}
+              disabled={splitMode === "itemized" && (myMyClaimed.length === 0 || alreadyPaid)}
+              aria-label={alreadyPaid ? "Payment complete" : `Pay $${myShare.toFixed(2)}`}
               className={`w-full h-14 font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 ${alreadyPaid ? "bg-success text-white" : "text-white hover:-translate-y-0.5 active:translate-y-0"}`}
               style={alreadyPaid ? {} : { background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
             >
-              {alreadyPaid ? "✓ Marked as Paid" : myMyClaimed.length > 0 ? `Pay $${myShare.toFixed(2)}` : "Claim items to pay"}
+              {alreadyPaid ? "✓ Marked as Paid" : `Pay $${myShare.toFixed(2)}`}
             </button>
           )}
         </div>

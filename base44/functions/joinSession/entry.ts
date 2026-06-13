@@ -28,15 +28,41 @@ Deno.serve(async (req) => {
 
   const currentParticipants = session.participants || [];
   const alreadyIn = currentParticipants.find(p => p.participant_id === participant_id);
+  const splitMode = session.split_mode || 'itemized';
+  const totalAmount = session.total_amount || 0;
 
   let updatedParticipants;
+  let amountOwed = 0;
+
+  // Calculate amount owed based on split mode
+  if (splitMode === 'even') {
+    // Even split: total / number of participants (including new one)
+    const newCount = alreadyIn ? currentParticipants.length : currentParticipants.length + 1;
+    amountOwed = newCount > 0 ? Math.round((totalAmount / newCount) * 100) / 100 : 0;
+  } else if (splitMode === 'custom') {
+    // Custom split: use percentage or fixed amount if provided
+    amountOwed = 0; // Will be set by host later or via custom config
+  }
+  // itemized: amount_owed stays 0 until items are claimed
 
   if (!alreadyIn) {
     // Add participant
     updatedParticipants = [
       ...currentParticipants,
-      { participant_id, name: cleanName || 'Anonymous', amount_owed: 0, payment_status: 'unpaid' }
+      { 
+        participant_id, 
+        name: cleanName || 'Anonymous', 
+        amount_owed: amountOwed, 
+        payment_status: 'unpaid',
+        split_percentage: splitMode === 'custom' ? undefined : undefined,
+        split_amount: splitMode === 'custom' ? undefined : undefined
+      }
     ];
+    
+    // Recalculate amounts for all participants in even split mode
+    if (splitMode === 'even') {
+      updatedParticipants = updatedParticipants.map(p => ({ ...p, amount_owed: amountOwed }));
+    }
   } else if (cleanName && alreadyIn.name !== cleanName) {
     // Update name only
     updatedParticipants = currentParticipants.map(p =>
@@ -52,7 +78,8 @@ Deno.serve(async (req) => {
   // If items/participants snapshot provided (claim update), validate and apply
   let updatePayload = { participants: updatedParticipants, status: newStatus };
 
-  if (Array.isArray(items)) {
+  // Only process item claims for itemized split mode
+  if (splitMode === 'itemized' && Array.isArray(items)) {
     // Validate item ownership — participant can only claim unclaimed items or their own
     for (const item of items) {
       const original = (session.items || []).find(i => i.id === item.id);

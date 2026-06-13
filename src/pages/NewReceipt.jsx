@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import TipSelector from "@/components/TipSelector";
+import SplitModeSelector from "@/components/SplitModeSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 
@@ -23,6 +24,7 @@ export default function NewReceipt() {
   const [items, setItems] = useState([]);
   const [tax, setTax] = useState(0);
   const [tip, setTip] = useState(0);
+  const [splitMode, setSplitMode] = useState("itemized");
   const [saving, setSaving] = useState(false);
   const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
   const [parseValidation, setParseValidation] = useState(null);
@@ -102,7 +104,7 @@ Return a JSON with:
     setSaving(true);
     try {
       const res = await base44.functions.invoke("createSession", {
-        title, image_url: imageUrl, items, tax, tip
+        title, image_url: imageUrl, items, tax, tip, split_mode: splitMode, total_amount: total
       });
       if (res.data?.error) {
         alert(res.data.error);
@@ -112,7 +114,7 @@ Return a JSON with:
       const session = res.data.session;
       trackDeviceAction('split_created');
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'session_created', { session_id: session.id });
+        window.gtag('event', 'session_created', { session_id: session.id, split_mode: splitMode });
       }
       pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
     } catch (err) {
@@ -255,6 +257,11 @@ Return a JSON with:
               <TipSelector subtotal={subtotal} tip={tip} onChange={setTip} />
             </div>
 
+            {/* Split Mode Selector */}
+            <div className="pt-2">
+              <SplitModeSelector value={splitMode} onChange={setSplitMode} />
+            </div>
+
             {/* Total */}
             <div
               className="rounded-xl p-4 flex items-center justify-between"
@@ -266,7 +273,7 @@ Return a JSON with:
 
             <button
               onClick={handleCreateSession}
-              disabled={saving || items.length === 0}
+              disabled={saving || (splitMode === "itemized" && items.length === 0)}
               className="w-full h-14 text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
               style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
             >
