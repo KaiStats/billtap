@@ -372,7 +372,28 @@ export default function Claim() {
           );
         })}
 
-        {/* Guests cannot add items — host controls the bill */}
+        {{/* Add Item Section — HOSTS ONLY */}
+        {!qrToken && (
+          <div className="pt-2 border-t border-white/10">
+            <button
+              onClick={() => {/* TODO: open add-item modal or navigate to edit */}}
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-white/20 text-white/50 hover:border-brand hover:text-brand transition-all font-semibold text-sm"
+              aria-label="Add a new item to the bill"
+            >
+              + Add Item
+            </button>
+          </div>
+        )}
+
+        {/* Guest-only notice */}
+        {qrToken && (
+          <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs space-y-1">
+            <p className="font-semibold">🔒 Guest Mode</p>
+            <p>You're claiming items from this bill. Only the host can add or edit items.</p>
+          </div>
+        )}
+
+        {/* Participants */} }
 
         {/* Participants */}
         {participants.length > 1 && (
