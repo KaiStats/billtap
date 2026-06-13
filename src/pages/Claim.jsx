@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
+import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,12 @@ function calcMyShare(items, myId, tax, tip) {
 }
 
 export default function Claim() {
-  const sessionId = new URLSearchParams(window.location.search).get("id");
+  const params = new URLSearchParams(window.location.search);
+  const qrToken = params.get("token");
+  const legacyId = params.get("id");
+  const [sessionId, setSessionId] = useState(legacyId); // will be set after token verification
+  const [tokenVerified, setTokenVerified] = useState(!qrToken); // legacy links skip verification
+  const [tokenError, setTokenError] = useState(null);
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
     let id = localStorage.getItem("billtap_participant_id") || localStorage.getItem("divvy_participant_id");
@@ -34,16 +39,27 @@ export default function Claim() {
   const [myName, setMyName] = useState(() => localStorage.getItem("billtap_participant_name") || localStorage.getItem("divvy_participant_name") || "");
   const [nameInput, setNameInput] = useState(() => localStorage.getItem("billtap_participant_name") || localStorage.getItem("divvy_participant_name") || "");
   const [loading, setLoading] = useState(true);
-  const [addingItem, setAddingItem] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemPrice, setNewItemPrice] = useState("");
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
 
+  // Verify QR token if present, extract session_id
+  useEffect(() => {
+    if (!qrToken) return;
+    base44.functions.invoke("verifyQRToken", { qr_token: qrToken }).then(res => {
+      if (res.data?.valid) {
+        setSessionId(res.data.session_id);
+        setTokenVerified(true);
+      } else {
+        setTokenError(res.data?.error || "Invalid or expired QR code");
+      }
+    });
+  }, [qrToken]);
+
   const fetchSession = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId || !tokenVerified) return;
     const data = await base44.entities.Session.list("-created_date", 200);
     const found = data.find(s => s.id === sessionId);
     if (found) {
@@ -65,7 +81,7 @@ export default function Claim() {
     }
   }, [sessionId]);
 
-  useEffect(() => { fetchSession(); }, [fetchSession]);
+  useEffect(() => { if (tokenVerified) fetchSession(); }, [fetchSession, tokenVerified]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -152,19 +168,6 @@ export default function Claim() {
     }
   };
 
-  const addItemMutation = useMutationOptimistic(
-    ({ updatedItems, total }) => base44.entities.Session.update(sessionId, { items: updatedItems, total_amount: total }),
-    { onOptimisticState: () => session, onRollback: (s) => setSession(s), onSuccess: (u) => setSession(u) }
-  );
-
-  const handleAddItem = () => {
-    if (!newItemName.trim() || !newItemPrice) return;
-    const newItem = { id: `item-${Date.now()}`, name: newItemName.trim(), price: parseFloat(newItemPrice) || 0, quantity: 1, claimed_by: [] };
-    const updatedItems = [...(session.items || []), newItem];
-    const subtotal = updatedItems.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0);
-    addItemMutation.mutate({ updatedItems, total: subtotal + (session.tax || 0) + (session.tip || 0) });
-    setNewItemName(""); setNewItemPrice(""); setAddingItem(false);
-  };
 
   const paidMutation = useMutationOptimistic(
     ({ updatedParticipants, newStatus }) => base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
@@ -217,9 +220,22 @@ export default function Claim() {
     setShowPaymentModal(true);
   };
 
-  if (!sessionId) return (
+  if (tokenError) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div><p className="text-lg font-semibold">QR code expired or invalid</p><p className="text-sm mt-1">Ask the host to share a fresh QR code.</p></div>
+    </div>
+  );
+
+  if (!sessionId && !qrToken) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
       <div><p className="text-lg font-semibold">No session found</p><p className="text-sm mt-1">Please scan the QR code again.</p></div>
+    </div>
+  );
+
+  if (!tokenVerified) return (
+    <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+      <Loader2 className="w-8 h-8 animate-spin text-brand" aria-label="Verifying QR code" />
+      <span className="sr-only">Verifying QR code</span>
     </div>
   );
 
@@ -356,27 +372,7 @@ export default function Claim() {
           );
         })}
 
-        {/* Add item */}
-        {!addingItem ? (
-          <button
-            onClick={() => setAddingItem(true)}
-            aria-label="Add a missing item"
-            className="w-full p-3 rounded-2xl border-2 border-dashed border-white/10 text-white/40 hover:border-brand/40 hover:text-brand transition-all text-sm font-medium flex items-center justify-center gap-2"
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" /> Add missing item
-          </button>
-        ) : (
-          <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex gap-2">
-              <Input value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Item name" aria-label="New item name" className="flex-1 rounded-xl text-sm" autoFocus />
-              <Input type="number" inputMode="decimal" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} placeholder="$0.00" aria-label="New item price" className="w-20 rounded-xl text-sm" />
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleAddItem} className="flex-1 bg-brand hover:bg-brand/90 text-brand-foreground rounded-xl">Add</Button>
-              <Button size="sm" variant="outline" onClick={() => setAddingItem(false)} className="rounded-xl">Cancel</Button>
-            </div>
-          </div>
-        )}
+        {/* Guests cannot add items — host controls the bill */}
 
         {/* Participants */}
         {participants.length > 1 && (

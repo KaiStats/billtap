@@ -15,9 +15,24 @@ export default function SessionHost() {
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentHandle, setPaymentHandle] = useState("");
+  const [qrToken, setQrToken] = useState(null);
+  const [qrTokenExpiry, setQrTokenExpiry] = useState(null);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
-  const claimUrl = `${window.location.origin}/Claim?id=${sessionId}`;
+
+  // Generate a fresh signed QR token (refreshes every 25 min)
+  const refreshQrToken = useCallback(async () => {
+    if (!sessionId) return;
+    const res = await base44.functions.invoke("generateQRSignature", { session_id: sessionId });
+    if (res.data?.qr_token) {
+      setQrToken(res.data.qr_token);
+      setQrTokenExpiry(Date.now() + 25 * 60 * 1000); // refresh before 30-min expiry
+    }
+  }, [sessionId]);
+
+  const claimUrl = qrToken
+    ? `${window.location.origin}/Claim?token=${qrToken}`
+    : `${window.location.origin}/Claim?id=${sessionId}`;
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -27,6 +42,15 @@ export default function SessionHost() {
   }, [sessionId]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
+
+  // Generate signed QR token on mount and refresh before expiry
+  useEffect(() => {
+    refreshQrToken();
+    const interval = setInterval(() => {
+      if (!qrTokenExpiry || Date.now() > qrTokenExpiry) refreshQrToken();
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshQrToken, qrTokenExpiry]);
 
   useEffect(() => {
     if (!sessionId) return;
