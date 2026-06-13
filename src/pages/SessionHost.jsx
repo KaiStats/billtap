@@ -3,10 +3,12 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { QRCodeSVG } from "qrcode.react";
-import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign } from "lucide-react";
+import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import SplitConfigModal from "@/components/SplitConfigModal";
+import CustomSplitConfig from "@/components/CustomSplitConfig";
 
 export default function SessionHost() {
   const { pushScreen } = useTabNav();
@@ -17,6 +19,8 @@ export default function SessionHost() {
   const [paymentHandle, setPaymentHandle] = useState("");
   const [qrToken, setQrToken] = useState(null);
   const [qrTokenExpiry, setQrTokenExpiry] = useState(null);
+  const [showSplitConfig, setShowSplitConfig] = useState(false);
+  const [customSplitData, setCustomSplitData] = useState(null);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
 
@@ -96,6 +100,26 @@ export default function SessionHost() {
       host_payment_info: { method: paymentMethod, handle: paymentHandle.trim() }
     });
     setShowPaymentSetup(false);
+  };
+
+  const saveCustomSplit = async () => {
+    if (!customSplitData?.isValid || !customSplitData.finalAmounts) return;
+    
+    const updatedParticipants = participants.map(p => ({
+      ...p,
+      amount_owed: customSplitData.finalAmounts[p.participant_id] || 0,
+      payment_status: p.payment_status || "unpaid",
+    }));
+
+    await base44.entities.Session.update(sessionId, {
+      split_mode: "custom",
+      custom_split_config: {
+        type: customSplitData.subMode,
+        values: customSplitData.finalAmounts,
+      },
+      participants: updatedParticipants,
+    });
+    setShowSplitConfig(false);
   };
 
   const handleStartClaimingClick = () => {
@@ -178,6 +202,45 @@ export default function SessionHost() {
             </div>
           )}
 
+          {/* Custom Split Configuration Modal */}
+          {showSplitConfig && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={() => setShowSplitConfig(false)}>
+              <Card className="w-full max-w-lg rounded-2xl my-8" onClick={e => e.stopPropagation()}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Settings className="w-5 h-5" /> Configure Custom Split
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 max-h-[70vh] overflow-y-auto">
+                  {participants.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p className="font-semibold mb-2">No guests yet</p>
+                      <p className="text-sm">Share the QR code first, then configure custom splits after guests join.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <CustomSplitConfig
+                        participants={participants}
+                        totalAmount={session.total_amount || 0}
+                        onChange={setCustomSplitData}
+                      />
+                      <div className="flex gap-2 pt-2">
+                        <Button 
+                          onClick={saveCustomSplit} 
+                          disabled={!customSplitData?.isValid}
+                          className="flex-1 bg-brand hover:bg-brand/90"
+                        >
+                          Save Split
+                        </Button>
+                        <Button variant="outline" onClick={() => setShowSplitConfig(false)}>Cancel</Button>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* QR Code */}
           <div className="flex flex-col items-center gap-3">
             <div className="bg-white p-4 rounded-2xl shadow-xl" role="img" aria-label={`QR code to join: ${session.title}`}>
@@ -219,6 +282,42 @@ export default function SessionHost() {
               )}
             </div>
           </div>
+
+          {/* Configure Split Button (for custom mode or to switch to custom) */}
+          {participants.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowSplitConfig(true)}
+              className="w-full h-12 rounded-xl border-white/20 text-white hover:bg-white/10"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              {session.split_mode === "custom" ? "Edit Custom Split" : "Configure Custom Split"}
+            </Button>
+          )}
+
+          {/* Split Configuration Modal */}
+          {showSplitConfig && (
+            <SplitConfigModal
+              session={session}
+              onClose={() => setShowSplitConfig(false)}
+              onUpdate={(updated) => setSession(updated)}
+            />
+          )}
+
+          {/* Split Mode Indicator */}
+          {session.split_mode === "custom" && (
+            <div className="rounded-xl p-3 bg-purple-500/10 border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-purple-300 font-semibold text-sm">
+                  <Settings className="w-4 h-4" />
+                  Custom Split Active
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setShowSplitConfig(true)} className="text-xs h-8">
+                  Edit
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Progress */}
           {session.status === "claiming" && totalItems > 0 && (

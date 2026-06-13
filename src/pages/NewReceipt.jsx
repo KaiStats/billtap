@@ -104,7 +104,13 @@ Return a JSON with:
     setSaving(true);
     try {
       const res = await base44.functions.invoke("createSession", {
-        title, image_url: imageUrl, items, tax, tip, split_mode: splitMode, total_amount: total
+        title, 
+        image_url: imageUrl, 
+        items, 
+        tax, 
+        tip, 
+        split_mode: splitMode, 
+        total_amount: total,
       });
       if (res.data?.error) {
         alert(res.data.error);
@@ -261,6 +267,21 @@ Return a JSON with:
             <div className="pt-2">
               <SplitModeSelector value={splitMode} onChange={setSplitMode} />
             </div>
+
+            {/* Custom Split Info */}
+            {splitMode === "custom" && (
+              <div className="pt-4 border-t border-white/10">
+                <div className="rounded-xl p-4 bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm">
+                  <p className="font-bold mb-2">📊 Custom Split Setup</p>
+                  <p className="text-xs opacity-80">
+                    Generate the QR code first. After guests join by scanning, you can configure custom percentages, 
+                    fixed amounts, or shares from the Session Host screen.
+                  </p>
+                </div>
+              </div>
+            )}
+
+
 
             {/* Total */}
             <div
