@@ -372,7 +372,7 @@ export default function Claim() {
           );
         })}
 
-        {{/* Add Item Section — HOSTS ONLY */}
+        {/* Add Item Section — HOSTS ONLY */}
         {!qrToken && (
           <div className="pt-2 border-t border-white/10">
             <button
@@ -392,8 +392,6 @@ export default function Claim() {
             <p>You're claiming items from this bill. Only the host can add or edit items.</p>
           </div>
         )}
-
-        {/* Participants */} }
 
         {/* Participants */}
         {participants.length > 1 && (
