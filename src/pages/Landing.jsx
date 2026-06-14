@@ -10,6 +10,22 @@ export default function Landing() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Fire PackagePicker event once when pricing section enters view
+  useEffect(() => {
+    const pricingEl = document.getElementById("pricing");
+    if (!pricingEl || typeof window.fbq !== "function") return;
+    let fired = false;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !fired) {
+        fired = true;
+        window.fbq("trackCustom", "PackagePicker");
+        observer.disconnect();
+      }
+    }, { threshold: 0.3 });
+    observer.observe(pricingEl);
+    return () => observer.disconnect();
+  }, []);
+
   const navLinks = [
     { label: "How It Works", href: "#how-it-works" },
     { label: "Pricing", href: "#pricing" },
