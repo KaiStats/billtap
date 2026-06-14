@@ -1,0 +1,17 @@
+{
+  "name": "Waitlist",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "source": {
+      "type": "string",
+      "default": "landing"
+    }
+  },
+  "required": [
+    "email"
+  ]
+}
