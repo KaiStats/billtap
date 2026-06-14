@@ -34,7 +34,7 @@ export default function Landing() {
     if (!waitlistEmail.includes("@")) return;
     setWaitlistStatus("loading");
     try {
-      await base44.entities.Waitlist.create({ email: waitlistEmail.trim(), source: "landing" });
+      await base44.entities.Waitlist.create({ email: waitlistEmail.trim(), app: "billtap", source: "landing_page", created_at: Date.now() });
       setWaitlistStatus("done");
       setWaitlistEmail("");
     } catch {
@@ -365,19 +365,23 @@ export default function Landing() {
 
           {/* Waitlist card */}
           <div className="max-w-md mx-auto mt-10 p-6 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
-            <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>Want Pro Features?</h3>
+            <div className="text-3xl mb-3">🚀</div>
+            <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>Pro Features Coming Soon</h3>
             <p className="text-sm mb-5" style={{ color: "#8b90a8" }}>
-              We're watching how people use BillTap. When we see what you need, we'll build it. Tell us what would make BillTap worth paying for.
+              We're watching how people use BillTap. When we see what you actually need, we'll build it. Tell us what would make BillTap worth paying for.
             </p>
             {waitlistStatus === "done" ? (
               <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "#00c896" }}>
-                <Check className="w-4 h-4" /> You're on the list. We'll reach out when Pro launches.
+                <Check className="w-4 h-4" /> You're on the list! We'll email you when Pro launches. No spam ever.
               </div>
             ) : (
               <>
                 <div className="flex gap-2">
                   <input
+                    id="waitlist-email"
+                    name="email"
                     type="email"
+                    autoComplete="email"
                     value={waitlistEmail}
                     onChange={e => setWaitlistEmail(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleWaitlist()}
@@ -391,7 +395,7 @@ export default function Landing() {
                     className="px-5 h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90 whitespace-nowrap disabled:opacity-60"
                     style={{ background: "#00c896", color: "#0a0e1a" }}
                   >
-                    {waitlistStatus === "loading" ? "..." : "Join Waitlist"}
+                    {waitlistStatus === "loading" ? "..." : "Join the Waitlist →"}
                   </button>
                 </div>
                 {waitlistStatus === "error" && (

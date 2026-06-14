@@ -6,9 +6,17 @@
       "type": "string",
       "format": "email"
     },
+    "app": {
+      "type": "string",
+      "default": "billtap"
+    },
     "source": {
       "type": "string",
-      "default": "landing"
+      "default": "landing_page"
+    },
+    "created_at": {
+      "type": "number",
+      "description": "Unix timestamp ms"
     }
   },
   "required": [
