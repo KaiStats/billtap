@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
@@ -89,6 +90,7 @@ Return a JSON with:
       }
     } catch (err) {
       console.error("Failed to parse receipt:", err);
+      Sentry.captureException(err, { tags: { feature: 'receipt_scan' } });
       alert("Failed to process receipt. Please try again.");
     } finally {
       setUploading(false);
@@ -118,6 +120,7 @@ Return a JSON with:
         return;
       }
       const session = res.data.session;
+      Sentry.addBreadcrumb({ category: 'session', message: 'Bill split session created', level: 'info' });
       trackDeviceAction('split_created');
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'session_created', { session_id: session.id, split_mode: splitMode });
@@ -125,6 +128,7 @@ Return a JSON with:
       pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
     } catch (err) {
       console.error("Failed to create session:", err);
+      Sentry.captureException(err, { tags: { feature: 'join_session' } });
       alert("Failed to create session. Please try again.");
       setSaving(false);
     }

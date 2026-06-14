@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -54,9 +55,12 @@ export default function Claim() {
     if (!qrToken) return;
     base44.functions.invoke("verifyQRToken", { qr_token: qrToken }).then(res => {
       if (res.data?.valid) {
+        Sentry.addBreadcrumb({ category: 'qr', message: 'QR code scanned by participant', level: 'info' });
         setSessionId(res.data.session_id);
         setTokenVerified(true);
       } else {
+        const err = new Error(res.data?.error || "Invalid or expired QR code");
+        Sentry.captureException(err, { tags: { feature: 'qr_verify' } });
         setTokenError(res.data?.error || "Invalid or expired QR code");
       }
     });
@@ -191,6 +195,7 @@ export default function Claim() {
 
     const amount = myShare.toFixed(2);
 
+    Sentry.addBreadcrumb({ category: 'payment', message: `Payment handoff: ${hostInfo.method}`, level: 'info' });
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'payment_initiated', { amount: myShare, method: hostInfo.method });
     }
