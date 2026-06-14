@@ -319,80 +319,69 @@ export default function Landing() {
       <section id="pricing" className="py-16 md:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12 md:mb-16">
-            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Simple Pricing</h2>
-            <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>Start free. Upgrade when you need more.</p>
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
-            {/* FREE */}
-            <div className="card-hover p-8 rounded-2xl border-2" style={{ background: "#1e2533", borderColor: "#00c896" }}>
-              <div className="mb-6">
-                <h3 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "#f2f2f4" }}>Free</h3>
-                <p className="text-lg" style={{ color: "#8b90a8" }}>Great for occasional dinners</p>
-              </div>
-              <ul className="space-y-3 mb-8">
-                {[
-                  "Up to 3 splits per month",
-                  "Manual item entry (no AI scanning)",
-                  "All 3 split modes",
-                  "QR code generation",
-                  "7-day bill history",
-                  "Payment tracking",
-                ].map(feature => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <Check className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#00c896" }} />
-                    <span className="text-sm md:text-base" style={{ color: "#8b90a8" }}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-4 rounded-xl font-semibold text-base border-2 transition-all hover:border-green-400" style={{ borderColor: "#00c896", color: "#00c896", background: "transparent" }}>
-                Start Free
-              </button>
-              <p className="text-xs text-center mt-4" style={{ color: "#8b90a8" }}>Perfect for trying it out</p>
-            </div>
-            
-            {/* PRO */}
-            <div className="card-hover p-8 rounded-2xl border-2 relative" style={{ background: "#1e2533", borderColor: "#d4af37" }}>
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold text-white" style={{ background: "linear-gradient(135deg, #d4af37, #f5e6c6)", color: "#0a0e1a" }}>
-                🔥 Most Popular
-              </div>
-              <div className="mb-6">
-                <h3 className="font-heading font-bold text-2xl md:text-3xl mb-2" style={{ color: "#f2f2f4" }}>Pro</h3>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-black" style={{ color: "#d4af37" }}>$3.99</p>
-                  <p className="text-lg" style={{ color: "#8b90a8" }}>per month</p>
-                </div>
-                <p className="text-sm" style={{ color: "#8b90a8" }}>or $29/year (save 39%)</p>
-              </div>
-              <div className="mb-6 p-4 rounded-lg" style={{ background: "linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(212, 175, 55, 0.05))", border: "1px solid rgba(212, 175, 55, 0.4)" }}>
-                <p className="text-sm font-bold" style={{ color: "#d4af37" }}>⚡ Unlock AI scanning + unlimited splits</p>
-              </div>
-              <ul className="space-y-3 mb-8">
-                {[
-                  "✓ Unlimited splits (no monthly cap)",
-                  "✓ AI receipt scanning (instant, no typing)",
-                  "✓ Keep all bills forever (no expiry)",
-                  "✓ Recurring splits for roommates",
-                  "✓ CSV export for taxes & expenses",
-                  "✓ Priority support (24hr response)",
-                ].map(feature => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <Check className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#d4af37" }} />
-                    <span className="text-sm md:text-base font-medium" style={{ color: "#f2f2f4" }}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90" style={{ background: "#d4af37", color: "#0a0e1a" }}>
-                Start 14-Day Free Trial
-              </button>
-              <p className="text-xs text-center mt-3" style={{ color: "#8b90a8" }}>No charge until trial ends</p>
-            </div>
-          </div>
-          
-          <div className="mt-8 p-4 rounded-lg text-center" style={{ background: "rgba(212, 175, 55, 0.1)", border: "1px solid rgba(212, 175, 55, 0.3)" }}>
-            <p className="text-sm md:text-base font-medium" style={{ color: "#f2f2f4" }}>
-              <span className="text-yellow-400">Free: 3 splits/month</span> · <span className="text-yellow-400">Pro: Unlimited + AI scanning</span> · Cancel anytime
+            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Free. Forever. No Catch.</h2>
+            <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>
+              We built BillTap because splitting bills shouldn't cost money. Core features are free forever.
             </p>
+          </div>
+
+          {/* Single Free Card */}
+          <div className="max-w-md mx-auto">
+            <div className="card-hover p-8 rounded-2xl border-2 relative" style={{ background: "#1e2533", borderColor: "#00c896" }}>
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold" style={{ background: "#00c896", color: "#0a0e1a" }}>
+                Free Forever
+              </div>
+              <div className="text-center mb-6">
+                <div className="flex items-baseline justify-center gap-1 mb-1">
+                  <span className="text-5xl font-black" style={{ color: "#f2f2f4" }}>$0</span>
+                </div>
+                <p className="text-base" style={{ color: "#8b90a8" }}>For everyone splitting bills</p>
+              </div>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Unlimited bill splits",
+                  "QR code generation",
+                  "Even split mode",
+                  "Itemized split mode",
+                  "Custom split mode",
+                  "AI receipt scanning",
+                  "Settlement tracking",
+                  "Bill history (30 days)",
+                  "Venmo/Cash App/Zelle",
+                  "Guest access (no account needed)",
+                ].map(feature => (
+                  <li key={feature} className="flex items-center gap-3">
+                    <Check className="w-5 h-5 flex-shrink-0" style={{ color: "#00c896" }} />
+                    <span className="text-sm md:text-base" style={{ color: "#f2f2f4" }}>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <button className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90" style={{ background: "#00c896", color: "#0a0e1a" }}>
+                Start Splitting Free →
+              </button>
+            </div>
+            <p className="text-center text-sm mt-5" style={{ color: "#8b90a8" }}>
+              No credit card. No account needed to split. US only at launch.
+            </p>
+          </div>
+
+          {/* Waitlist */}
+          <div className="max-w-md mx-auto mt-10 p-6 rounded-2xl border-l-4" style={{ background: "#1e2533", borderLeftColor: "#00c896", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
+            <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>Want Pro Features?</h3>
+            <p className="text-sm mb-4" style={{ color: "#8b90a8" }}>
+              We're building advanced features — unlimited history, CSV export, recurring splits, and more. Join the waitlist to get early access.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder="your@email.com"
+                className="flex-1 h-11 rounded-xl border px-4 text-sm bg-transparent"
+                style={{ borderColor: "#2d3748", color: "#f2f2f4" }}
+              />
+              <button className="px-5 h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90 whitespace-nowrap" style={{ background: "#00c896", color: "#0a0e1a" }}>
+                Join Waitlist
+              </button>
+            </div>
           </div>
         </div>
       </section>
