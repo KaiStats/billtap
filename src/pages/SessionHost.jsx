@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, memo } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
+import { useAuth } from "@/lib/AuthContext";
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,14 @@ import CustomSplitConfig from "@/components/CustomSplitConfig";
 
 function SessionHostComponent() {
   const { pushScreen } = useTabNav();
+  const { isAuthenticated, isLoadingAuth } = useAuth();
+
+  // Back-button protection: unauthenticated users can't access host view
+  useEffect(() => {
+    if (!isLoadingAuth && !isAuthenticated) {
+      window.location.replace('/');
+    }
+  }, [isAuthenticated, isLoadingAuth]);
   const [session, setSession] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);

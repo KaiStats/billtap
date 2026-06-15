@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
+import { useAuth } from "@/lib/AuthContext";
 import ListLayout from "@/components/ListLayout";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 
@@ -58,6 +59,14 @@ export default function Dashboard() {
   const [loading, setLoading]   = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const { pushScreen } = useTabNav();
+  const { user, isAuthenticated, isLoadingAuth } = useAuth();
+
+  // Back-button protection: if not authenticated after auth check, go to landing
+  useEffect(() => {
+    if (!isLoadingAuth && !isAuthenticated) {
+      window.location.replace('/');
+    }
+  }, [isAuthenticated, isLoadingAuth]);
 
   const fetchSessions = useCallback(async () => {
     const data = await base44.entities.Session.list("-created_date", 20);

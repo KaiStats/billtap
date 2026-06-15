@@ -1,5 +1,33 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import * as Sentry from '@sentry/react';
+
+// Clear all BillTap-specific client state on logout
+function clearBillTapStorage() {
+  const keysToRemove = [
+    'billtap-active-session',
+    'billtap_participant_id',
+    'billtap_participant_name',
+    'billtap-session-cache',
+    'billtap-last-session',
+    'divvy_participant_id',   // legacy key
+    'divvy_participant_name', // legacy key
+  ];
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+
+  // Clear any per-session guest keys
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith('billtap-guest-name-') || k.startsWith('participant-') || k.startsWith('claimed-')) {
+      localStorage.removeItem(k);
+    }
+  });
+
+  sessionStorage.clear();
+
+  // Clear Sentry identity
+  Sentry.setUser(null);
+  Sentry.setTag('split_mode', null);
+}
 
 const AuthContext = createContext();
 
@@ -22,6 +50,10 @@ export const AuthProvider = ({ children }) => {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
+      // Set Sentry user identity on login
+      if (currentUser) {
+        Sentry.setUser({ id: currentUser.id, email: currentUser.email });
+      }
     } catch (error) {
       setIsAuthenticated(false);
       setUser(null);
@@ -44,7 +76,9 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    base44.auth.logout(window.location.href);
+    clearBillTapStorage();
+    // base44.auth.logout() invalidates the JWT server-side and redirects
+    base44.auth.logout('/');
   };
 
   const navigateToLogin = () => {

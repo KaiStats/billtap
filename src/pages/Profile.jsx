@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
@@ -10,11 +10,32 @@ export default function Profile() {
   const { user, logout } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [activeSessionWarning, setActiveSessionWarning] = useState(false);
+  const [activeSessions, setActiveSessions] = useState([]);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // Check for active sessions before showing logout confirm
+  const handleLogoutClick = async () => {
+    const sessions = await base44.entities.Session.filter({ status: "claiming" });
+    const hosting = (sessions || []).filter(s => s.created_by_id === user?.id);
+    if (hosting.length > 0) {
+      setActiveSessions(hosting);
+      setActiveSessionWarning(true);
+    } else {
+      setShowLogoutConfirm(true);
+    }
+  };
+
+  const handleForceLogout = async () => {
+    // Mark all hosted active sessions as completed so guests see the right state
+    await Promise.all(
+      activeSessions.map(s => base44.entities.Session.update(s.id, { status: "completed" }))
+    );
+    logout();
+  };
+
   const handleLogout = () => {
-    console.log("[USER_LOGOUT]", user?.email);
     logout();
   };
 
@@ -36,7 +57,7 @@ export default function Profile() {
         title="Profile"
         rightAction={
           <button
-            onClick={handleLogout}
+            onClick={handleLogoutClick}
             aria-label="Sign out"
             className="p-2 rounded-xl text-white/40 hover:text-destructive hover:bg-danger-muted transition-colors"
           >
@@ -68,7 +89,7 @@ export default function Profile() {
 
         {/* Sign Out Button */}
         <button
-          onClick={() => setShowLogoutConfirm(true)}
+          onClick={handleLogoutClick}
           className="w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-semibold text-destructive transition-all text-left"
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(239,68,68,0.2)' }}
           onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(239,68,68,0.4)'}
@@ -140,6 +161,31 @@ export default function Profile() {
           )}
         </div>
       </div>
+
+      {/* Active Session Warning Dialog */}
+      {activeSessionWarning && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm p-4 pb-8">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-sm shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-warning-muted flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-warning" aria-hidden="true" />
+              </div>
+              <div>
+                <div className="font-bold text-foreground">Active split in progress</div>
+                <div className="text-sm text-muted-foreground">
+                  You're hosting {activeSessions.length} active bill split{activeSessions.length > 1 ? 's' : ''}. Logging out will end the session for all participants.
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <Button variant="outline" onClick={() => setActiveSessionWarning(false)} className="flex-1 h-11 rounded-xl">Stay</Button>
+              <Button onClick={handleForceLogout} className="flex-1 h-11 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold">
+                End & Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sign Out Confirmation Dialog */}
       {showLogoutConfirm && (
