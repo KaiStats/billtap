@@ -8,7 +8,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { items, tax, tip, total } = req.body;
+    const { items, tax, tip, total } = await req.json();
 
     if (!items || !Array.isArray(items)) {
       return Response.json({ error: 'Invalid items array' }, { status: 400 });

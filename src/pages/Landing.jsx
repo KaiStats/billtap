@@ -401,6 +401,8 @@ export default function Landing() {
                   <button
                     onClick={handleWaitlist}
                     disabled={waitlistStatus === "loading"}
+                    aria-busy={waitlistStatus === "loading"}
+                    aria-label="Join the Pro waitlist"
                     className="px-5 h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90 whitespace-nowrap disabled:opacity-60"
                     style={{ background: "#00c896", color: "#0a0e1a" }}
                   >
@@ -408,7 +410,7 @@ export default function Landing() {
                   </button>
                 </div>
                 {waitlistStatus === "error" && (
-                  <p className="text-xs mt-2" style={{ color: "#f87171" }}>Something went wrong. Please try again.</p>
+                  <p role="alert" className="text-xs mt-2" style={{ color: "#f87171" }}>Something went wrong. Please try again.</p>
                 )}
                 <p className="text-xs mt-3" style={{ color: "#4a5068" }}>No spam. One email when Pro launches. Unsubscribe anytime.</p>
               </>
