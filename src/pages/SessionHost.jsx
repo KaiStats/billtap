@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import SplitConfigModal from "@/components/SplitConfigModal";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
 
-export default function SessionHost() {
+function SessionHostComponent() {
   const { pushScreen } = useTabNav();
   const [session, setSession] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -133,8 +133,10 @@ export default function SessionHost() {
     </div>
   );
 
+
   if (!session) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground" role="status" aria-live="polite" aria-busy="true">
+
       <div className="text-center flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
         <span aria-hidden="true">Loading session…</span>
@@ -144,7 +146,10 @@ export default function SessionHost() {
 
   const participants = session.participants || [];
   const totalItems   = (session.items || []).length;
-  const claimedItems = (session.items || []).filter(i => (i.claimed_by || []).length > 0).length;
+  const claimedItems = useMemo(
+    () => (session.items || []).filter(i => (i.claimed_by || []).length > 0).length,
+    [session.items]
+  );
 
   return (
     <div
@@ -362,3 +367,5 @@ export default function SessionHost() {
     </div>
   );
 }
+
+export default memo(SessionHostComponent);

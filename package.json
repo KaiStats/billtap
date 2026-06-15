@@ -78,6 +78,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.171.0",
     "vaul": "^1.1.2",
+    "web-vitals": "^3.5.2",
     "workbox-build": "^7.0.0",
     "workbox-window": "^7.0.0",
     "zod": "^3.24.2"

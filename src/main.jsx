@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import * as Sentry from "@sentry/react"
+import { onCLS, onFCP, onLCP, onTTFB, onINP } from 'web-vitals'
 import App from '@/App.jsx'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import '@/index.css'
@@ -27,6 +28,23 @@ Sentry.init({
 
 // Register PWA service worker for offline support and caching
 registerServiceWorker().catch(err => console.error('Failed to register SW:', err))
+
+// Web Vitals → Sentry
+const reportWebVital = ({ name, value, rating }) => {
+  Sentry.addBreadcrumb({
+    category: 'web-vitals',
+    message: `${name}: ${Math.round(value)}ms`,
+    level: rating === 'good' ? 'info' : rating === 'needs-improvement' ? 'warning' : 'error',
+  });
+  if (rating === 'poor') {
+    Sentry.captureMessage(`Poor ${name}: ${Math.round(value)}ms`, 'warning');
+  }
+};
+onCLS(reportWebVital);
+onFCP(reportWebVital);
+onLCP(reportWebVital);
+onTTFB(reportWebVital);
+onINP(reportWebVital);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <Sentry.ErrorBoundary fallback={({ error }) => (

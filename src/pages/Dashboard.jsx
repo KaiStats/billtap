@@ -60,7 +60,7 @@ export default function Dashboard() {
   const { pushScreen } = useTabNav();
 
   const fetchSessions = useCallback(async () => {
-    const data = await base44.entities.Session.list("-created_date", 50);
+    const data = await base44.entities.Session.list("-created_date", 20);
     setSessions(data);
     setLoading(false);
     setTimeout(restoreScroll, 50);

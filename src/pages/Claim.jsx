@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
@@ -68,8 +68,8 @@ export default function Claim() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId || !tokenVerified) return;
-    const data = await base44.entities.Session.list("-created_date", 200);
-    const found = data.find(s => s.id === sessionId);
+    const data = await base44.entities.Session.filter({ id: sessionId });
+    const found = data[0];
     if (found) {
       setSession(found);
       const existing = (found.participants || []).find(p => p.participant_id === myId);
@@ -263,23 +263,22 @@ export default function Claim() {
   const items = session.items || [];
   const participants = session.participants || [];
   const splitMode = session.split_mode || "itemized";
-  const claimedCount = items.filter(i => (i.claimed_by || []).length > 0).length;
-  
-  // Calculate share based on split mode
-  let myShare = 0;
-  let myMyClaimed = [];
-  
-  if (splitMode === "even") {
-    myShare = calcEvenShare(session.total_amount || 0, participants.length);
-  } else if (splitMode === "custom") {
-    const me = participants.find(p => p.participant_id === myId);
-    myShare = me?.amount_owed || 0;
-  } else {
-    // itemized mode
-    myShare = calcMyShare(items, myId, session.tax, session.tip);
-    myMyClaimed = items.filter(i => (i.claimed_by || []).includes(myId));
-  }
-  
+  const claimedCount = useMemo(
+    () => items.filter(i => (i.claimed_by || []).length > 0).length,
+    [items]
+  );
+
+  const myMyClaimed = useMemo(
+    () => splitMode === "itemized" ? items.filter(i => (i.claimed_by || []).includes(myId)) : [],
+    [items, myId, splitMode]
+  );
+
+  const myShare = useMemo(() => {
+    if (splitMode === "even") return calcEvenShare(session.total_amount || 0, participants.length);
+    if (splitMode === "custom") return participants.find(p => p.participant_id === myId)?.amount_owed || 0;
+    return calcMyShare(items, myId, session.tax, session.tip);
+  }, [splitMode, session.total_amount, session.tax, session.tip, participants, items, myId]);
+
   const meParticipant = participants.find(p => p.participant_id === myId);
   const alreadyPaid = meParticipant?.payment_status === "paid";
 
