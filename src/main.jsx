@@ -28,6 +28,23 @@ Sentry.init({
 // Register PWA service worker for offline support and caching
 registerServiceWorker().catch(err => console.error('Failed to register SW:', err))
 
+// FIX 5: Mobile context for Sentry
+Sentry.setContext("device", {
+  is_mobile: /Mobi|Android/i.test(navigator.userAgent),
+  screen_width: window.screen.width,
+  screen_height: window.screen.height,
+  pixel_ratio: window.devicePixelRatio,
+  viewport_width: window.innerWidth,
+  viewport_height: window.innerHeight,
+  connection: navigator.connection?.effectiveType || 'unknown',
+});
+Sentry.setTag('is_mobile', /Mobi|Android/i.test(navigator.userAgent));
+Sentry.setTag(
+  'browser',
+  navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')
+    ? 'ios_safari' : 'other'
+);
+
 
 
 ReactDOM.createRoot(document.getElementById('root')).render(

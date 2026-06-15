@@ -10,12 +10,11 @@ export function useNetworkStatus() {
     let offlineToastId = null;
 
     const handleOffline = () => {
-      // Show offline toast
       const { dismiss } = toast({
-        title: 'You are currently offline',
-        description: 'Changes will sync when you\'re back online',
+        title: 'Connection lost',
+        description: 'Your split data is saved locally. Reconnecting when signal returns...',
         variant: 'destructive',
-        duration: Infinity, // Stay until dismissed or online
+        duration: Infinity,
       });
       offlineToastId = dismiss;
     };

@@ -2,6 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── FIX 1: Box model + overflow ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── FIX 2: iOS Safari — prevent input zoom ── */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* ── FIX 3: Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── FIX 4: Touch interactions ── */
+button, a, [role="button"], [role="checkbox"], .item-claim {
+  touch-action: manipulation;
+}
+
+/* No hover states on touch devices */
+@media (hover: none) {
+  button:hover,
+  a:hover,
+  .item:hover,
+  .card-hover:hover {
+    opacity: 1 !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Scrollable containers */
+.item-list, .participant-list {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* QR container — prevent text selection / accidental copy */
+.qr-container {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -160,6 +213,7 @@
     @apply bg-background text-foreground;
     color: var(--text-primary);
     overscroll-behavior: none;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
