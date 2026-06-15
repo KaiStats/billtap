@@ -226,6 +226,32 @@ export default function Claim() {
     setShowPaymentModal(true);
   };
 
+  // Derived state — must be above all early returns (Rules of Hooks)
+  const items = session?.items || [];
+  const participants = session?.participants || [];
+  const splitMode = session?.split_mode || "itemized";
+  const isExpired = session?.expires_at && session.expires_at < Date.now();
+
+  const claimedCount = useMemo(
+    () => items.filter(i => (i.claimed_by || []).length > 0).length,
+    [items]
+  );
+
+  const myMyClaimed = useMemo(
+    () => splitMode === "itemized" ? items.filter(i => (i.claimed_by || []).includes(myId)) : [],
+    [items, myId, splitMode]
+  );
+
+  const myShare = useMemo(() => {
+    if (!session) return 0;
+    if (splitMode === "even") return calcEvenShare(session.total_amount || 0, participants.length);
+    if (splitMode === "custom") return participants.find(p => p.participant_id === myId)?.amount_owed || 0;
+    return calcMyShare(items, myId, session.tax, session.tip);
+  }, [session, splitMode, participants, items, myId]);
+
+  const meParticipant = participants.find(p => p.participant_id === myId);
+  const alreadyPaid = meParticipant?.payment_status === "paid";
+
   if (tokenError) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
       <div><p className="text-lg font-semibold">QR code expired or invalid</p><p className="text-sm mt-1">Ask the host to share a fresh QR code.</p></div>
@@ -252,35 +278,12 @@ export default function Claim() {
     </div>
   );
 
-  const isExpired = session?.expires_at && session.expires_at < Date.now();
   if (!session) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Session not found.</div>;
   if (isExpired) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
       <div><p className="text-lg font-semibold">This session has expired</p><p className="text-sm mt-1">Sessions are active for 30 days.</p></div>
     </div>
   );
-
-  const items = session.items || [];
-  const participants = session.participants || [];
-  const splitMode = session.split_mode || "itemized";
-  const claimedCount = useMemo(
-    () => items.filter(i => (i.claimed_by || []).length > 0).length,
-    [items]
-  );
-
-  const myMyClaimed = useMemo(
-    () => splitMode === "itemized" ? items.filter(i => (i.claimed_by || []).includes(myId)) : [],
-    [items, myId, splitMode]
-  );
-
-  const myShare = useMemo(() => {
-    if (splitMode === "even") return calcEvenShare(session.total_amount || 0, participants.length);
-    if (splitMode === "custom") return participants.find(p => p.participant_id === myId)?.amount_owed || 0;
-    return calcMyShare(items, myId, session.tax, session.tip);
-  }, [splitMode, session.total_amount, session.tax, session.tip, participants, items, myId]);
-
-  const meParticipant = participants.find(p => p.participant_id === myId);
-  const alreadyPaid = meParticipant?.payment_status === "paid";
 
   const getName = (pid) => {
     if (pid === myId) return "You";

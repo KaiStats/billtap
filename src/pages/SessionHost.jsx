@@ -134,21 +134,20 @@ function SessionHostComponent() {
   );
 
 
+  const participants = session?.participants || [];
+  const totalItems   = (session?.items || []).length;
+  const claimedItems = useMemo(
+    () => (session?.items || []).filter(i => (i.claimed_by || []).length > 0).length,
+    [session?.items]
+  );
+
   if (!session) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground" role="status" aria-live="polite" aria-busy="true">
-
       <div className="text-center flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
         <span aria-hidden="true">Loading session…</span>
       </div>
     </div>
-  );
-
-  const participants = session.participants || [];
-  const totalItems   = (session.items || []).length;
-  const claimedItems = useMemo(
-    () => (session.items || []).filter(i => (i.claimed_by || []).length > 0).length,
-    [session.items]
   );
 
   return (
