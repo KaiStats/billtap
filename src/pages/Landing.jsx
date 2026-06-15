@@ -31,9 +31,17 @@ export default function Landing() {
   }, []);
 
   const handleWaitlist = async () => {
-    if (!waitlistEmail.includes("@")) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(waitlistEmail.trim())) return;
     setWaitlistStatus("loading");
     try {
+      // Check for duplicate before inserting
+      const existing = await base44.entities.Waitlist.filter({ email: waitlistEmail.trim() });
+      if (existing && existing.length > 0) {
+        setWaitlistStatus("done"); // Treat as success silently (don't leak existence)
+        setWaitlistEmail("");
+        return;
+      }
       await base44.entities.Waitlist.create({ email: waitlistEmail.trim(), app: "billtap", source: "landing_page", created_at: Date.now() });
       setWaitlistStatus("done");
       setWaitlistEmail("");

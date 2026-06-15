@@ -1,5 +1,21 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
+
+function secureJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...NO_CACHE_HEADERS },
+  });
+}
+
 async function computeHmac(data, keyHex) {
   const enc = new TextEncoder();
   const keyBytes = Uint8Array.from(keyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
@@ -23,33 +39,53 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     const qrSigningKey = Deno.env.get('QR_SIGNING_KEY');
-    if (!qrSigningKey) return Response.json({ error: 'QR_SIGNING_KEY not configured' }, { status: 500 });
+    if (!qrSigningKey) return secureJson({ error: 'QR_SIGNING_KEY not configured' }, 500);
 
-    const { qr_token } = await req.json();
-    if (!qr_token) return Response.json({ valid: false, error: 'qr_token required' }, { status: 400 });
+    const body = await req.json();
+    const qr_token = body?.qr_token;
 
-    // Parse token: session_id.expiresAt.signature
+    // Reject immediately if malformed
+    if (!qr_token || typeof qr_token !== 'string') {
+      return secureJson({ valid: false, error: 'qr_token required' }, 400);
+    }
+
+    // Enforce token length sanity (prevent DoS via huge strings)
+    if (qr_token.length > 512) {
+      return secureJson({ valid: false, error: 'Invalid token' }, 400);
+    }
+
     const parts = qr_token.split('.');
-    if (parts.length !== 3) return Response.json({ valid: false, error: 'Invalid token format' });
+    if (parts.length !== 3) {
+      return secureJson({ valid: false, error: 'Invalid token format' });
+    }
 
     const [session_id, expiresAtStr, signature] = parts;
-    const expiresAt = parseInt(expiresAtStr, 10);
 
-    // Check expiry
-    if (isNaN(expiresAt) || Date.now() > expiresAt) {
-      return Response.json({ valid: false, error: 'Token expired' });
+    // Validate each part before processing
+    if (!session_id || !expiresAtStr || !signature) {
+      return secureJson({ valid: false, error: 'Malformed token' });
+    }
+
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || expiresAt <= 0) {
+      return secureJson({ valid: false, error: 'Invalid token expiry' });
+    }
+
+    // Check expiry BEFORE computing HMAC (cheap check first)
+    if (Date.now() > expiresAt) {
+      return secureJson({ valid: false, error: 'Token expired' });
     }
 
     // Verify signature
     const payload = `${session_id}:${expiresAt}`;
     const expectedSig = await computeHmac(payload, qrSigningKey);
     if (!safeEqual(signature, expectedSig)) {
-      return Response.json({ valid: false, error: 'Invalid signature' });
+      return secureJson({ valid: false, error: 'Invalid signature' });
     }
 
-    return Response.json({ valid: true, session_id });
+    return secureJson({ valid: true, session_id });
   } catch (error) {
-    console.error('verifyQRToken error:', error);
-    return Response.json({ valid: false, error: error.message }, { status: 500 });
+    console.error('verifyQRToken error:', error.message);
+    return secureJson({ valid: false, error: 'Internal server error' }, 500);
   }
 });

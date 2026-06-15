@@ -30,15 +30,30 @@ export default function NewReceipt() {
   const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
   const [parseValidation, setParseValidation] = useState(null);
 
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  const validateAndSetFile = (file) => {
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|heic|heif)$/i)) {
+      alert("Please upload a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert("Image must be under 10MB.");
+      return;
+    }
+    setImageFile(file);
+    setImageUrl(URL.createObjectURL(file));
+  };
+
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) { setImageFile(file); setImageUrl(URL.createObjectURL(file)); }
+    validateAndSetFile(e.target.files[0]);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) { setImageFile(file); setImageUrl(URL.createObjectURL(file)); }
+    validateAndSetFile(e.dataTransfer.files[0]);
   };
 
   const handleParseReceipt = async () => {
