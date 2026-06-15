@@ -51,16 +51,16 @@ export default function Landing() {
   };
 
   const steps = [
-    { icon: "📸", title: "Photo the Bill", desc: "Host photographs the receipt. AI reads every item instantly. No typing." },
-    { icon: "📱", title: "Share the QR", desc: "A unique QR code appears. Everyone scans it. No app download. No account needed." },
-    { icon: "✅", title: "Claim Your Items", desc: "Each person claims what they ordered. Tax and tip split proportionally." },
-    { icon: "💸", title: "Pay in One Tap", desc: "Venmo, Cash App, or Zelle. One tap. Host sees paid/unpaid in real time." },
+    { icon: "📸", title: "Photo the Bill", desc: "Host photographs the receipt. AI reads every item instantly. No typing.", ariaHidden: true },
+    { icon: "📱", title: "Share the QR", desc: "A unique QR code appears. Everyone scans it. No app download. No account needed.", ariaHidden: true },
+    { icon: "✅", title: "Claim Your Items", desc: "Each person claims what they ordered. Tax and tip split proportionally.", ariaHidden: true },
+    { icon: "💸", title: "Pay in One Tap", desc: "Venmo, Cash App, or Zelle. One tap. Host sees paid/unpaid in real time.", ariaHidden: true },
   ];
 
   const splitModes = [
-    { icon: "⚖️", title: "Even Split", desc: "Everyone pays the same. Auto-divides as guests join.", accentColor: "#00c896", borderStyle: "4px solid #00c896" },
-    { icon: "📋", title: "Itemized Split", desc: "Claim exactly what you ordered. Tax and tip prorated automatically.", accentColor: "#60a5fa", borderStyle: "4px solid #60a5fa" },
-    { icon: "⚙️", title: "Custom Split", desc: "Percentage, fixed amounts, or shares. You control who pays what.", accentColor: "#d4af37", borderStyle: "4px solid #d4af37" },
+    { icon: "⚖️", title: "Even Split", desc: "Everyone pays the same. Auto-divides as guests join.", accentColor: "#00c896", borderStyle: "4px solid #00c896", ariaHidden: true },
+    { icon: "📋", title: "Itemized Split", desc: "Claim exactly what you ordered. Tax and tip prorated automatically.", accentColor: "#60a5fa", borderStyle: "4px solid #60a5fa", ariaHidden: true },
+    { icon: "⚙️", title: "Custom Split", desc: "Percentage, fixed amounts, or shares. You control who pays what.", accentColor: "#d4af37", borderStyle: "4px solid #d4af37", ariaHidden: true },
   ];
 
   const features = [
@@ -76,7 +76,7 @@ export default function Landing() {
     { value: "0", label: "Accounts needed to split" },
     { value: "3", label: "Payment apps supported" },
     { value: "25min", label: "QR security refresh" },
-    { value: "Today", label: "Launched in public" },
+    { value: "Live", label: "Built in public" },
   ];
 
   const trustBadges = [
@@ -192,7 +192,7 @@ export default function Landing() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="relative min-h-screen flex items-center pt-16 overflow-hidden dot-grid">
+      <section className="relative min-h-[100dvh] flex items-center pt-16 overflow-hidden dot-grid">
         {/* Background glow circles */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="qr-pulse absolute" style={{ top: "20%", left: "50%", transform: "translateX(-50%)", width: "min(80vw, 600px)", height: "min(80vw, 600px)", borderRadius: "50%", background: "radial-gradient(circle, rgba(0,200,150,0.08) 0%, transparent 70%)" }} />
@@ -235,7 +235,7 @@ export default function Landing() {
 
               {/* Launch strip */}
               <div className="hero-text-5 flex flex-wrap items-center gap-3 pt-2">
-                {["Launching Today", "Built in Public", "Free Forever", "US Only"].map((tag, i) => (
+                {["Now Live", "Built in Public", "Free Forever", "US Only"].map((tag, i) => (
                   <span key={tag} className="text-xs font-medium px-3 py-1.5 rounded-full" style={{ background: i === 0 ? "rgba(0,200,150,0.12)" : "rgba(139,144,168,0.1)", color: i === 0 ? "#00c896" : "#8b90a8" }}>
                     {tag}
                   </span>
@@ -285,7 +285,7 @@ export default function Landing() {
             {steps.map((step, idx) => (
               <div key={idx} className="card-hover p-6 md:p-8 rounded-2xl border relative" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
                 <div className="absolute top-4 right-4 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(0,200,150,0.1)", color: "#00c896" }}>0{idx + 1}</div>
-                <div className="text-4xl mb-4">{step.icon}</div>
+                <div className="text-4xl mb-4" aria-hidden={step.ariaHidden}>{step.icon}</div>
                 <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "#f2f2f4" }}>{step.title}</h3>
                 <p className="text-sm leading-relaxed" style={{ color: "#8b90a8" }}>{step.desc}</p>
               </div>
@@ -304,7 +304,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-6">
             {splitModes.map((mode, idx) => (
               <div key={idx} className="card-hover p-8 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: mode.borderStyle }}>
-                <div className="text-4xl mb-4">{mode.icon}</div>
+                <div className="text-4xl mb-4" aria-hidden={mode.ariaHidden}>{mode.icon}</div>
                 <h3 className="font-heading font-bold text-xl mb-3" style={{ color: "#f2f2f4" }}>{mode.title}</h3>
                 <p className="text-base leading-relaxed" style={{ color: "#8b90a8" }}>{mode.desc}</p>
               </div>
@@ -368,6 +368,9 @@ export default function Landing() {
             </div>
             <p className="text-center text-sm mt-5" style={{ color: "#8b90a8" }}>
               No credit card. No account needed to split. US only at launch.
+            </p>
+            <p className="text-center text-xs mt-3" style={{ color: "#4a5068" }}>
+              Pro features available when they launch — join the waitlist below.
             </p>
           </div>
 
@@ -468,6 +471,31 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── FAQ ── */}
+      <section id="faq" className="py-16 md:py-24" style={{ background: "#111827" }}>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Frequently Asked Questions</h2>
+            <p className="text-lg" style={{ color: "#8b90a8" }}>Everything you need to know about BillTap.</p>
+          </div>
+          <div className="space-y-6">
+            {[
+              { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
+              { q: "Is BillTap really free?", a: "Yes. Core features are free forever: unlimited splits, all 3 split modes, AI receipt scanning, and settlement tracking." },
+              { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
+              { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
+              { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
+              { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
+            ].map((faq, i) => (
+              <div key={i} className="p-6 rounded-2xl border" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
+                <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "#f2f2f4" }}>Q: {faq.q}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#8b90a8" }}>A: {faq.a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── FOOTER ── */}
       <footer className="py-12 md:py-16 border-t" style={{ borderColor: "#2d3748" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -487,9 +515,23 @@ export default function Landing() {
             <div>
               <h4 className="font-heading font-bold text-xs mb-4 uppercase tracking-wider" style={{ color: "#f2f2f4" }}>Product</h4>
               <ul className="space-y-3">
-                {[{ label: "How It Works", href: "#how-it-works" }, { label: "Pricing", href: "#pricing" }, { label: "Security", href: "#security" }].map(l => (
+                {[
+                  { label: "How It Works", href: "#how-it-works" },
+                  { label: "Pricing", href: "#pricing" },
+                  { label: "Security", href: "#security" },
+                  { label: "FAQ", href: "#faq" },
+                ].map(l => (
                   <li key={l.label}><a href={l.href} className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>{l.label}</a></li>
                 ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-heading font-bold text-xs mb-4 uppercase tracking-wider" style={{ color: "#f2f2f4" }}>Company</h4>
+              <ul className="space-y-3">
+                <li><Link to="/About" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>About</Link></li>
+                <li><Link to="/Blog" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Blog</Link></li>
+                <li><a href="https://billtap.app" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>billtap.app</a></li>
               </ul>
             </div>
 
@@ -504,7 +546,7 @@ export default function Landing() {
 
           <div className="pt-8 border-t" style={{ borderColor: "#2d3748" }}>
             <p className="text-sm text-center md:text-left" style={{ color: "#4a5068" }}>
-              © 2026 BillTap. Built in public by Kai Cogmon. billtap.app
+              © 2026 BillTap. Built in public by Kai Cogmon.
             </p>
           </div>
         </div>

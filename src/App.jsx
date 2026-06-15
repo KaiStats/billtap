@@ -26,6 +26,9 @@ const NewReceipt  = lazy(() => import('@/pages/NewReceipt'));
 const Dashboard   = lazy(() => import('@/pages/Dashboard'));
 const SessionHost = lazy(() => import('@/pages/SessionHost'));
 const ReceiptDetail = lazy(() => import('@/pages/ReceiptDetail'));
+const About       = lazy(() => import('@/pages/About'));
+const Blog        = lazy(() => import('@/pages/Blog'));
+const Changelog   = lazy(() => import('@/pages/Changelog'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0e1a' }}>
@@ -136,6 +139,9 @@ const AuthenticatedApp = () => {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/icon-generator" element={<IconGenerator />} />
+            <Route path="/About" element={<About />} />
+            <Route path="/Blog" element={<Blog />} />
+            <Route path="/Changelog" element={<Changelog />} />
             <Route path="/Claim" element={
               <AnimatedPage direction={direction}>
                 <Claim />
