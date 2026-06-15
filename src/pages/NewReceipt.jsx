@@ -147,6 +147,7 @@ Return a JSON with:
       }
       const session = res.data.session;
       Sentry.addBreadcrumb({ category: 'session', message: 'Bill split session created', level: 'info' });
+      Sentry.setTag('split_mode', splitMode);
       trackDeviceAction('split_created');
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'session_created', { session_id: session.id, split_mode: splitMode });
