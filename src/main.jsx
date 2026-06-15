@@ -7,7 +7,7 @@ import '@/index.css'
 import { registerServiceWorker } from '@/lib/registerServiceWorker'
 
 Sentry.init({
-  dsn: "https://2d6bc6bc301da49be092401a0c9eb90c@o4510642913607680.ingest.us.sentry.io/4511544951701504",
+  dsn: import.meta.env.VITE_SENTRY_DSN || "https://2d6bc6bc301da49be092401a0c9eb90c@o4510642913607680.ingest.us.sentry.io/4511544951701504",
   environment: "production",
   tracesSampleRate: 1.0,
   replaysSessionSampleRate: 0.1,

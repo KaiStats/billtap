@@ -74,7 +74,7 @@ export default function Landing() {
   const trustBadges = [
     { icon: Users, text: "Guest Access — No signup to join" },
     { icon: Lock, text: "HMAC Signed — Cryptographic QR tokens" },
-    { icon: Shield, text: "Stripe Ready — PCI-compliant billing" },
+    { icon: Shield, text: "Payment Ready — Venmo, Cash App, and Zelle" },
     { icon: FileText, text: "Zero Data Sold — Your splits stay private" },
     { icon: Smartphone, text: "Venmo/Cash App/Zelle — US payment stack" },
     { icon: Zap, text: "Built in Public — No hidden roadmap" },
@@ -377,6 +377,7 @@ export default function Landing() {
             ) : (
               <>
                 <div className="flex gap-2">
+                  <label htmlFor="waitlist-email" className="sr-only">Email address</label>
                   <input
                     id="waitlist-email"
                     name="email"
