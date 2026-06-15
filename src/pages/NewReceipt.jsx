@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
-import { Upload, Loader2, Wand2, X, Plus, AlertCircle } from "lucide-react";
+import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,14 @@ import TipSelector from "@/components/TipSelector";
 import SplitModeSelector from "@/components/SplitModeSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
+
+const RESTAURANT_SUGGESTIONS = [
+  "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
+  "Olive Garden", "Applebee's", "Domino's", "Subway", "Panera Bread",
+  "Buffalo Wild Wings", "IHOP", "Denny's", "Outback Steakhouse",
+  "Red Lobster", "Texas Roadhouse", "P.F. Chang's", "Five Guys",
+  "Shake Shack", "In-N-Out", "Raising Cane's"
+];
 
 const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -29,6 +37,9 @@ export default function NewReceipt() {
   const [saving, setSaving] = useState(false);
   const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
   const [parseValidation, setParseValidation] = useState(null);
+  const [titleSuggestions, setTitleSuggestions] = useState([]);
+  const [showQuickEven, setShowQuickEven] = useState(false);
+  const [quickTotal, setQuickTotal] = useState("");
 
   const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -149,6 +160,39 @@ Return a JSON with:
     }
   };
 
+  const handleTitleChange = (val) => {
+    setTitle(val);
+    if (val.length >= 2) {
+      const q = val.toLowerCase();
+      setTitleSuggestions(RESTAURANT_SUGGESTIONS.filter(r => r.toLowerCase().includes(q)).slice(0, 4));
+    } else {
+      setTitleSuggestions([]);
+    }
+  };
+
+  const handleQuickEvenCreate = async () => {
+    const amt = parseFloat(quickTotal);
+    if (!amt || amt <= 0) return;
+    setSaving(true);
+    try {
+      const res = await base44.functions.invoke("createSession", {
+        title: title || "Quick Split",
+        items: [],
+        tax: 0,
+        tip: 0,
+        split_mode: "even",
+        total_amount: amt,
+      });
+      if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
+      trackDeviceAction('split_created');
+      pushScreen(createPageUrl(`SessionHost?id=${res.data.session.id}`));
+    } catch (err) {
+      Sentry.captureException(err);
+      alert("Failed to create session.");
+      setSaving(false);
+    }
+  };
+
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
   const total = subtotal + (tax || 0) + (tip || 0);
   const pageUrl = `${window.location.origin}/NewReceipt`;
@@ -184,7 +228,78 @@ Return a JSON with:
       </div>
 
       <div className="max-w-2xl mx-auto px-5 py-5 space-y-4">
+
+        {/* Scanning animation overlay */}
+        {(uploading || parsing) && imageUrl && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6" style={{ background: 'rgba(10,8,30,0.92)', backdropFilter: 'blur(8px)' }}>
+            <div className="relative w-full max-w-xs rounded-2xl overflow-hidden" style={{ maxHeight: 300 }}>
+              <img src={imageUrl} alt="Receipt being scanned" className="w-full object-cover rounded-2xl opacity-60" style={{ maxHeight: 300 }} />
+              {/* Animated scan line */}
+              <div
+                className="absolute left-0 right-0 h-0.5"
+                style={{
+                  background: 'linear-gradient(90deg, transparent, #667eea, #f093fb, transparent)',
+                  animation: 'scanline 1.8s ease-in-out infinite',
+                  top: '0%',
+                }}
+              />
+              <style>{`@keyframes scanline { 0%{top:0%} 50%{top:95%} 100%{top:0%} }`}</style>
+            </div>
+            <div className="mt-6 text-center space-y-2">
+              <p className="text-white font-bold text-lg">{uploading ? "Uploading receipt…" : "Reading your receipt…"}</p>
+              <div className="flex items-center justify-center gap-1.5">
+                {[0, 1, 2].map(i => (
+                  <div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-brand"
+                    style={{ animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
+                  />
+                ))}
+              </div>
+              <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }`}</style>
+            </div>
+          </div>
+        )}
+
         {step === 1 && (
+          <>
+          {/* Quick Even Split shortcut */}
+          <button
+            onClick={() => setShowQuickEven(v => !v)}
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left transition-all active:scale-[0.99]"
+            style={{ background: 'rgba(102,126,234,0.08)', border: '1px solid rgba(102,126,234,0.2)' }}
+          >
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}>
+              <Zap className="w-5 h-5 text-white" aria-hidden="true" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-sm">Skip setup → Just split evenly</p>
+              <p className="text-xs text-white/40">Enter total, share QR — done in one tap</p>
+            </div>
+            <span className="text-white/30 text-lg">{showQuickEven ? "▲" : "▼"}</span>
+          </button>
+
+          {showQuickEven && (
+            <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.15)' }}>
+              <div className="space-y-2">
+                <Label htmlFor="quick-name" className="text-xs text-white/50">Restaurant / occasion name</Label>
+                <Input id="quick-name" value={title} onChange={e => handleTitleChange(e.target.value)} placeholder="e.g. Dinner at Chipotle" className="rounded-xl" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quick-total" className="text-xs text-white/50">Total bill amount</Label>
+                <Input id="quick-total" type="number" inputMode="decimal" value={quickTotal} onChange={e => setQuickTotal(e.target.value)} placeholder="$0.00" className="rounded-xl text-lg font-bold" />
+              </div>
+              <button
+                onClick={handleQuickEvenCreate}
+                disabled={saving || !quickTotal || parseFloat(quickTotal) <= 0}
+                className="w-full h-12 text-white font-black rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 active:scale-[0.99]"
+                style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Zap className="w-4 h-4" /> Generate QR Code →</>}
+              </button>
+            </div>
+          )}
+
           <div
             className="rounded-2xl p-6 space-y-4"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
@@ -222,6 +337,7 @@ Return a JSON with:
               {(uploading || parsing) && <span className="sr-only" role="status" aria-live="polite">{uploading ? "Uploading receipt image" : "Analyzing receipt with AI."}</span>}
             </button>
           </div>
+          </>
         )}
 
         {step === 2 && (
@@ -249,9 +365,23 @@ Return a JSON with:
               ✅ Found {items.length} items — fix anything that looks wrong
             </div>
 
-            <div>
+            <div className="relative">
               <Label htmlFor="bill-title" className="text-sm text-muted-foreground">Bill title</Label>
-              <Input id="bill-title" value={title} onChange={e => setTitle(e.target.value)} className="mt-1 rounded-xl" />
+              <Input id="bill-title" value={title} onChange={e => handleTitleChange(e.target.value)} className="mt-1 rounded-xl" autoComplete="off" />
+              {titleSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: '#1a1535', border: '1px solid rgba(255,255,255,0.12)' }}>
+                  {titleSuggestions.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => { setTitle(s); setTitleSuggestions([]); }}
+                      className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

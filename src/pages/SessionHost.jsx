@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { useAuth } from "@/lib/AuthContext";
 import { QRCodeSVG } from "qrcode.react";
+import confetti from "canvas-confetti";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,9 @@ function SessionHostComponent() {
   const [qrTokenExpiry, setQrTokenExpiry] = useState(null);
   const [showSplitConfig, setShowSplitConfig] = useState(false);
   const [customSplitData, setCustomSplitData] = useState(null);
+  const [allPaidCelebrated, setAllPaidCelebrated] = useState(false);
+  const [showSummaryCard, setShowSummaryCard] = useState(false);
+  const celebratedRef = useRef(false);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const participants = session?.participants || [];
@@ -75,6 +79,19 @@ function SessionHostComponent() {
     });
     return unsub;
   }, [sessionId]);
+
+  // Celebrate when all participants have paid
+  useEffect(() => {
+    if (!session || celebratedRef.current) return;
+    const ps = session.participants || [];
+    if (ps.length > 0 && ps.every(p => p.payment_status === "paid" || p.payment_status === "pending_verification")) {
+      celebratedRef.current = true;
+      setAllPaidCelebrated(true);
+      if (navigator.vibrate) navigator.vibrate([50, 50, 100]);
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ['#667eea', '#f093fb', '#f5576c', '#00c896', '#d4af37'] });
+      setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { y: 0.3 } }), 400);
+    }
+  }, [session]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(claimUrl);
@@ -330,7 +347,43 @@ function SessionHostComponent() {
             </div>
           )}
 
-          {/* Progress */}
+          {/* Payment Progress */}
+          {participants.length > 0 && (() => {
+            const paidCount = participants.filter(p => p.payment_status === "paid" || p.payment_status === "pending_verification").length;
+            const pct = Math.round((paidCount / participants.length) * 100);
+            const allDone = paidCount === participants.length;
+            const waitingForLast = paidCount === participants.length - 1 && participants.length > 1;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className={allDone ? "text-emerald-400" : "text-white/60"}>
+                    {allDone ? "🎉 Everyone paid!" : `${paidCount} of ${participants.length} paid`}
+                  </span>
+                  <span className={allDone ? "text-emerald-400" : "text-white/40"}>{pct}%</span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-valuenow={paidCount}
+                  aria-valuemin={0}
+                  aria-valuemax={participants.length}
+                  aria-label={`${paidCount} of ${participants.length} participants paid`}
+                  className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden"
+                >
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-700 ${waitingForLast ? "animate-pulse" : ""}`}
+                    style={{
+                      width: `${pct}%`,
+                      background: allDone
+                        ? 'linear-gradient(90deg, #00c896, #34d399)'
+                        : 'linear-gradient(90deg, #667eea, #f093fb)',
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Items claimed progress */}
           {session.status === "claiming" && totalItems > 0 && (
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-white/50">
@@ -339,6 +392,23 @@ function SessionHostComponent() {
               <div role="progressbar" aria-valuenow={claimedItems} aria-valuemin={0} aria-valuemax={totalItems} aria-label="Items claimed" className="w-full bg-white/10 rounded-full h-2">
                 <div className="h-2 rounded-full transition-all" style={{ width: `${(claimedItems / totalItems) * 100}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
               </div>
+            </div>
+          )}
+
+          {/* All paid celebration banner */}
+          {allPaidCelebrated && (
+            <div
+              className="rounded-2xl p-4 text-center space-y-3"
+              style={{ background: 'linear-gradient(135deg, rgba(0,200,150,0.15), rgba(52,211,153,0.1))', border: '1px solid rgba(0,200,150,0.3)' }}
+            >
+              <p className="text-emerald-300 font-black text-lg">🎉 Everyone's paid! Enjoy your meal!</p>
+              <button
+                onClick={() => setShowSummaryCard(true)}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-white transition-all active:scale-95"
+                style={{ background: 'rgba(0,200,150,0.25)', border: '1px solid rgba(0,200,150,0.4)' }}
+              >
+                Share Split Summary ↗
+              </button>
             </div>
           )}
 
@@ -352,6 +422,58 @@ function SessionHostComponent() {
             {session.status === "claiming" ? "View Progress" : "Claim My Items"}
             <ArrowRight className="w-5 h-5" aria-hidden="true" />
           </button>
+
+          {/* Split Summary Modal */}
+          {showSummaryCard && (() => {
+            const paidCount = participants.filter(p => p.payment_status === "paid" || p.payment_status === "pending_verification").length;
+            const minutesTaken = session.created_date ? Math.max(1, Math.round((Date.now() - new Date(session.created_date).getTime()) / 60000)) : null;
+            const summaryText = `BillTap split at ${session.title}\n${participants.length} people · $${(session.total_amount || 0).toFixed(2)} total\nEveryone paid${minutesTaken ? ` in ${minutesTaken} minute${minutesTaken !== 1 ? 's' : ''}` : ''} ⚡`;
+            return (
+              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end justify-center p-4 z-50" onClick={() => setShowSummaryCard(false)}>
+                <div
+                  className="w-full max-w-sm rounded-3xl p-6 space-y-4 text-center"
+                  onClick={e => e.stopPropagation()}
+                  style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)', border: '1px solid rgba(255,255,255,0.12)' }}
+                >
+                  <div className="text-4xl">🎉</div>
+                  <div className="space-y-1">
+                    <p className="text-white font-black text-lg">BillTap split at</p>
+                    <p className="text-brand font-black text-2xl">{session.title}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 py-2">
+                    {[
+                      { label: "People", value: participants.length },
+                      { label: "Total", value: `$${(session.total_amount || 0).toFixed(2)}` },
+                      { label: minutesTaken ? `${minutesTaken}min ⚡` : "Done", value: "Paid ✓" },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <div className="text-white font-black text-lg">{value}</div>
+                        <div className="text-white/40 text-xs">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (navigator.share) {
+                          navigator.share({ title: 'BillTap Split', text: summaryText });
+                        } else {
+                          navigator.clipboard.writeText(summaryText);
+                        }
+                      }}
+                      className="flex-1 h-12 rounded-xl font-bold text-white text-sm transition-all active:scale-95"
+                      style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+                    >
+                      Share Summary
+                    </button>
+                    <button onClick={() => setShowSummaryCard(false)} className="h-12 px-4 rounded-xl font-bold text-white/50 text-sm" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Share Options */}
           <div>

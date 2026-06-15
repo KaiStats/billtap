@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
-import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle } from "lucide-react";
+import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle, Search, CheckCheck } from "lucide-react";
+
+// Haptic feedback helper
+const haptic = (pattern) => {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+};
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +55,7 @@ export default function Claim() {
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
 
   useEffect(() => {
     if (!qrToken) return;
@@ -156,6 +162,7 @@ export default function Claim() {
     const currentlyClaimed = item.claimed_by || [];
     const isMine = currentlyClaimed.includes(myId);
     if (isMine) {
+      haptic([30]);
       const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: currentlyClaimed.filter(id => id !== myId) });
       const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
       claimMutation.mutate({ optimisticItems, optimisticParticipants });
@@ -166,6 +173,7 @@ export default function Claim() {
       alert(`${claimer?.name || currentlyClaimed[0]} just grabbed that one!`);
       return;
     }
+    haptic([50]);
     const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [myId] });
     const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
@@ -174,16 +182,32 @@ export default function Claim() {
     }
   };
 
+  const claimAll = () => {
+    if (!session) return;
+    haptic([50, 30, 100]);
+    const optimisticItems = session.items.map(i => {
+      const claimed = i.claimed_by || [];
+      // Only claim unclaimed items
+      if (claimed.length === 0) return { ...i, claimed_by: [myId] };
+      return i;
+    });
+    const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
+    claimMutation.mutate({ optimisticItems, optimisticParticipants });
+    setItemSearch("");
+  };
+
   const paidMutation = useMutationOptimistic(
     ({ updatedParticipants, newStatus }) => base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
     { onOptimisticState: () => session, onRollback: (s) => setSession(s), onSuccess: (u) => setSession(u) }
   );
 
   const markMePaid = () => {
+    haptic([100]);
     const updatedParticipants = (session.participants || []).map(p =>
       p.participant_id === myId ? { ...p, payment_status: "pending_verification" } : p
     );
     const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
+    if (allPaid) haptic([50, 50, 100]);
     trackDeviceAction('payment_completed');
     paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
     setShowPaymentModal(false);
@@ -234,6 +258,17 @@ export default function Claim() {
 
   const claimedCount = useMemo(
     () => items.filter(i => (i.claimed_by || []).length > 0).length,
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    if (!itemSearch.trim()) return items;
+    const q = itemSearch.toLowerCase();
+    return items.filter(i => i.name?.toLowerCase().includes(q));
+  }, [items, itemSearch]);
+
+  const unclaimedCount = useMemo(
+    () => items.filter(i => (i.claimed_by || []).length === 0).length,
     [items]
   );
 
@@ -336,7 +371,35 @@ export default function Claim() {
       {/* Items - Only for itemized mode */}
       {splitMode === "itemized" && (
         <div className="max-w-lg mx-auto px-4 py-4 space-y-2">
-          {items.map(item => {
+          {/* Search + Claim All toolbar */}
+          <div className="flex gap-2 items-center pb-1">
+            {items.length >= 8 && (
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" aria-hidden="true" />
+                <input
+                  value={itemSearch}
+                  onChange={e => setItemSearch(e.target.value)}
+                  placeholder="Search items…"
+                  aria-label="Search items"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+                  style={{ fontSize: "16px" }}
+                />
+              </div>
+            )}
+            {unclaimedCount > 0 && (
+              <button
+                onClick={claimAll}
+                aria-label="Claim all unclaimed items"
+                className="flex items-center gap-1.5 px-3 h-10 rounded-xl text-xs font-bold text-white whitespace-nowrap shrink-0 transition-all active:scale-95"
+                style={{ background: 'rgba(102,126,234,0.2)', border: '1px solid rgba(102,126,234,0.35)' }}
+              >
+                <CheckCheck className="w-4 h-4" aria-hidden="true" />
+                Claim All
+              </button>
+            )}
+          </div>
+
+          {filteredItems.map(item => {
             const claimed = item.claimed_by || [];
             const isMine = claimed.includes(myId);
             const itemTotal = item.price * (item.quantity || 1);
