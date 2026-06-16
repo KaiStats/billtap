@@ -93,10 +93,18 @@ export default function Landing() {
     "All 3 split modes",
     "QR code generation",
     "AI receipt scanning",
-    "Settlement tracking",
-    "30-day bill history",
+    "Up to 10 people per session",
+    "Basic settlement via payment links",
     "Venmo/Cash App/Zelle",
     "Guest access (no account)",
+  ];
+
+  const proFeatures = [
+    "Everything in Free",
+    "Unlimited party size",
+    "Expense categories",
+    "Recurring bills (rent, utilities, subscriptions)",
+    "Payout directly to bank account",
   ];
 
   return (
@@ -338,44 +346,70 @@ export default function Landing() {
       <section id="pricing" className="py-16 md:py-24" style={{ background: "#0a0e1a" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12 md:mb-16">
-            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Free. Forever. No Catch.</h2>
+            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Start free. Upgrade when you need more.</h2>
             <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>
-              Core features are free forever. No credit card. No tricks.
+              Free gets most people everything they need. Pro unlocks when your use case gets serious.
             </p>
           </div>
 
-          {/* Free card */}
-          <div className="max-w-md mx-auto">
-            <div className="card-hover p-8 rounded-2xl border-2 relative" style={{ background: "#1e2533", borderColor: "#00c896" }}>
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap" style={{ background: "#00c896", color: "#0a0e1a" }}>
-                Free Forever
+          {/* Two-tier pricing grid */}
+          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            {/* Free */}
+            <div className="card-hover p-8 rounded-2xl border relative flex flex-col" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
+              <div className="mb-6">
+                <p className="text-xs font-mono tracking-widest uppercase mb-1" style={{ color: "#8b90a8" }}>Free</p>
+                <p className="text-sm mb-4" style={{ color: "#8b90a8" }}>For most dinners and group meals.</p>
+                <span className="text-5xl font-black" style={{ color: "#f2f2f4" }}>$0</span>
+                <span className="text-base ml-2" style={{ color: "#8b90a8" }}>/ forever</span>
               </div>
-              <div className="text-center mb-8 pt-2">
-                <span className="text-6xl font-black" style={{ color: "#f2f2f4" }}>$0</span>
-                <p className="mt-2 text-base" style={{ color: "#8b90a8" }}>For everyone splitting bills</p>
-              </div>
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {freeFeatures.map(f => (
-                  <li key={f} className="flex items-center gap-3">
-                    <Check className="w-5 h-5 flex-shrink-0" style={{ color: "#00c896" }} />
+                  <li key={f} className="flex items-start gap-3">
+                    <Check className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#00c896" }} />
                     <span className="text-sm" style={{ color: "#f2f2f4" }}>{f}</span>
                   </li>
                 ))}
               </ul>
-              <Link to="/register" className="block w-full py-4 rounded-xl font-bold text-base text-center transition-all hover:opacity-90" style={{ background: "#00c896", color: "#0a0e1a" }}>
-                Start Splitting Free →
+              <Link to="/register" className="block w-full py-3.5 rounded-xl font-bold text-sm text-center transition-all hover:opacity-90 border" style={{ borderColor: "#2d3748", color: "#f2f2f4" }}>
+                Start Free
               </Link>
+              <p className="text-center text-xs mt-3" style={{ color: "#4a5068" }}>No credit card · Always free</p>
             </div>
-            <p className="text-center text-sm mt-5" style={{ color: "#8b90a8" }}>
-              No credit card. No account needed to split. US only at launch.
-            </p>
-            <p className="text-center text-xs mt-3" style={{ color: "#4a5068" }}>
-              Pro features available when they launch — join the waitlist below.
+
+            {/* Pro */}
+            <div className="card-hover p-8 rounded-2xl border-2 relative flex flex-col" style={{ background: "#1e2533", borderColor: "#00c896", boxShadow: "0 0 40px rgba(0,200,150,0.1)" }}>
+              <div className="absolute -top-3.5 left-6 px-3 py-1 rounded-full text-xs font-bold" style={{ background: "#00c896", color: "#0a0e1a" }}>Most Popular</div>
+              <div className="mb-6 pt-1">
+                <p className="text-xs font-mono tracking-widest uppercase mb-1" style={{ color: "#00c896" }}>Pro</p>
+                <p className="text-sm mb-4" style={{ color: "#8b90a8" }}>For bigger groups and recurring expenses.</p>
+                <span className="text-5xl font-black" style={{ color: "#f2f2f4" }}>$4.99</span>
+                <span className="text-base ml-2" style={{ color: "#8b90a8" }}>/ month</span>
+              </div>
+              <ul className="space-y-3 mb-8 flex-1">
+                {proFeatures.map(f => (
+                  <li key={f} className="flex items-start gap-3">
+                    <Check className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#00c896" }} />
+                    <span className="text-sm" style={{ color: "#f2f2f4" }}>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link to="/register" className="block w-full py-3.5 rounded-xl font-bold text-sm text-center transition-all hover:opacity-90" style={{ background: "#00c896", color: "#0a0e1a" }}>
+                Start Pro Free Trial →
+              </Link>
+              <p className="text-center text-xs mt-3" style={{ color: "#4a5068" }}>14-day free trial · Then $4.99/mo</p>
+            </div>
+          </div>
+
+          {/* Monetization trigger note */}
+          <div className="max-w-2xl mx-auto mt-6 p-5 rounded-xl flex gap-4 items-start" style={{ background: "#1e2533", border: "1px solid #2d3748" }}>
+            <span className="text-lg flex-shrink-0" aria-hidden="true">⚡</span>
+            <p className="text-sm" style={{ color: "#8b90a8" }}>
+              <span className="font-semibold" style={{ color: "#f2f2f4" }}>When does Pro kick in?</span> When you try to add an 11th person to a session, or set up a recurring bill, BillTap shows the upgrade prompt — right at the moment it's actually useful. No nag screens before then.
             </p>
           </div>
 
           {/* Waitlist card */}
-          <div className="max-w-md mx-auto mt-10 p-6 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
+          <div className="max-w-2xl mx-auto mt-10 p-6 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
             <div className="text-3xl mb-3">🚀</div>
             <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>Pro Features Coming Soon</h3>
             <p className="text-sm mb-5" style={{ color: "#8b90a8" }}>
@@ -481,10 +515,11 @@ export default function Landing() {
           <div className="space-y-6">
             {[
               { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
-              { q: "Is BillTap really free?", a: "Yes. Core features are free forever: unlimited splits, all 3 split modes, AI receipt scanning, and settlement tracking." },
+              { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($4.99/mo) unlocks unlimited party size, expense categories, recurring bills, and bank payouts." },
               { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
               { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
               { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
+              { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. When you try to add an 11th person, BillTap shows the Pro upgrade prompt. Pro ($4.99/mo) unlocks unlimited party size." },
               { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
             ].map((faq, i) => (
               <div key={i} className="p-6 rounded-2xl border" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
