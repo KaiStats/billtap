@@ -30,6 +30,7 @@ const ReceiptDetail = lazy(() => import('@/pages/ReceiptDetail'));
 const About       = lazy(() => import('@/pages/About'));
 const Blog        = lazy(() => import('@/pages/Blog'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
+const Profile     = lazy(() => import('@/pages/Profile'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0e1a' }}>
@@ -184,6 +185,11 @@ const AuthenticatedApp = () => {
               <Route path="/receipt-detail" element={
                 <AnimatedPage direction={direction}>
                   <ReceiptDetail />
+                </AnimatedPage>
+              } />
+              <Route path="/profile" element={
+                <AnimatedPage direction={direction}>
+                  <Profile />
                 </AnimatedPage>
               } />
             </Route>

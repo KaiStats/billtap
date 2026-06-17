@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { base44 } from "@/api/base44Client";
-import { createPageUrl } from "@/utils";
+import { useNavigate } from "react-router-dom";
 import { Plus, Receipt, CheckCircle2, Clock, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSaveScroll } from "@/hooks/useTabHistory";
-import { useTabNav } from "@/lib/TabNavigationContext";
 import { useAuth } from "@/lib/AuthContext";
 import ListLayout from "@/components/ListLayout";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
@@ -57,7 +56,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
-  const { pushScreen } = useTabNav();
+  const navigate = useNavigate();
   const { user, isAuthenticated, isLoadingAuth } = useAuth();
 
   // Back-button protection: if not authenticated after auth check, go to landing
@@ -112,7 +111,7 @@ export default function Dashboard() {
                 <p className="text-muted-foreground text-sm mt-0.5">Your recent splits</p>
               </div>
               <button
-                onClick={() => pushScreen(createPageUrl("NewReceipt"))}
+                onClick={() => navigate("/new-receipt")}
                 aria-label="Create new bill split"
                 className="flex items-center gap-2 px-4 h-11 text-white font-bold rounded-xl text-sm shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0"
                 style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
@@ -153,7 +152,7 @@ export default function Dashboard() {
                   Snap a receipt and split it with your table in 30 seconds.
                 </p>
                 <Button
-                  onClick={() => pushScreen(createPageUrl("NewReceipt"))}
+                  onClick={() => navigate("/new-receipt")}
                   className="bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl"
                 >
                   Split your first bill
@@ -166,7 +165,7 @@ export default function Dashboard() {
                   <SessionCard
                     key={session.id}
                     session={session}
-                    onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
+                    onClick={() => navigate(`/receipt-detail?id=${session.id}&host=1`)}
                   />
                 ))}
               </div>

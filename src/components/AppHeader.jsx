@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useTabNav } from "@/lib/TabNavigationContext";
 
-const ROOT_PATHS = ["/", "/Home", "/Dashboard", "/NewReceipt", "/Profile"];
+const ROOT_PATHS = ["/", "/home", "/Home", "/dashboard", "/Dashboard", "/new-receipt", "/NewReceipt", "/profile", "/Profile"];
 
 const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backTo }) {
   const location = useLocation();
@@ -17,7 +17,7 @@ const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backT
       pushScreen(backTo);
     } else {
       const popped = popScreen();
-      if (!popped) pushScreen("/Dashboard");
+      if (!popped) pushScreen("/dashboard");
     }
   };
 
