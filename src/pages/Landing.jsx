@@ -1,12 +1,22 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Check, QrCode, Camera, Users, DollarSign, History, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 export default function Landing() {
+  const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [waitlistStatus, setWaitlistStatus] = useState(null); // null | "loading" | "done" | "error"
+
+  const handleSplitNow = async () => {
+    const authed = await base44.auth.isAuthenticated();
+    if (authed) {
+      navigate("/NewReceipt");
+    } else {
+      navigate("/register");
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -233,9 +243,13 @@ export default function Landing() {
 
               {/* CTAs */}
               <div className="hero-text-4 flex flex-col sm:flex-row gap-4">
-                <Link to="/NewReceipt" className="px-8 py-4 rounded-xl font-bold text-base md:text-lg transition-all hover:opacity-90 text-center" style={{ background: "#00c896", color: "#0a0e1a" }}>
+                <button
+                  onClick={handleSplitNow}
+                  className="px-8 py-4 rounded-xl font-bold text-base md:text-lg transition-all hover:opacity-90 text-center"
+                  style={{ background: "#00c896", color: "#0a0e1a" }}
+                >
                   Split a Bill Now →
-                </Link>
+                </button>
                 <a href="#how-it-works" className="px-8 py-4 rounded-xl font-semibold text-base md:text-lg border transition-all hover:border-green-400 text-center" style={{ borderColor: "#2d3748", color: "#f2f2f4" }}>
                   See How It Works
                 </a>
@@ -498,9 +512,13 @@ export default function Landing() {
           <p className="text-lg md:text-xl mb-8 max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>
             BillTap handles it. Scan, claim, pay. Built for real dinners with real friends. Free to start. No tricks.
           </p>
-          <Link to="/register" className="inline-block px-10 py-4 rounded-xl font-bold text-lg transition-all hover:opacity-90" style={{ background: "#00c896", color: "#0a0e1a" }}>
+          <button
+            onClick={handleSplitNow}
+            className="inline-block px-10 py-4 rounded-xl font-bold text-lg transition-all hover:opacity-90"
+            style={{ background: "#00c896", color: "#0a0e1a" }}
+          >
             Split Your First Bill Free →
-          </Link>
+          </button>
           <p className="mt-5 text-sm" style={{ color: "#8b90a8" }}>No credit card. No account needed. US only.</p>
         </div>
       </section>
