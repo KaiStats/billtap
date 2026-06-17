@@ -59,15 +59,12 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       if (error?.status === 403 && error?.data?.extra_data?.reason) {
         const reason = error.data.extra_data.reason;
-        if (reason === 'auth_required') {
-          setAuthError({ type: 'auth_required', message: 'Authentication required' });
-        } else if (reason === 'user_not_registered') {
+        if (reason === 'user_not_registered') {
           setAuthError({ type: 'user_not_registered', message: 'User not registered' });
-        } else {
-          setAuthError({ type: reason, message: error.message });
         }
+        // auth_required and other 403s: treat as unauthenticated (no forced redirect)
       }
-      // If unauthenticated (401) or no token, just leave user as null — app is public
+      // If unauthenticated (401/403) or no token, just leave user as null — app is public
     } finally {
       setIsLoadingAuth(false);
     }
