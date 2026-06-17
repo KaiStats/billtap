@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { pagesConfig } from './pages.config.jsx'
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -18,6 +17,8 @@ import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import { lazy, Suspense } from 'react';
 const Home        = lazy(() => import('@/pages/Home'));
 const Landing     = lazy(() => import('@/pages/Landing'));
+const Login       = lazy(() => import('@/pages/Login'));
+const Register    = lazy(() => import('@/pages/Register'));
 const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
 const Privacy     = lazy(() => import('@/pages/Privacy'));
 const Terms       = lazy(() => import('@/pages/Terms'));
@@ -50,13 +51,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { handleDeepLink } from '@/lib/deepLinking';
 import { Navigate } from 'react-router-dom';
 
-const { Pages, Layout, mainPage } = pagesConfig;
-const mainPageKey = mainPage ?? Object.keys(Pages)[0];
-const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
-
-const LayoutWrapper = ({ children, currentPageName }) => (Layout && typeof Layout === 'function') ?
-  <Layout currentPageName={currentPageName}>{children}</Layout>
-  : <>{children}</>;
+const LayoutWrapper = ({ children }) => <>{children}</>;
 
 const AnimatedPage = ({ children, direction }) => {
   const xIn = direction === "back" ? -30 : direction === "tab" ? 0 : 30;
@@ -138,22 +133,44 @@ const AuthenticatedApp = () => {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/icon-generator" element={<IconGenerator />} />
+            <Route path="/about" element={<About />} />
             <Route path="/About" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
             <Route path="/Blog" element={<Blog />} />
+            <Route path="/changelog" element={<Changelog />} />
             <Route path="/Changelog" element={<Changelog />} />
+            <Route path="/claim" element={
+              <AnimatedPage direction={direction}>
+                <Claim />
+              </AnimatedPage>
+            } />
             <Route path="/Claim" element={
               <AnimatedPage direction={direction}>
                 <Claim />
               </AnimatedPage>
             } />
 
-            {/* Protected host routes */}
+            {/* Auth routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+
+            {/* Protected host routes — lowercase + legacy capitalized aliases */}
             <Route element={
-              <ProtectedRoute unauthenticatedElement={<Navigate to="/LandingPage" replace />} />
+              <ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />
             }>
+              <Route path="/home" element={
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
+                </AnimatedPage>
+              } />
               <Route path="/Home" element={
                 <AnimatedPage direction={direction}>
                   <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
+                </AnimatedPage>
+              } />
+              <Route path="/new-receipt" element={
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName="NewReceipt"><NewReceipt /></LayoutWrapper>
                 </AnimatedPage>
               } />
               <Route path="/NewReceipt" element={
@@ -161,14 +178,29 @@ const AuthenticatedApp = () => {
                   <LayoutWrapper currentPageName="NewReceipt"><NewReceipt /></LayoutWrapper>
                 </AnimatedPage>
               } />
+              <Route path="/dashboard" element={
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName="Dashboard"><Dashboard /></LayoutWrapper>
+                </AnimatedPage>
+              } />
               <Route path="/Dashboard" element={
                 <AnimatedPage direction={direction}>
                   <LayoutWrapper currentPageName="Dashboard"><Dashboard /></LayoutWrapper>
                 </AnimatedPage>
               } />
+              <Route path="/session-host" element={
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName="SessionHost"><SessionHost /></LayoutWrapper>
+                </AnimatedPage>
+              } />
               <Route path="/SessionHost" element={
                 <AnimatedPage direction={direction}>
                   <LayoutWrapper currentPageName="SessionHost"><SessionHost /></LayoutWrapper>
+                </AnimatedPage>
+              } />
+              <Route path="/receipt-detail" element={
+                <AnimatedPage direction={direction}>
+                  <LayoutWrapper currentPageName="ReceiptDetail"><ReceiptDetail /></LayoutWrapper>
                 </AnimatedPage>
               } />
               <Route path="/ReceiptDetail" element={
@@ -177,19 +209,6 @@ const AuthenticatedApp = () => {
                 </AnimatedPage>
               } />
             </Route>
-
-            {/* Pages from config (protected by default) */}
-            {Object.entries(Pages).filter(([path]) =>
-              !['Claim', 'LandingPage', 'Privacy', 'Terms', 'IconGenerator'].includes(path)
-            ).map(([path, Page]) => (
-              <Route key={path} path={`/${path}`} element={
-                <ProtectedRoute unauthenticatedElement={<Navigate to="/LandingPage" replace />}>
-                  <AnimatedPage direction={direction}>
-                    <LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>
-                  </AnimatedPage>
-                </ProtectedRoute>
-              } />
-            ))}
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </AnimatePresence>
