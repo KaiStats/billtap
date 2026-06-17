@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, QrCode, Camera, Users, DollarSign, History, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
+import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 export default function Landing() {

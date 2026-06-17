@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { QrCode, ArrowLeft, Zap } from "lucide-react";
+import { QrCode, Zap } from "lucide-react";
 
 export default function Changelog() {
   const versions = [

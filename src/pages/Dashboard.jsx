@@ -3,7 +3,6 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { Plus, Receipt, CheckCircle2, Clock, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useTabNav } from "@/lib/TabNavigationContext";
 import { useAuth } from "@/lib/AuthContext";

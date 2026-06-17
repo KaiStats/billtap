@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { QrCode, ArrowLeft, Calendar } from "lucide-react";
+import { QrCode, Calendar } from "lucide-react";
 
 export default function Blog() {
   const posts = [

@@ -6,7 +6,6 @@ import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, Share2 } from
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AppHeader from "@/components/AppHeader";
 import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";

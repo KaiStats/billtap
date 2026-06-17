@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { useTabNav } from "@/lib/TabNavigationContext";
-import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap, MapPin } from "lucide-react";
+import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

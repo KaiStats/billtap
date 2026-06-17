@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { QrCode, ArrowLeft } from "lucide-react";
+import { QrCode } from "lucide-react";
 
 export default function About() {
   return (

@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
-import { Check, Loader2, ExternalLink, Copy, Smartphone, AlertCircle, Search, CheckCheck } from "lucide-react";
+import { Check, Loader2, ExternalLink, Copy, Smartphone, Search, CheckCheck } from "lucide-react";
 
 // Haptic feedback helper
 const haptic = (pattern) => {
   if (navigator.vibrate) navigator.vibrate(pattern);
 };
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
