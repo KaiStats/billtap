@@ -134,17 +134,9 @@ const AuthenticatedApp = () => {
             <Route path="/terms" element={<Terms />} />
             <Route path="/icon-generator" element={<IconGenerator />} />
             <Route path="/about" element={<About />} />
-            <Route path="/About" element={<About />} />
             <Route path="/blog" element={<Blog />} />
-            <Route path="/Blog" element={<Blog />} />
             <Route path="/changelog" element={<Changelog />} />
-            <Route path="/Changelog" element={<Changelog />} />
             <Route path="/claim" element={
-              <AnimatedPage direction={direction}>
-                <Claim />
-              </AnimatedPage>
-            } />
-            <Route path="/Claim" element={
               <AnimatedPage direction={direction}>
                 <Claim />
               </AnimatedPage>
@@ -154,58 +146,44 @@ const AuthenticatedApp = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Protected host routes — lowercase + legacy capitalized aliases */}
+            {/* Legacy capitalized redirects */}
+            <Route path="/About" element={<Navigate to="/about" replace />} />
+            <Route path="/Blog" element={<Navigate to="/blog" replace />} />
+            <Route path="/Changelog" element={<Navigate to="/changelog" replace />} />
+            <Route path="/Claim" element={<Navigate to="/claim" replace />} />
+            <Route path="/Home" element={<Navigate to="/home" replace />} />
+            <Route path="/NewReceipt" element={<Navigate to="/new-receipt" replace />} />
+            <Route path="/Dashboard" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/SessionHost" element={<Navigate to="/session-host" replace />} />
+            <Route path="/ReceiptDetail" element={<Navigate to="/receipt-detail" replace />} />
+
+            {/* Protected host routes */}
             <Route element={
               <ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />
             }>
               <Route path="/home" element={
                 <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
-                </AnimatedPage>
-              } />
-              <Route path="/Home" element={
-                <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="Home"><Home /></LayoutWrapper>
+                  <Home />
                 </AnimatedPage>
               } />
               <Route path="/new-receipt" element={
                 <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="NewReceipt"><NewReceipt /></LayoutWrapper>
-                </AnimatedPage>
-              } />
-              <Route path="/NewReceipt" element={
-                <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="NewReceipt"><NewReceipt /></LayoutWrapper>
+                  <NewReceipt />
                 </AnimatedPage>
               } />
               <Route path="/dashboard" element={
                 <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="Dashboard"><Dashboard /></LayoutWrapper>
-                </AnimatedPage>
-              } />
-              <Route path="/Dashboard" element={
-                <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="Dashboard"><Dashboard /></LayoutWrapper>
+                  <Dashboard />
                 </AnimatedPage>
               } />
               <Route path="/session-host" element={
                 <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="SessionHost"><SessionHost /></LayoutWrapper>
-                </AnimatedPage>
-              } />
-              <Route path="/SessionHost" element={
-                <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="SessionHost"><SessionHost /></LayoutWrapper>
+                  <SessionHost />
                 </AnimatedPage>
               } />
               <Route path="/receipt-detail" element={
                 <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="ReceiptDetail"><ReceiptDetail /></LayoutWrapper>
-                </AnimatedPage>
-              } />
-              <Route path="/ReceiptDetail" element={
-                <AnimatedPage direction={direction}>
-                  <LayoutWrapper currentPageName="ReceiptDetail"><ReceiptDetail /></LayoutWrapper>
+                  <ReceiptDetail />
                 </AnimatedPage>
               } />
             </Route>
