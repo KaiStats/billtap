@@ -6,10 +6,10 @@ import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
-  { label: "Home", icon: Home, path: "/Home" },
-  { label: "New Split", icon: Plus, path: "/NewReceipt", highlight: true },
-  { label: "Dashboard", icon: LayoutDashboard, path: "/Dashboard" },
-  { label: "Profile", icon: UserCircle, path: "/Profile" },
+  { label: "Home", icon: Home, path: "/home" },
+  { label: "New Split", icon: Plus, path: "/new-receipt", highlight: true },
+  { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+  { label: "Profile", icon: UserCircle, path: "/profile" },
 ];
 
 async function checkActiveSessions() {
@@ -37,7 +37,7 @@ const BottomNav = memo(function BottomNav() {
     logout();
   };
 
-  const hiddenPaths = ["/Claim", "/SessionHost", "/LandingPage", "/privacy", "/terms"];
+  const hiddenPaths = ["/claim", "/Claim", "/session-host", "/SessionHost", "/LandingPage", "/privacy", "/terms"];
   if (hiddenPaths.some(p => location.pathname.startsWith(p))) return null;
 
   const activeTab = getTabForPath(location.pathname);

@@ -5,10 +5,10 @@ import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
 import { useTabNav } from '@/lib/TabNavigationContext';
-import { createPageUrl } from '@/utils';
+import { useNavigate } from 'react-router-dom';
 
 export default function Home() {
-  const { pushScreen } = useTabNav();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const { data: sessions = [], refetch } = useQuery({
@@ -59,7 +59,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto px-5 space-y-6 py-6 pb-28">
         {/* CTA Button */}
         <button
-          onClick={() => pushScreen(createPageUrl('NewReceipt'))}
+          onClick={() => navigate('/new-receipt')}
           className="w-full h-16 text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0"
           style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
         >
@@ -101,7 +101,7 @@ export default function Home() {
                 return (
                   <button
                     key={session.id}
-                    onClick={() => pushScreen(createPageUrl(`ReceiptDetail?id=${session.id}&host=1`))}
+                    onClick={() => navigate(`/receipt-detail?id=${session.id}&host=1`)}
                     className="w-full rounded-2xl p-4 text-left flex items-center justify-between transition-all group"
                     style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
                     onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.15)'}
@@ -136,7 +136,7 @@ export default function Home() {
               Snap a receipt, share a QR code, and split in 30 seconds flat.
             </p>
             <Button
-              onClick={() => pushScreen(createPageUrl('NewReceipt'))}
+              onClick={() => navigate('/new-receipt')}
               className="bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl px-6"
             >
               <Plus className="w-4 h-4 mr-2" />

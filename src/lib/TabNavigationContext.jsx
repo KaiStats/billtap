@@ -9,10 +9,14 @@ const isAndroid = () => {
 };
 
 export const TAB_ROOTS = {
+  "/home": "Home",
   "/Home": "Home",
   "/": "Home",
+  "/dashboard": "Dashboard",
   "/Dashboard": "Dashboard",
+  "/new-receipt": "NewReceipt",
   "/NewReceipt": "NewReceipt",
+  "/profile": "Profile",
   "/Profile": "Profile",
 };
 
@@ -21,7 +25,7 @@ const VALID_PATHS = /^\/[A-Za-z0-9_\-?=&%]+$/;
 
 export function getTabForPath(pathname) {
   if (TAB_ROOTS[pathname]) return TAB_ROOTS[pathname];
-  if (["/ReceiptDetail", "/SessionHost", "/Claim"].some(p => pathname.startsWith(p))) return "Dashboard";
+  if (["/receipt-detail", "/ReceiptDetail", "/session-host", "/SessionHost", "/claim", "/Claim"].some(p => pathname.startsWith(p))) return "Dashboard";
   return "Home";
 }
 
@@ -37,10 +41,10 @@ function isValidTabStacks(stacks) {
 }
 
 const DEFAULT_STACKS = {
-  Home: ["/Home"],
-  Dashboard: ["/Dashboard"],
-  NewReceipt: ["/NewReceipt"],
-  Profile: ["/Profile"],
+  Home: ["/home"],
+  Dashboard: ["/dashboard"],
+  NewReceipt: ["/new-receipt"],
+  Profile: ["/profile"],
 };
 
 const TabNavContext = createContext(null);
@@ -96,7 +100,7 @@ export function TabNavigationProvider({ children }) {
         // At root of tab—switch to Home or minimize app
         if (activeTab !== "Home") {
           directionRef.current = "tab";
-          navigate("/Home", { state: { tabStacks: tabStacksRef.current } });
+          navigate("/home", { state: { tabStacks: tabStacksRef.current } });
         }
         // Otherwise let system handle (close app)
       }
