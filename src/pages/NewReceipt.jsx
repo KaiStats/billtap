@@ -1,8 +1,7 @@
 import { useState } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
-import { createPageUrl } from "@/utils";
-import { useTabNav } from "@/lib/TabNavigationContext";
+import { useNavigate } from "react-router-dom";
 import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +22,7 @@ const RESTAURANT_SUGGESTIONS = [
 const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 export default function NewReceipt() {
-  const { pushScreen } = useTabNav();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [imageFile, setImageFile] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
@@ -152,7 +151,7 @@ Return a JSON with:
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'session_created', { session_id: session.id, split_mode: splitMode });
       }
-      pushScreen(createPageUrl(`SessionHost?id=${session.id}`));
+      navigate(`/session-host?id=${session.id}`);
     } catch (err) {
       console.error("Failed to create session:", err);
       Sentry.captureException(err, { tags: { feature: 'join_session' } });
@@ -186,7 +185,7 @@ Return a JSON with:
       });
       if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
       trackDeviceAction('split_created');
-      pushScreen(createPageUrl(`SessionHost?id=${res.data.session.id}`));
+      navigate(`/session-host?id=${res.data.session.id}`);
     } catch (err) {
       Sentry.captureException(err);
       alert("Failed to create session.");

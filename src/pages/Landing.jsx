@@ -12,7 +12,7 @@ export default function Landing() {
   const handleSplitNow = async () => {
     const authed = await base44.auth.isAuthenticated();
     if (authed) {
-      navigate("/NewReceipt");
+      navigate("/new-receipt");
     } else {
       navigate("/register");
     }
@@ -582,8 +582,8 @@ export default function Landing() {
             <div>
               <h4 className="font-heading font-bold text-xs mb-4 uppercase tracking-wider" style={{ color: "#f2f2f4" }}>Company</h4>
               <ul className="space-y-3">
-                <li><Link to="/About" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>About</Link></li>
-                <li><Link to="/Blog" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Blog</Link></li>
+                <li><Link to="/about" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>About</Link></li>
+                <li><Link to="/blog" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Blog</Link></li>
                 <li><a href="https://billtap.app" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>billtap.app</a></li>
               </ul>
             </div>

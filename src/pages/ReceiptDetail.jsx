@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useTabNav } from "@/lib/TabNavigationContext";
-import { createPageUrl } from "@/utils";
+import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, Share2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,7 @@ const paymentStatusConfig = {
 };
 
 export default function ReceiptDetail() {
-  const { pushScreen } = useTabNav();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,8 +28,8 @@ export default function ReceiptDetail() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
-    const data  = await base44.entities.Session.list("-created_date", 200);
-    const found = data.find(s => s.id === sessionId) || null;
+    const data = await base44.entities.Session.filter({ id: sessionId });
+    const found = data[0] || null;
     setSession(found);
     setLoading(false);
   }, [sessionId]);
@@ -100,7 +99,7 @@ export default function ReceiptDetail() {
 
   const rightAction = isHost ? (
     <button
-      onClick={() => pushScreen(createPageUrl(`SessionHost?id=${sessionId}`))}
+      onClick={() => navigate(`/session-host?id=${sessionId}`)}
       className="w-11 h-11 flex items-center justify-center rounded-xl text-brand active:bg-brand-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       aria-label="Show QR code"
     >
@@ -110,7 +109,7 @@ export default function ReceiptDetail() {
 
   return (
     <div className="min-h-screen bg-background pb-8">
-      <AppHeader title={session.title || "Bill Details"} backTo={createPageUrl("Dashboard")} rightAction={rightAction} />
+      <AppHeader title={session.title || "Bill Details"} backTo="/dashboard" rightAction={rightAction} />
 
       {/* Hero Summary */}
       <div

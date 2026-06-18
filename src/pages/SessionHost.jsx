@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { createPageUrl } from "@/utils";
-import { useTabNav } from "@/lib/TabNavigationContext";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { QRCodeSVG } from "qrcode.react";
 import confetti from "canvas-confetti";
@@ -13,7 +12,7 @@ import SplitConfigModal from "@/components/SplitConfigModal";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
 
 function SessionHostComponent() {
-  const { pushScreen } = useTabNav();
+  const navigate = useNavigate();
   const { isAuthenticated, isLoadingAuth } = useAuth();
 
   // Back-button protection: unauthenticated users can't access host view
@@ -51,8 +50,8 @@ function SessionHostComponent() {
   }, [sessionId]);
 
   const claimUrl = qrToken
-    ? `${window.location.origin}/Claim?token=${qrToken}`
-    : `${window.location.origin}/Claim?id=${sessionId}`;
+    ? `${window.location.origin}/claim?token=${qrToken}`
+    : `${window.location.origin}/claim?id=${sessionId}`;
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -120,7 +119,7 @@ function SessionHostComponent() {
 
   const startClaiming = async () => {
     await base44.entities.Session.update(sessionId, { status: "claiming" });
-    pushScreen(createPageUrl(`Claim?id=${sessionId}`));
+    navigate(`/claim?id=${sessionId}`);
   };
 
   const savePaymentInfo = async () => {
