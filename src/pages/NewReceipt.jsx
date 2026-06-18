@@ -195,7 +195,7 @@ Return a JSON with:
 
   const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
   const total = subtotal + (tax || 0) + (tip || 0);
-  const pageUrl = `${window.location.origin}/NewReceipt`;
+  const pageUrl = `${window.location.origin}/new-receipt`;
 
   return (
     <div className="min-h-screen bg-background pb-28">

@@ -275,7 +275,7 @@ export default function Landing() {
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#ff5f57" }} />
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#febc2e" }} />
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#28c840" }} />
-                    <span className="ml-auto text-xs" style={{ color: "#8b90a8" }}>billtap.app/Claim</span>
+                    <span className="ml-auto text-xs" style={{ color: "#8b90a8" }}>billtap.app/claim</span>
                   </div>
                   {/* QR box */}
                   <div className="aspect-square w-48 mx-auto rounded-2xl flex items-center justify-center mb-5" style={{ background: "#0a0e1a", border: "2px solid rgba(0,200,150,0.3)" }}>

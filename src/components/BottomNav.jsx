@@ -14,7 +14,7 @@ const BottomNav = memo(function BottomNav() {
   const location = useLocation();
   const { switchTab } = useTabNav();
 
-  const hiddenPaths = ["/claim", "/Claim", "/session-host", "/SessionHost", "/LandingPage", "/privacy", "/terms", "/login", "/register", "/about", "/blog", "/changelog", "/icon-generator"];
+  const hiddenPaths = ["/claim", "/Claim", "/session-host", "/SessionHost", "/privacy", "/terms", "/login", "/register", "/about", "/blog", "/changelog", "/icon-generator"];
   if (location.pathname === "/" || hiddenPaths.some(p => location.pathname.startsWith(p))) return null;
 
   const activeTab = getTabForPath(location.pathname);
