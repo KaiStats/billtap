@@ -118,7 +118,7 @@ function SessionHostComponent() {
 
   const startClaiming = async () => {
     await base44.entities.Session.update(sessionId, { status: "claiming" });
-    navigate(`/claim?id=${sessionId}`);
+    navigate(`/receipt-detail?id=${sessionId}&host=1`);
   };
 
   const savePaymentInfo = async () => {

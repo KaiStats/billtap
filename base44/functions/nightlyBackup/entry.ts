@@ -22,14 +22,26 @@ Deno.serve(async (req) => {
 
   // Export Sessions (paginate in batches of 200)
   const sessions = [];
-  let sessionPage = await base44.asServiceRole.entities.Session.list('-created_date', 200);
-  sessions.push(...sessionPage);
+  let sessionSkip = 0;
+  while (true) {
+    const page = await base44.asServiceRole.entities.Session.list('-created_date', 200);
+    if (!page || page.length === 0) break;
+    sessions.push(...page);
+    if (page.length < 200) break;
+    sessionSkip += 200;
+  }
   snapshot.entities.Session = { count: sessions.length, records: sessions };
 
-  // Export Receipts
+  // Export Receipts (paginate in batches of 200)
   const receipts = [];
-  let receiptPage = await base44.asServiceRole.entities.Receipt.list('-created_date', 200);
-  receipts.push(...receiptPage);
+  let receiptSkip = 0;
+  while (true) {
+    const page = await base44.asServiceRole.entities.Receipt.list('-created_date', 200);
+    if (!page || page.length === 0) break;
+    receipts.push(...page);
+    if (page.length < 200) break;
+    receiptSkip += 200;
+  }
   snapshot.entities.Receipt = { count: receipts.length, records: receipts };
 
   const json = JSON.stringify(snapshot, null, 2);

@@ -93,8 +93,8 @@ Deno.serve(async (req) => {
 
     // Check rate limit
     const rateLimitRes = await base44.functions.invoke('checkSessionRateLimit', {});
-    if (!rateLimitRes.allowed) {
-      return secureJson({ error: rateLimitRes.message || 'Rate limit exceeded' }, 429, origin);
+    if (!rateLimitRes.data?.allowed) {
+      return secureJson({ error: rateLimitRes.data?.message || 'Rate limit exceeded' }, 429, origin);
     }
 
     let total;

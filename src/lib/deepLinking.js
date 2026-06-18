@@ -10,13 +10,13 @@
  */
 
 const ROUTE_MAP = {
-  home: '/Home',
-  dashboard: '/Dashboard',
-  newsplit: '/NewReceipt',
-  profile: '/Profile',
-  receipt: '/ReceiptDetail',
-  session: '/SessionHost',
-  claim: '/Claim',
+  home: '/home',
+  dashboard: '/dashboard',
+  newsplit: '/new-receipt',
+  profile: '/profile',
+  receipt: '/receipt-detail',
+  session: '/session-host',
+  claim: '/claim',
 };
 
 const PARAM_MAP = {

@@ -11,11 +11,15 @@ Deno.serve(async (req) => {
 
     const now = Date.now();
     const oneHourAgo = now - (60 * 60 * 1000);
-    const recentSessions = await base44.entities.Session.filter({ 
-      created_by_id: user.id, 
-      created_date: { $gte: oneHourAgo.toString() } 
+
+    // Fetch recent sessions for this user and filter client-side to avoid
+    // platform date comparison ambiguity (ISO string vs numeric timestamp)
+    const userSessions = await base44.entities.Session.list('-created_date', 20);
+    const recentSessions = userSessions.filter(s => {
+      const created = new Date(s.created_date).getTime();
+      return !isNaN(created) && created >= oneHourAgo;
     });
-    
+
     if (recentSessions.length >= 5) {
       return Response.json({ 
         allowed: false, 

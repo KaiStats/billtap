@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useTabNav } from "@/lib/TabNavigationContext";
 
@@ -7,17 +7,18 @@ const ROOT_PATHS = ["/", "/home", "/Home", "/dashboard", "/Dashboard", "/new-rec
 
 const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backTo }) {
   const location = useLocation();
-  const { popScreen, pushScreen, canGoBack } = useTabNav();
+  const navigate = useNavigate();
+  const { popScreen, canGoBack } = useTabNav();
 
   const isRoot = ROOT_PATHS.includes(location.pathname) && !forceBack;
   const showBack = !isRoot || forceBack || canGoBack;
 
   const handleBack = () => {
     if (backTo) {
-      pushScreen(backTo);
+      navigate(backTo);
     } else {
       const popped = popScreen();
-      if (!popped) pushScreen("/dashboard");
+      if (!popped) navigate("/dashboard");
     }
   };
 

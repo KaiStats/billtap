@@ -82,7 +82,7 @@ export default function Claim() {
       if (existing && existing.name) setMyName(existing.name);
     }
     setLoading(false);
-  }, [sessionId, myId]);
+  }, [sessionId, myId, tokenVerified]);
 
   useEffect(() => {
     if (!sessionId) return;
