@@ -321,15 +321,6 @@ function SessionHostComponent() {
             </Button>
           )}
 
-          {/* Split Configuration Modal */}
-          {showSplitConfig && (
-            <SplitConfigModal
-              session={session}
-              onClose={() => setShowSplitConfig(false)}
-              onUpdate={(updated) => setSession(updated)}
-            />
-          )}
-
           {/* Split Mode Indicator */}
           {session.split_mode === "custom" && (
             <div className="rounded-xl p-3 bg-purple-500/10 border border-purple-500/20">

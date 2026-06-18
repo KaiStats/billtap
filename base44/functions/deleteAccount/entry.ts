@@ -21,10 +21,7 @@ Deno.serve(async (req) => {
     //    Filter sessions where this user is a participant (by participant_id pattern)
     const allSessions = await base44.asServiceRole.entities.Session.list('-created_date', 200);
     const sessionsWithUser = allSessions.filter(session =>
-      session.participants?.some(p =>
-        p.participant_id === user.id ||
-        (p.participant_id && p.participant_id.startsWith('p_') && false) // guest IDs are device-local, can't match here
-      )
+      session.participants?.some(p => p.participant_id === user.id)
     );
 
     await Promise.all(sessionsWithUser.map(session => {

@@ -15,8 +15,8 @@ Deno.serve(async (req) => {
 
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
-  // Fetch all completed sessions
-  const sessions = await base44.asServiceRole.entities.Session.filter({ status: 'completed' });
+  // Fetch completed sessions (cap at 500 per run — re-run if more)
+  const sessions = await base44.asServiceRole.entities.Session.filter({ status: 'completed' }, '-updated_date', 500);
 
   let purged = 0;
   let skipped = 0;
