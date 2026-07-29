@@ -10,7 +10,7 @@
  *   STRIPE_PRICE_ID     required — the recurring $149/mo price
  *   PUBLIC_BASE_URL     optional, defaults to the request's own origin
  */
-import { json, clean, EMAIL_RE } from '../_lib/email.js';
+import { json, clean, EMAIL_RE } from '../lib/email.js';
 
 export async function onRequestPost({ request, env }) {
   let body;

@@ -10,7 +10,7 @@
  * LEAD_NOTIFY_TO (default alerts@billtap.app), LEAD_NOTIFY_FROM (must be a
  * sender the chosen provider has verified).
  */
-import { json, clean, esc, EMAIL_RE, sendEmail } from '../_lib/email.js';
+import { json, clean, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 
 const MAX_BODY_BYTES = 4096;
 

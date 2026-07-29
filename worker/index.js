@@ -5,16 +5,21 @@
  * from ./dist, with unmatched paths falling back to index.html so the SPA boots
  * on deep links.
  *
- * The route handlers live in functions/api/*.js as plain modules taking
- * ({request, env}). They were written against the Pages Functions signature,
- * which this dispatches to unchanged — the logic is identical either way.
+ * The route handlers live in worker/routes/*.js as plain modules taking
+ * ({request, env}). They keep the Pages Functions signature they were written
+ * against; this dispatches to them directly.
+ *
+ * They must NOT live in a top-level functions/ directory. Base44's repo sync
+ * claims that path: it moved all of them into base44/functions/<name>/entry.ts
+ * on its own, which broke every import here and registered Cloudflare handlers
+ * as Base44 Deno functions. Keep Cloudflare code under worker/.
  */
-import { onRequestPost as restaurantLead } from '../functions/api/restaurant-lead.js';
-import { onRequestPost as ratingAlert } from '../functions/api/rating-alert.js';
-import { onRequestPost as createCheckout } from '../functions/api/create-checkout.js';
-import { onRequestPost as verifyCheckout } from '../functions/api/verify-checkout.js';
-import { onRequestPost as monthlyReport } from '../functions/api/monthly-report.js';
-import { proxyToBase44 } from '../functions/api/base44-proxy.js';
+import { onRequestPost as restaurantLead } from './routes/restaurant-lead.js';
+import { onRequestPost as ratingAlert } from './routes/rating-alert.js';
+import { onRequestPost as createCheckout } from './routes/create-checkout.js';
+import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
+import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
+import { proxyToBase44 } from './routes/base44-proxy.js';
 
 const BASE44_PREFIX = '/api/apps/';
 

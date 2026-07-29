@@ -10,7 +10,7 @@
  *
  * Bindings: REPORT_WEBHOOK_SECRET (required), plus the usual email bindings.
  */
-import { json, esc, EMAIL_RE, sendEmail } from '../_lib/email.js';
+import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 
 const MAX_BODY_BYTES = 262144; // ~250KB — comfortably more than a few hundred restaurants
 
