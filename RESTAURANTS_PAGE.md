@@ -12,7 +12,7 @@ gets the reviews and the guest list.
 5. **At or below** → private feedback, and `/api/rating-alert` pages the operator
 6. Either way the email lands in `GuestContact`
 7. Operator watches it all at `/restaurant-dashboard`
-8. First of the month, `monthlyRestaurantReport` emails the numbers
+8. First of the month, `monthlyRestaurantReport` aggregates and Cloudflare mails it
 
 Sessions are stamped with `restaurant_id` **server-side** in `createSession`,
 derived from the authenticated host's own `Restaurant` row. It is never accepted
@@ -31,7 +31,8 @@ attached to them, to a restaurant they don't own.
 | `base44/entities/GuestRating.jsonc` | Every rating, and whether it was routed to Google |
 | `base44/entities/GuestContact.jsonc` | The guest list |
 | `base44/entities/RestaurantLead.jsonc` | Inbound sales leads |
-| `base44/functions/monthlyRestaurantReport/` | Scheduled monthly email |
+| `base44/functions/monthlyRestaurantReport/` | Scheduled aggregation, hands off to Cloudflare |
+| `functions/api/monthly-report.js` | Sends the month-end report via Postmark |
 | `functions/api/rating-alert.js` | Instant low-rating alert |
 | `functions/api/restaurant-lead.js` | New-lead alert |
 | `functions/_lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
@@ -56,6 +57,7 @@ attached to them, to a restaurant they don't own.
 | `STRIPE_SECRET_KEY` | for billing | — |
 | `STRIPE_PRICE_ID` | for billing | — |
 | `PUBLIC_BASE_URL` | no | request origin |
+| `REPORT_WEBHOOK_SECRET` | for reports | — |
 
 \* One email provider is required, not both. Postmark wins when its token is
 present — that account owns `billtap.app`, so mail comes from
@@ -66,9 +68,19 @@ SMS is dormant until all three Twilio values are set; operators then get a text
 *and* an email on every low rating. An operator who leaves the phone field blank
 gets email only. Billing endpoints return 503 until the Stripe pair is set.
 
-**Base44** (for the scheduled report): `POSTMARK_SERVER_TOKEN` or
-`RESEND_API_KEY`, optionally `REPORT_FROM`. Schedule `monthlyRestaurantReport`
-for the 1st of each month.
+**Base44** (scheduling only): `REPORT_WEBHOOK_URL`
+(`https://billtap.app/api/monthly-report`) and `REPORT_WEBHOOK_SECRET`, matching
+the Cloudflare value. Schedule `monthlyRestaurantReport` for the 1st.
+
+### No mail leaves Base44
+
+`monthlyRestaurantReport` aggregates the numbers — the one step that needs data
+access — and POSTs them to `/api/monthly-report`, which sends through Postmark.
+Base44 holds no mail credentials and talks to no mail provider. Alerts, lead
+notifications and reports all leave from Cloudflare as `alerts@billtap.app`.
+
+The aggregation reads via `base44.asServiceRole` — a scheduled run has no
+signed-in user, so user-scoped reads would come back empty.
 
 **Sender:** Postmark owns `billtap.app`, so alerts and reports come from
 `alerts@billtap.app`. Falling back to Resend means sending from `grandeza.io`,
