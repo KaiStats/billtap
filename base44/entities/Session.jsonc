@@ -177,12 +177,6 @@
           "created_by_id": "{{user.id}}"
         },
         {
-          "data.participants.participant_id": "{{user.id}}"
-        },
-        {
-          "data.participants.participant_id": "{{user.email}}"
-        },
-        {
           "user_condition": {
             "role": "admin"
           }
