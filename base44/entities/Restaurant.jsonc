@@ -41,6 +41,14 @@
       "type": "number",
       "description": "Unix ms. 14-day free trial per the current offer."
     },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Set once Checkout completes. Presence means a real subscription exists in Stripe."
+    },
+    "current_period_end": {
+      "type": "number",
+      "description": "Unix ms the paid period runs to, from Stripe."
+    },
     "created_at": {
       "type": "number",
       "description": "Unix timestamp ms"

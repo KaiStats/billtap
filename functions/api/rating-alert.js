@@ -8,7 +8,7 @@
  * Bindings: RESEND_API_KEY (required), LEAD_NOTIFY_TO (fallback recipient),
  * LEAD_NOTIFY_FROM (verified sender).
  */
-import { json, clean, esc, EMAIL_RE, sendEmail } from '../_lib/email.js';
+import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../_lib/email.js';
 
 const MAX_BODY_BYTES = 8192;
 
@@ -66,13 +66,30 @@ export async function onRequestPost({ request, env }) {
     guestEmail ? `\nGuest: ${guestEmail}` : '\nNo guest email.',
   ].join('');
 
-  const result = await sendEmail(env, {
-    to,
-    subject: `⚠︎ ${stars}-star rating at ${restaurantName}`,
-    html,
-    text,
-    replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,
-  });
+  // Email and SMS in parallel — the operator's phone buzzing is the point, but
+  // neither channel is allowed to hold up the other or fail the request.
+  const smsBody = [
+    `${stars}★ at ${restaurantName}`,
+    comment ? `"${comment.slice(0, 140)}"` : 'No comment.',
+    guestEmail ? `Reply: ${guestEmail}` : 'No guest email.',
+  ].join(' — ');
 
-  return json({ ok: true, notified: result.ok, ...(result.ok ? {} : { reason: result.reason }) });
+  const [emailResult, smsResult] = await Promise.all([
+    sendEmail(env, {
+      to,
+      subject: `⚠︎ ${stars}-star rating at ${restaurantName}`,
+      html,
+      text,
+      replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,
+    }),
+    sendSms(env, { to: clean(body.alert_phone, 40), body: smsBody }),
+  ]);
+
+  return json({
+    ok: true,
+    notified: emailResult.ok,
+    texted: smsResult.ok,
+    ...(emailResult.ok ? {} : { reason: emailResult.reason }),
+    ...(smsResult.ok ? {} : { sms_reason: smsResult.reason }),
+  });
 }

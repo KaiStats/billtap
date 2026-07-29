@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2 } from "lucide-react";
+import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const GOLD = "#f0b429";
@@ -26,9 +26,11 @@ export default function RestaurantDashboard() {
   const [contacts, setContacts] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
-  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", rating_threshold: 3 });
+  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3 });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
+  const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
+  const handledCheckout = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +44,7 @@ export default function RestaurantDashboard() {
           name: r.name || "",
           google_review_url: r.google_review_url || "",
           alert_email: r.alert_email || "",
+          alert_phone: r.alert_phone || "",
           rating_threshold: r.rating_threshold ?? 3,
         });
         const [rt, ct] = await Promise.all([
@@ -59,6 +62,71 @@ export default function RestaurantDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Returning from Stripe Checkout. The session id is proof of nothing on its
+  // own — the endpoint asks Stripe directly before we mark the plan active.
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("checkout");
+    if (!param || !restaurant) return;
+
+    // Claim the session id synchronously. Verifying calls load(), which changes
+    // `restaurant` and re-runs this effect — without this guard that second run
+    // starts before the URL param is cleared and verifies the same payment twice.
+    if (handledCheckout.current === param) return;
+    handledCheckout.current = param;
+
+    const clearParam = () =>
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+    if (param === "cancelled") { setBilling("cancelled"); clearParam(); return; }
+    if (!param.startsWith("cs_") || restaurant.stripe_subscription_id) { clearParam(); return; }
+
+    let alive = true;
+    (async () => {
+      setBilling("verifying");
+      try {
+        const res = await fetch("/api/verify-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: param }),
+        });
+        const data = await res.json();
+        if (!alive) return;
+
+        if (data.paid && data.restaurant_id === restaurant.id) {
+          await base44.entities.Restaurant.update(restaurant.id, {
+            plan: "active",
+            stripe_subscription_id: data.subscription_id || "",
+            current_period_end: data.current_period_end || null,
+          });
+          setBilling(null);
+          await load();
+        } else {
+          setBilling("failed");
+        }
+      } catch {
+        if (alive) setBilling("failed");
+      }
+      clearParam();
+    })();
+    return () => { alive = false; };
+  }, [restaurant, load]);
+
+  const startCheckout = async () => {
+    setBilling("starting");
+    try {
+      const res = await fetch("/api/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurant_id: restaurant.id, email: restaurant.alert_email }),
+      });
+      const data = await res.json();
+      if (data.url) { window.location.href = data.url; return; }
+      setBilling("failed");
+    } catch {
+      setBilling("failed");
+    }
+  };
+
   const stats = useMemo(() => {
     const n = ratings.length;
     const avg = n ? ratings.reduce((s, r) => s + (r.stars || 0), 0) / n : 0;
@@ -66,6 +134,11 @@ export default function RestaurantDashboard() {
     const low = ratings.filter((r) => !r.routed_to_google);
     return { n, avg, routed, low };
   }, [ratings]);
+
+  const trialDaysLeft = useMemo(() => {
+    if (!restaurant?.trial_ends_at) return null;
+    return Math.max(0, Math.ceil((restaurant.trial_ends_at - Date.now()) / 86400000));
+  }, [restaurant]);
 
   const createRestaurant = async () => {
     const name = form.name.trim();
@@ -108,6 +181,7 @@ export default function RestaurantDashboard() {
         name: form.name.trim(),
         google_review_url: form.google_review_url.trim(),
         alert_email: form.alert_email.trim(),
+        alert_phone: form.alert_phone.trim(),
         rating_threshold: Number(form.rating_threshold),
       });
       setSavedAt(Date.now());
@@ -296,6 +370,50 @@ export default function RestaurantDashboard() {
           )}
         </section>
 
+        {/* Billing */}
+        <section className="mt-12">
+          <div className="p-6 rounded-2xl flex flex-wrap gap-5 items-center justify-between"
+            style={{
+              background: restaurant.plan === "active" ? "rgba(48,164,108,.07)" : "rgba(240,180,41,.07)",
+              border: `1px solid ${restaurant.plan === "active" ? "rgba(48,164,108,.28)" : "rgba(240,180,41,.3)"}`,
+            }}>
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <CreditCard className="w-4 h-4" style={{ color: restaurant.plan === "active" ? "#30a46c" : GOLD }} />
+                {restaurant.plan === "active" ? "Subscription active" : "Free trial"}
+              </h2>
+              <p className="mt-1.5 text-sm" style={{ color: "rgba(255,255,255,.6)" }}>
+                {restaurant.plan === "active"
+                  ? restaurant.current_period_end
+                    ? `Renews ${new Date(restaurant.current_period_end).toLocaleDateString()}. $149/month.`
+                    : "$149/month."
+                  : trialDaysLeft !== null
+                    ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left, then $149/month. Cancel anytime.`
+                    : "$149/month when your trial ends. Cancel anytime."}
+              </p>
+              {billing === "cancelled" && (
+                <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
+                  Checkout cancelled — nothing was charged.
+                </p>
+              )}
+              {billing === "failed" && (
+                <p className="mt-2 text-sm" role="alert" style={{ color: "#ff8080" }}>
+                  We couldn't confirm that payment. Nothing was charged twice — call (702) 844-0938.
+                </p>
+              )}
+            </div>
+
+            {restaurant.plan !== "active" && (
+              <button onClick={startCheckout} disabled={billing === "starting" || billing === "verifying"}
+                className="px-6 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ background: GOLD, color: "#1a1200" }}>
+                {(billing === "starting" || billing === "verifying") && <Loader2 className="w-4 h-4 animate-spin" />}
+                {billing === "verifying" ? "Confirming" : "Subscribe — $149/mo"}
+              </button>
+            )}
+          </div>
+        </section>
+
         {/* Table QR + settings */}
         <section className="mt-12 grid lg:grid-cols-2 gap-6">
           <div className="p-6 rounded-2xl" style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
@@ -341,6 +459,17 @@ export default function RestaurantDashboard() {
                 <label htmlFor="a" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>Alert email</label>
                 <input id="a" className={field} style={fieldStyle} type="email" value={form.alert_email}
                   onChange={(e) => setForm({ ...form, alert_email: e.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="p" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>
+                  Alert phone (text messages)
+                </label>
+                <input id="p" className={field} style={fieldStyle} type="tel" inputMode="tel"
+                  value={form.alert_phone} placeholder="(702) 555-0134"
+                  onChange={(e) => setForm({ ...form, alert_phone: e.target.value })} />
+                <p className="mt-1.5 text-xs" style={{ color: "rgba(255,255,255,.4)" }}>
+                  Leave blank for email only.
+                </p>
               </div>
               <div>
                 <label htmlFor="t" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>

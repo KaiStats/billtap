@@ -127,6 +127,7 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
           rating_id: ratingId,
           restaurant_name: restaurant.name,
           alert_email: restaurant.alert_email,
+          alert_phone: restaurant.alert_phone,
           stars,
           comment: comment.trim(),
           guest_email: email.trim().toLowerCase(),

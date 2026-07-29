@@ -46,6 +46,16 @@ attached to them, to a restaurant they don't own.
 | `LEAD_NOTIFY_TO` | no | `alerts@billtap.app` |
 | `LEAD_NOTIFY_FROM` | no | `BillTap <alerts@grandeza.io>` |
 | `RESTAURANT_TZ` | no | `America/Los_Angeles` |
+| `TWILIO_ACCOUNT_SID` | for SMS | — |
+| `TWILIO_AUTH_TOKEN` | for SMS | — |
+| `TWILIO_FROM_NUMBER` | for SMS | — |
+| `STRIPE_SECRET_KEY` | for billing | — |
+| `STRIPE_PRICE_ID` | for billing | — |
+| `PUBLIC_BASE_URL` | no | request origin |
+
+SMS is dormant until all three Twilio values are set; operators then get a text
+*and* an email on every low rating. An operator who leaves the phone field blank
+gets email only. Billing endpoints return 503 until the Stripe pair is set.
 
 **Base44** (for the scheduled report): `RESEND_API_KEY`, optionally `REPORT_FROM`.
 Schedule `monthlyRestaurantReport` for the 1st of each month.
@@ -65,6 +75,23 @@ data.
 3. Owner pastes their **Google review URL** — until then the Google handoff
    button stays disabled, since there is nowhere to send happy guests
 4. Print the table QR shown on the dashboard
+
+## Billing
+
+`/api/create-checkout` opens a Stripe Checkout session for the $149/mo price and
+returns its URL; card details never touch this app. On return, the dashboard
+calls `/api/verify-checkout`, which asks Stripe directly whether the session
+paid, then writes `plan: "active"` through the SDK as the signed-in owner.
+
+Set `STRIPE_PRICE_ID` to a **recurring** $149/month price, not a one-off.
+
+**Known gap — add before this carries volume:** there is no Stripe webhook, so
+renewals, failed payments and cancellations do not flow back automatically. A
+subscription cancelled in Stripe still reads `active` here until someone changes
+it. `verify-checkout` also decides payment server-side, but the plan write itself
+happens client-side — an owner could set their own row to `active` through the
+SDK. Fine for a pilot; wire `functions/api/stripe-webhook.js` against
+`customer.subscription.*` before it matters.
 
 ## Not built: POS integration
 

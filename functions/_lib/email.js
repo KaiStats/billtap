@@ -68,3 +68,49 @@ export async function sendEmail(env, { to, subject, html, text, replyTo }) {
     return { ok: false, reason: 'email_send_failed' };
   }
 }
+
+/**
+ * Send one SMS through Twilio.
+ *
+ * Dormant unless TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER
+ * are all set — an operator with no phone on file, or an account with no Twilio
+ * credentials, simply gets email only. Like sendEmail, it never throws.
+ */
+export async function sendSms(env, { to, body }) {
+  const sid = env.TWILIO_ACCOUNT_SID;
+  const token = env.TWILIO_AUTH_TOKEN;
+  const from = env.TWILIO_FROM_NUMBER;
+
+  if (!sid || !token || !from) return { ok: false, reason: 'sms_not_configured' };
+  if (!to) return { ok: false, reason: 'no_recipient' };
+
+  // E.164 or Twilio rejects it. Assume US when the caller stored 10 digits.
+  const digits = String(to).replace(/[^\d+]/g, '');
+  const e164 = digits.startsWith('+')
+    ? digits
+    : digits.length === 10
+      ? `+1${digits}`
+      : digits.length === 11 && digits.startsWith('1')
+        ? `+${digits}`
+        : null;
+  if (!e164) return { ok: false, reason: 'bad_phone_number' };
+
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: e164, From: from, Body: body.slice(0, 320) }),
+    });
+    if (!res.ok) {
+      console.error('sms: Twilio rejected the send', res.status, await res.text());
+      return { ok: false, reason: 'sms_send_failed' };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('sms: Twilio request threw', err?.message);
+    return { ok: false, reason: 'sms_send_failed' };
+  }
+}
