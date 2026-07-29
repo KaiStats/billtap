@@ -5,8 +5,9 @@
  * is still in the building. The GuestRating row is already written by the
  * client before this is called, so a failure here costs the alert, not the data.
  *
- * Bindings: RESEND_API_KEY (required), LEAD_NOTIFY_TO (fallback recipient),
- * LEAD_NOTIFY_FROM (verified sender).
+ * Bindings: POSTMARK_SERVER_TOKEN or RESEND_API_KEY (one required),
+ * LEAD_NOTIFY_TO (fallback recipient), LEAD_NOTIFY_FROM (verified sender),
+ * TWILIO_* for the SMS half.
  */
 import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../_lib/email.js';
 

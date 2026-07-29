@@ -34,7 +34,9 @@ attached to them, to a restaurant they don't own.
 | `base44/functions/monthlyRestaurantReport/` | Scheduled monthly email |
 | `functions/api/rating-alert.js` | Instant low-rating alert |
 | `functions/api/restaurant-lead.js` | New-lead alert |
-| `functions/_lib/email.js` | Shared Resend helper |
+| `functions/_lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
+| `functions/api/create-checkout.js` | Stripe Checkout session |
+| `functions/api/verify-checkout.js` | Server-side payment confirmation |
 
 ## Configuration
 
@@ -42,9 +44,11 @@ attached to them, to a restaurant they don't own.
 
 | Variable | Required | Default |
 | --- | --- | --- |
-| `RESEND_API_KEY` | yes | — |
+| `POSTMARK_SERVER_TOKEN` | yes* | — |
+| `POSTMARK_MESSAGE_STREAM` | no | `outbound` |
+| `RESEND_API_KEY` | yes* | — |
 | `LEAD_NOTIFY_TO` | no | `alerts@billtap.app` |
-| `LEAD_NOTIFY_FROM` | no | `BillTap <alerts@grandeza.io>` |
+| `LEAD_NOTIFY_FROM` | no | `BillTap <alerts@billtap.app>` |
 | `RESTAURANT_TZ` | no | `America/Los_Angeles` |
 | `TWILIO_ACCOUNT_SID` | for SMS | — |
 | `TWILIO_AUTH_TOKEN` | for SMS | — |
@@ -53,16 +57,22 @@ attached to them, to a restaurant they don't own.
 | `STRIPE_PRICE_ID` | for billing | — |
 | `PUBLIC_BASE_URL` | no | request origin |
 
+\* One email provider is required, not both. Postmark wins when its token is
+present — that account owns `billtap.app`, so mail comes from
+`alerts@billtap.app`. Resend is the fallback and can only send from
+`grandeza.io`, so with Resend alone set `LEAD_NOTIFY_FROM` accordingly.
+
 SMS is dormant until all three Twilio values are set; operators then get a text
 *and* an email on every low rating. An operator who leaves the phone field blank
 gets email only. Billing endpoints return 503 until the Stripe pair is set.
 
-**Base44** (for the scheduled report): `RESEND_API_KEY`, optionally `REPORT_FROM`.
-Schedule `monthlyRestaurantReport` for the 1st of each month.
+**Base44** (for the scheduled report): `POSTMARK_SERVER_TOKEN` or
+`RESEND_API_KEY`, optionally `REPORT_FROM`. Schedule `monthlyRestaurantReport`
+for the 1st of each month.
 
-**Sender caveat:** only `grandeza.io` is verified in Resend today, so mail sends
-from there. Verify `billtap.app` and change `LEAD_NOTIFY_FROM` / `REPORT_FROM` —
-nothing else changes.
+**Sender:** Postmark owns `billtap.app`, so alerts and reports come from
+`alerts@billtap.app`. Falling back to Resend means sending from `grandeza.io`,
+since that is the only domain verified there.
 
 Persistence never depends on email: ratings, contacts and leads are written
 before any notification is attempted, so a mail failure costs the alert, not the
@@ -97,9 +107,9 @@ SDK. Fine for a pilot; wire `functions/api/stripe-webhook.js` against
 
 The flyer claims "works with your POS — no new hardware, no disruption", which is
 accurate: BillTap sits beside the POS and needs nothing from it. There is **no**
-Toast/Square/Clover data integration, and building one is not just code — each
-vendor requires a partner account, OAuth credentials and app review. Don't sell
-automatic check import until those are in hand.
+Toast/Square/Clover data integration. Adding one is not just code — each vendor
+requires a partner account, OAuth credentials and app review, so automatic check
+import would need those in hand first.
 
 ## Imagery
 

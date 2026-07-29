@@ -29,42 +29,75 @@ export const esc = (s) =>
     .replace(/"/g, '&quot;');
 
 /**
- * Send one email through Resend.
+ * Send one email.
+ *
+ * Postmark is used when POSTMARK_SERVER_TOKEN is set — that is the account that
+ * owns billtap.app, so mail can come from alerts@billtap.app rather than a
+ * second brand. Resend is the fallback for environments that only have that.
  *
  * Returns {ok:true} or {ok:false, reason} — it never throws, because every
  * caller has already persisted the thing that matters and must not fail the
  * user's request over a notification.
  */
 export async function sendEmail(env, { to, subject, html, text, replyTo }) {
-  const apiKey = env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.error('email: RESEND_API_KEY is not configured');
+  const postmarkToken = env.POSTMARK_SERVER_TOKEN;
+  const resendKey = env.RESEND_API_KEY;
+
+  if (!postmarkToken && !resendKey) {
+    console.error('email: neither POSTMARK_SERVER_TOKEN nor RESEND_API_KEY is configured');
     return { ok: false, reason: 'email_not_configured' };
   }
 
-  const from = env.LEAD_NOTIFY_FROM || 'BillTap <alerts@grandeza.io>';
+  const from = env.LEAD_NOTIFY_FROM || 'BillTap <alerts@billtap.app>';
+
+  const request = postmarkToken
+    ? {
+        url: 'https://api.postmarkapp.com/email',
+        init: {
+          method: 'POST',
+          headers: {
+            'X-Postmark-Server-Token': postmarkToken,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            From: from,
+            To: to,
+            Subject: subject,
+            HtmlBody: html,
+            TextBody: text,
+            ...(replyTo ? { ReplyTo: replyTo } : {}),
+            MessageStream: env.POSTMARK_MESSAGE_STREAM || 'outbound',
+          }),
+        },
+        name: 'Postmark',
+      }
+    : {
+        url: 'https://api.resend.com/emails',
+        init: {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from,
+            to: [to],
+            ...(replyTo ? { reply_to: replyTo } : {}),
+            subject,
+            html,
+            text,
+          }),
+        },
+        name: 'Resend',
+      };
 
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        ...(replyTo ? { reply_to: replyTo } : {}),
-        subject,
-        html,
-        text,
-      }),
-    });
-
+    const res = await fetch(request.url, request.init);
     if (!res.ok) {
-      console.error('email: Resend rejected the send', res.status, await res.text());
+      console.error(`email: ${request.name} rejected the send`, res.status, await res.text());
       return { ok: false, reason: 'email_send_failed' };
     }
     return { ok: true };
   } catch (err) {
-    console.error('email: Resend request threw', err?.message);
+    console.error(`email: ${request.name} request threw`, err?.message);
     return { ok: false, reason: 'email_send_failed' };
   }
 }

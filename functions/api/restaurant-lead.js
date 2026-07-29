@@ -6,8 +6,9 @@
  * works; this endpoint is the notification half only, because the Resend API key
  * must never reach the client.
  *
- * Bindings: RESEND_API_KEY (required), LEAD_NOTIFY_TO (default
- * alerts@billtap.app), LEAD_NOTIFY_FROM (must be a Resend-verified sender).
+ * Bindings: POSTMARK_SERVER_TOKEN or RESEND_API_KEY (one required),
+ * LEAD_NOTIFY_TO (default alerts@billtap.app), LEAD_NOTIFY_FROM (must be a
+ * sender the chosen provider has verified).
  */
 import { json, clean, esc, EMAIL_RE, sendEmail } from '../_lib/email.js';
 

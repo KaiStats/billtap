@@ -7,8 +7,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Schedule this in Base44 for the 1st of each month. It reports the month that
  * just ended for every restaurant with an alert_email.
  *
- * Requires RESEND_API_KEY and, optionally, REPORT_FROM (must be a
- * Resend-verified sender).
+ * Requires POSTMARK_SERVER_TOKEN (preferred) or RESEND_API_KEY, and optionally
+ * REPORT_FROM — which must be a sender the chosen provider has verified.
  */
 
 const esc = (s: unknown) =>
@@ -18,10 +18,34 @@ const esc = (s: unknown) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-async function sendEmail(apiKey: string, from: string, to: string, subject: string, html: string) {
+/**
+ * Postmark when POSTMARK_SERVER_TOKEN is set — that account owns billtap.app,
+ * so reports come from alerts@billtap.app. Resend is the fallback.
+ */
+async function sendEmail(from: string, to: string, subject: string, html: string) {
+  const postmarkToken = Deno.env.get('POSTMARK_SERVER_TOKEN');
+
+  if (postmarkToken) {
+    const res = await fetch('https://api.postmarkapp.com/email', {
+      method: 'POST',
+      headers: {
+        'X-Postmark-Server-Token': postmarkToken,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        From: from, To: to, Subject: subject, HtmlBody: html,
+        MessageStream: Deno.env.get('POSTMARK_MESSAGE_STREAM') || 'outbound',
+      }),
+    });
+    if (!res.ok) throw new Error(`Postmark ${res.status}: ${await res.text()}`);
+    return;
+  }
+
+  const resendKey = Deno.env.get('RESEND_API_KEY');
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to: [to], subject, html }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
@@ -31,11 +55,13 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    const apiKey = Deno.env.get('RESEND_API_KEY');
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'RESEND_API_KEY not configured' }), { status: 500 });
+    if (!Deno.env.get('POSTMARK_SERVER_TOKEN') && !Deno.env.get('RESEND_API_KEY')) {
+      return new Response(
+        JSON.stringify({ error: 'Neither POSTMARK_SERVER_TOKEN nor RESEND_API_KEY is configured' }),
+        { status: 500 }
+      );
     }
-    const from = Deno.env.get('REPORT_FROM') || 'BillTap <alerts@grandeza.io>';
+    const from = Deno.env.get('REPORT_FROM') || 'BillTap <alerts@billtap.app>';
 
     // Window: the calendar month that just ended.
     const now = new Date();
@@ -94,7 +120,7 @@ Deno.serve(async (req) => {
         </div>`;
 
       try {
-        await sendEmail(apiKey, from, r.alert_email, `${r.name} — ${label} report`, html);
+        await sendEmail(from, r.alert_email, `${r.name} — ${label} report`, html);
         sent++;
       } catch (e) {
         console.error(`monthlyRestaurantReport: ${r.name} failed`, e.message);
