@@ -20,6 +20,7 @@ import { handleDeepLink } from '@/lib/deepLinking';
 
 const Home        = lazy(() => import('@/pages/Home'));
 const Landing     = lazy(() => import('@/pages/Landing'));
+const Restaurants = lazy(() => import('@/pages/Restaurants'));
 const Login       = lazy(() => import('@/pages/Login'));
 const Register    = lazy(() => import('@/pages/Register'));
 const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
@@ -123,6 +124,7 @@ const AuthenticatedApp = () => {
             <Route path="/blog" element={<Blog />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
+            <Route path="/restaurants" element={<Restaurants />} />
 
             {/* Auth routes */}
             <Route path="/login" element={<Login />} />
@@ -133,6 +135,7 @@ const AuthenticatedApp = () => {
             <Route path="/Blog" element={<Navigate to="/blog" replace />} />
             <Route path="/Changelog" element={<Navigate to="/changelog" replace />} />
             <Route path="/Claim" element={<Navigate to="/claim" replace />} />
+            <Route path="/Restaurants" element={<Navigate to="/restaurants" replace />} />
             <Route path="/Home" element={<Navigate to="/home" replace />} />
             <Route path="/NewReceipt" element={<Navigate to="/new-receipt" replace />} />
             <Route path="/Dashboard" element={<Navigate to="/dashboard" replace />} />

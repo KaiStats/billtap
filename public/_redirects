@@ -1,0 +1,12 @@
+# Edge routing for the /restaurants marketing page.
+#
+# Deliberately surgical rather than a blanket `/* /index.html 200`. The Base44
+# SDK issues same-origin requests to /api/apps/<id>/entities/... — a catch-all
+# would shadow those and take the whole app's data layer down with it. These two
+# rules add only what the flyer QR needs and leave every existing path alone.
+
+# Cold visit to the deep link must boot the SPA instead of 404ing on a missing file.
+/restaurants     /index.html     200
+
+# Capitalized variant, in case the printed QR encodes it that way.
+/Restaurants     /restaurants    301
