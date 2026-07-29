@@ -1,0 +1,41 @@
+{
+  "name": "Nightly Data Backup \u2014 Entity Snapshot",
+  "description": "Exports a full JSON snapshot of all Session and Receipt records nightly. Wire BACKUP_S3_* secrets in dashboard to persist to external storage.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 8 * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "nightly_data_backup_entity_snapshot",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "nightlyBackup",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  }
+}
