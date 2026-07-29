@@ -40,6 +40,61 @@ attached to them, to a restaurant they don't own.
 | `functions/api/verify-checkout.js` | Server-side payment confirmation at signup |
 | `base44/functions/stripeWebhook/` | Renewals, failed cards, cancellations |
 
+## Deploying to Cloudflare Pages
+
+**Create the project:** Cloudflare → Workers & Pages → Create → Pages → connect
+`KaiStats/billtap`.
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| Root directory | *(leave blank)* |
+
+**Build-time variables** — Vite inlines these, so they must be set *before* the
+build or the app ships pointing at nothing:
+
+```
+VITE_BASE44_APP_ID         <your Base44 app id>
+VITE_BASE44_APP_BASE_URL   <your Base44 app URL>
+```
+
+**DNS:** point both `billtap.app` and `www.billtap.app` at the Pages project.
+The apex currently has no record at all, which is why the domain does not
+resolve — the printed flyer QR depends on it.
+
+### Why /api/apps/** is proxied
+
+`src/api/base44Client.js` builds the SDK with `serverUrl: ''`, so every entity,
+auth and function call is issued **same-origin** as `/api/apps/<appId>/...`. That
+works when Base44 serves the app itself. On Pages there is no such route, so
+without `functions/api/apps/[[path]].js` every read and write in the app — the
+consumer bill-splitter included — would 404.
+
+Proxying rather than repointing the SDK at `https://base44.app` keeps requests
+same-origin, so nothing depends on Base44's CORS policy for the `billtap.app`
+origin and cookie auth keeps working. It is scoped to `/api/apps/**` so it can
+never shadow this app's own endpoints.
+
+This is also what makes the blanket `/*  /index.html  200` in `public/_redirects`
+safe: Pages matches Functions before redirects. **Do not remove the proxy while
+leaving the catch-all** — every data call would be served `index.html` instead.
+
+Set `BASE44_API_ORIGIN` if your Base44 API lives somewhere other than
+`https://base44.app`.
+
+### First smoke test after deploying
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://billtap.app/restaurants   # 200
+curl -sS -o /dev/null -w "%{http_code}\n" https://billtap.app/r/anything    # 200 (SPA boots)
+curl -sS -X POST https://billtap.app/api/restaurant-lead \
+  -H 'Content-Type: application/json' -d '{}'                              # 400, not 404
+```
+
+A **404** on the last one means Functions did not deploy. A **400** means they
+did — it is the endpoint rejecting an empty body, which is correct.
+
 ## Configuration
 
 **Cloudflare** (Settings → Environment variables):
