@@ -1,12 +1,11 @@
-# Edge routing for the /restaurants marketing page.
+# SPA fallback for Cloudflare Pages.
 #
-# Deliberately surgical rather than a blanket `/* /index.html 200`. The Base44
-# SDK issues same-origin requests to /api/apps/<id>/entities/... — a catch-all
-# would shadow those and take the whole app's data layer down with it. These two
-# rules add only what the flyer QR needs and leave every existing path alone.
-
-# Cold visit to the deep link must boot the SPA instead of 404ing on a missing file.
-/restaurants     /index.html     200
-
-# Capitalized variant, in case the printed QR encodes it that way.
-/Restaurants     /restaurants    301
+# Without this, a cold visit to any deep link — billtap.app/restaurants from the
+# flyer QR, or /r/<slug> from a table tent — hits Cloudflare as a missing file
+# and 404s before React ever boots.
+#
+# Pages Functions are matched before these rules, so /api/** is unaffected:
+# /api/apps/** proxies to Base44 and the rest are this app's own endpoints. That
+# is what makes a blanket rule safe here — do not add one without that proxy in
+# place, or every data call in the app will be served index.html instead.
+/*    /index.html    200
