@@ -37,7 +37,8 @@ attached to them, to a restaurant they don't own.
 | `functions/api/restaurant-lead.js` | New-lead alert |
 | `functions/_lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
 | `functions/api/create-checkout.js` | Stripe Checkout session |
-| `functions/api/verify-checkout.js` | Server-side payment confirmation |
+| `functions/api/verify-checkout.js` | Server-side payment confirmation at signup |
+| `base44/functions/stripeWebhook/` | Renewals, failed cards, cancellations |
 
 ## Configuration
 
@@ -58,6 +59,8 @@ attached to them, to a restaurant they don't own.
 | `STRIPE_PRICE_ID` | for billing | — |
 | `PUBLIC_BASE_URL` | no | request origin |
 | `REPORT_WEBHOOK_SECRET` | for reports | — |
+
+Base44 also needs `STRIPE_WEBHOOK_SECRET` for the subscription webhook.
 
 \* One email provider is required, not both. Postmark wins when its token is
 present — that account owns `billtap.app`, so mail comes from
@@ -107,13 +110,29 @@ paid, then writes `plan: "active"` through the SDK as the signed-in owner.
 
 Set `STRIPE_PRICE_ID` to a **recurring** $149/month price, not a one-off.
 
-**Known gap — add before this carries volume:** there is no Stripe webhook, so
-renewals, failed payments and cancellations do not flow back automatically. A
-subscription cancelled in Stripe still reads `active` here until someone changes
-it. `verify-checkout` also decides payment server-side, but the plan write itself
-happens client-side — an owner could set their own row to `active` through the
-SDK. Fine for a pilot; wire `functions/api/stripe-webhook.js` against
-`customer.subscription.*` before it matters.
+### Keeping state honest after signup
+
+`verify-checkout` only ever runs once. `base44/functions/stripeWebhook` handles
+everything after: renewals, failed cards and cancellations.
+
+Point Stripe at `https://<your-app-domain>/functions/stripeWebhook` and subscribe
+to `customer.subscription.updated`, `customer.subscription.deleted`,
+`invoice.payment_failed` and `invoice.payment_succeeded`. Set
+`STRIPE_WEBHOOK_SECRET` (the `whsec_…` value) in Base44.
+
+It lives in Base44 because it writes data, which Base44 still owns; it sends no
+mail. Signatures are verified against the **raw** body before parsing — parsing
+first would re-serialise the bytes and break the HMAC. Replays outside a
+5-minute window are rejected, and multiple `v1` signatures are accepted so a
+signing-secret rotation doesn't drop events. Data errors return 500 so Stripe
+retries rather than silently dropping a cancellation.
+
+Plan states: `trial` → `active` → `past_due` (payment failed, service continues)
+→ `cancelled`. The dashboard renders all four.
+
+**Remaining caveat:** `verify-checkout` decides payment server-side, but the
+signup plan write happens client-side, so an owner could set their own row to
+`active` through the SDK. The webhook corrects it on the next Stripe event.
 
 ## Not built: POS integration
 
@@ -127,4 +146,20 @@ import would need those in hand first.
 
 Hero and detail images were generated with Higgsfield (Nano Banana 2) and point
 at Higgsfield's CDN, with CSS gradient fallbacks beneath so a dead URL degrades
-rather than breaks. To self-host, see `src/lib/restaurant-assets.js`.
+rather than breaks.
+
+**Self-host them before this page carries real traffic** — the CDN is Higgsfield's,
+not yours, and those URLs can disappear without notice. Two commands and a
+one-line edit:
+
+```bash
+mkdir -p public/img
+curl -o public/img/restaurants-hero.png \
+  "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5/hf_20260729_145319_1db26e63-a913-47d4-af26-0c55a6a8ae7e.png"
+curl -o public/img/restaurants-detail.png \
+  "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5/hf_20260729_145616_4a63691c-b043-4ed2-9e77-a054b53fbdb5.png"
+```
+
+Then in `src/lib/restaurant-assets.js` replace the two exported URLs with
+`/img/restaurants-hero.png` and `/img/restaurants-detail.png`. Nothing else
+changes — the CSP already allows `img-src 'self'`.

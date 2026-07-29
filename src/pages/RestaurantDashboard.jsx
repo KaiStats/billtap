@@ -140,6 +140,28 @@ export default function RestaurantDashboard() {
     return Math.max(0, Math.ceil((restaurant.trial_ends_at - Date.now()) / 86400000));
   }, [restaurant]);
 
+  // Plan states the Stripe webhook can now produce, not just trial/active.
+  const [billingTone, billingHeading, billingDetail] = useMemo(() => {
+    const renews = restaurant?.current_period_end
+      ? `Renews ${new Date(restaurant.current_period_end).toLocaleDateString()}. $149/month.`
+      : "$149/month.";
+    switch (restaurant?.plan) {
+      case "active":
+        return ["#30a46c", "Subscription active", renews];
+      case "past_due":
+        return ["#e5484d", "Payment failed",
+          "Stripe couldn't charge your card. Update it from the receipt email, or call (702) 844-0938 — your service is still on for now."];
+      case "cancelled":
+        return ["#8b8b8b", "Subscription cancelled",
+          "Your guests can still split checks, but reviews and alerts have stopped. Resubscribe any time."];
+      default:
+        return ["#f0b429", "Free trial",
+          trialDaysLeft !== null
+            ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left, then $149/month. Cancel anytime.`
+            : "$149/month when your trial ends. Cancel anytime."];
+    }
+  }, [restaurant, trialDaysLeft]);
+
   const createRestaurant = async () => {
     const name = form.name.trim();
     if (!name) { setFormError("Give the restaurant a name."); return; }
@@ -373,23 +395,14 @@ export default function RestaurantDashboard() {
         {/* Billing */}
         <section className="mt-12">
           <div className="p-6 rounded-2xl flex flex-wrap gap-5 items-center justify-between"
-            style={{
-              background: restaurant.plan === "active" ? "rgba(48,164,108,.07)" : "rgba(240,180,41,.07)",
-              border: `1px solid ${restaurant.plan === "active" ? "rgba(48,164,108,.28)" : "rgba(240,180,41,.3)"}`,
-            }}>
+            style={{ background: `${billingTone}12`, border: `1px solid ${billingTone}47` }}>
             <div>
               <h2 className="text-lg font-bold flex items-center gap-2">
-                <CreditCard className="w-4 h-4" style={{ color: restaurant.plan === "active" ? "#30a46c" : GOLD }} />
-                {restaurant.plan === "active" ? "Subscription active" : "Free trial"}
+                <CreditCard className="w-4 h-4" style={{ color: billingTone }} />
+                {billingHeading}
               </h2>
               <p className="mt-1.5 text-sm" style={{ color: "rgba(255,255,255,.6)" }}>
-                {restaurant.plan === "active"
-                  ? restaurant.current_period_end
-                    ? `Renews ${new Date(restaurant.current_period_end).toLocaleDateString()}. $149/month.`
-                    : "$149/month."
-                  : trialDaysLeft !== null
-                    ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left, then $149/month. Cancel anytime.`
-                    : "$149/month when your trial ends. Cancel anytime."}
+                {billingDetail}
               </p>
               {billing === "cancelled" && (
                 <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
@@ -403,7 +416,7 @@ export default function RestaurantDashboard() {
               )}
             </div>
 
-            {restaurant.plan !== "active" && (
+            {restaurant.plan !== "active" && restaurant.plan !== "past_due" && (
               <button onClick={startCheckout} disabled={billing === "starting" || billing === "verifying"}
                 className="px-6 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
                 style={{ background: GOLD, color: "#1a1200" }}>
