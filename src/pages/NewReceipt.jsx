@@ -130,14 +130,16 @@ Return a JSON with:
   const handleCreateSession = async () => {
     setSaving(true);
     try {
+      const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
       const res = await base44.functions.invoke("createSession", {
-        title, 
-        image_url: imageUrl, 
-        items, 
-        tax, 
-        tip, 
-        split_mode: splitMode, 
+        title,
+        image_url: imageUrl,
+        items,
+        tax,
+        tip,
+        split_mode: splitMode,
         total_amount: total,
+        ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
       });
       if (res.data?.error) {
         alert(res.data.error);
@@ -175,6 +177,7 @@ Return a JSON with:
     if (!amt || amt <= 0) return;
     setSaving(true);
     try {
+      const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
       const res = await base44.functions.invoke("createSession", {
         title: title || "Quick Split",
         items: [],
@@ -182,6 +185,7 @@ Return a JSON with:
         tip: 0,
         split_mode: "even",
         total_amount: amt,
+        ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
       });
       if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
       trackDeviceAction('split_created');

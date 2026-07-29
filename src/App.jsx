@@ -126,6 +126,7 @@ const AuthenticatedApp = () => {
             <Route path="/blog" element={<Blog />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
+            <Route path="/new-receipt" element={<AnimatedPage direction={direction}><NewReceipt /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
 
@@ -149,7 +150,6 @@ const AuthenticatedApp = () => {
             {/* Protected host routes */}
             <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
-              <Route path="/new-receipt" element={<AnimatedPage direction={direction}><NewReceipt /></AnimatedPage>} />
               <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
               <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
               <Route path="/receipt-detail" element={<AnimatedPage direction={direction}><ReceiptDetail /></AnimatedPage>} />

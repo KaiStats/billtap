@@ -119,19 +119,12 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
         await base44.entities.GuestRating.update(ratingId, { comment: comment.trim() });
       }
       // Page the operator. The rating is already stored, so a failure here
-      // costs the alert, not the record.
+      // costs the alert, not the record. The server looks up the rating to fetch
+      // the restaurant's alert contact, preventing spam.
       await fetch("/api/rating-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rating_id: ratingId,
-          restaurant_name: restaurant.name,
-          alert_email: restaurant.alert_email,
-          alert_phone: restaurant.alert_phone,
-          stars,
-          comment: comment.trim(),
-          guest_email: email.trim().toLowerCase(),
-        }),
+        body: JSON.stringify({ rating_id: ratingId }),
       });
     } catch {
       /* Best effort. */

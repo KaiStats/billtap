@@ -163,6 +163,7 @@ function scopeSessionForParticipant(session, participantId) {
     expires_at: session.expires_at,
     host_payment_info: session.host_payment_info,
     participants,
+    ...(session.restaurant_id ? { restaurant_id: session.restaurant_id } : {}),
     // Never expose: created_by_id, image_url (large blob), custom_split_config (host-only)
   };
 }

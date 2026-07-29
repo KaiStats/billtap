@@ -40,9 +40,13 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (!user) return secureJson({ error: 'Unauthorized' }, 401, origin);
 
-    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal } = await req.json();
+    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = await req.json();
+
+    // Require authentication unless guest is creating a split from a table-tent QR (restaurant_slug)
+    if (!user && !restaurant_slug) {
+      return secureJson({ error: 'Unauthorized' }, 401, origin);
+    }
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return secureJson({ error: 'title is required' }, 400, origin);
@@ -114,13 +118,20 @@ Deno.serve(async (req) => {
 
     const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
 
-    // Derive the restaurant from the authenticated host rather than accepting an
-    // id from the client — otherwise anyone could attribute ratings, and the
-    // guest emails that come with them, to a restaurant they don't own.
+    // Derive the restaurant: either from slug (guest scanning table-tent QR) or from
+    // authenticated owner (host creating their own split). Do NOT accept restaurant_id
+    // from the client — that would allow attribution of ratings to arbitrary restaurants.
     let restaurantId = null;
     try {
-      const owned = await base44.entities.Restaurant.filter({ owner_id: user.id });
-      if (owned?.length) restaurantId = owned[0].id;
+      if (restaurant_slug) {
+        // Guest scanned table-tent QR with a restaurant slug
+        const bySlug = await base44.entities.Restaurant.filter({ slug: restaurant_slug });
+        if (bySlug?.length) restaurantId = bySlug[0].id;
+      } else if (user) {
+        // Authenticated host: use their owned restaurant
+        const owned = await base44.entities.Restaurant.filter({ owner_id: user.id });
+        if (owned?.length) restaurantId = owned[0].id;
+      }
     } catch (e) {
       console.error('createSession: restaurant lookup failed', e.message);
     }

@@ -199,19 +199,20 @@ export default function Claim() {
   };
 
   const paidMutation = useMutationOptimistic(
-    ({ updatedParticipants, newStatus }) => base44.entities.Session.update(sessionId, { participants: updatedParticipants, status: newStatus }),
+    async () => {
+      const res = await base44.functions.invoke("markMePaid", {
+        session_id: sessionId,
+        participant_id: myId,
+      });
+      return res.data?.session;
+    },
     { onOptimisticState: () => session, onRollback: (s) => setSession(s), onSuccess: (u) => setSession(u) }
   );
 
   const markMePaid = () => {
     haptic([100]);
-    const updatedParticipants = (session.participants || []).map(p =>
-      p.participant_id === myId ? { ...p, payment_status: "pending_verification" } : p
-    );
-    const allPaid = updatedParticipants.every(p => p.payment_status === "paid");
-    if (allPaid) haptic([50, 50, 100]);
     trackDeviceAction('payment_completed');
-    paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
+    paidMutation.mutate();
     setShowPaymentModal(false);
     // Restaurant sessions only: catch the guest while they're still at the table.
     if (session.restaurant_id) setShowRating(true);
