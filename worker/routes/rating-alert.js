@@ -9,7 +9,7 @@
  * LEAD_NOTIFY_TO (fallback recipient), LEAD_NOTIFY_FROM (verified sender),
  * TWILIO_* for the SMS half.
  */
-import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../_lib/email.js';
+import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js';
 
 const MAX_BODY_BYTES = 8192;
 

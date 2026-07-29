@@ -32,13 +32,13 @@ attached to them, to a restaurant they don't own.
 | `base44/entities/GuestContact.jsonc` | The guest list |
 | `base44/entities/RestaurantLead.jsonc` | Inbound sales leads |
 | `base44/functions/monthlyRestaurantReport/` | Scheduled aggregation, hands off to Cloudflare |
-| `functions/api/monthly-report.js` | Sends the month-end report via Postmark |
-| `functions/api/rating-alert.js` | Instant low-rating alert |
-| `functions/api/restaurant-lead.js` | New-lead alert |
-| `functions/_lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
-| `functions/api/create-checkout.js` | Stripe Checkout session |
-| `functions/api/verify-checkout.js` | Server-side payment confirmation at signup |
-| `functions/api/base44-proxy.js` | Proxies /api/apps/** to Base44 |
+| `worker/routes/monthly-report.js` | Sends the month-end report via Postmark |
+| `worker/routes/rating-alert.js` | Instant low-rating alert |
+| `worker/routes/restaurant-lead.js` | New-lead alert |
+| `worker/lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
+| `worker/routes/create-checkout.js` | Stripe Checkout session |
+| `worker/routes/verify-checkout.js` | Server-side payment confirmation at signup |
+| `worker/routes/base44-proxy.js` | Proxies /api/apps/** to Base44 |
 | `worker/index.js` | Worker entry — routes /api/*, serves ./dist |
 | `wrangler.jsonc` | Deploy config |
 | `base44/functions/stripeWebhook/` | Renewals, failed cards, cancellations |
@@ -87,7 +87,7 @@ the whole app runs on — would return HTML instead of JSON.
 `src/api/base44Client.js` builds the SDK with `serverUrl: ''`, so every entity,
 auth and function call is issued **same-origin** as `/api/apps/<appId>/...`. That
 works when Base44 serves the app itself. Served from Cloudflare there is no such
-route, so without `functions/api/base44-proxy.js` every read and write in the app
+route, so without `worker/routes/base44-proxy.js` every read and write in the app
 — the consumer bill-splitter included — would 404.
 
 Proxying rather than repointing the SDK at `https://base44.app` keeps requests
@@ -230,3 +230,17 @@ curl -o public/img/restaurants-detail.png \
 Then in `src/lib/restaurant-assets.js` replace the two exported URLs with
 `/img/restaurants-hero.png` and `/img/restaurants-detail.png`. Nothing else
 changes — the CSP already allows `img-src 'self'`.
+
+## Do not put Cloudflare code in a top-level functions/
+
+Base44's repo sync claims that path. It moved every file from `functions/` into
+`base44/functions/<name>/entry.ts` on its own — renaming `.js` to `.ts` and
+nesting each in a folder — which broke every import in `worker/index.js` and
+registered Cloudflare handlers as Base44 Deno functions.
+
+Cloudflare code lives under `worker/`: `worker/index.js` for routing,
+`worker/routes/` for handlers, `worker/lib/` for shared helpers. Base44 leaves
+that alone.
+
+Base44 also commits to `main` unprompted — it has applied RLS rules and migrated
+workflows. Pull before branching.

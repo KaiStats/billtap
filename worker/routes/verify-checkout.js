@@ -13,7 +13,7 @@
  *
  * Bindings: STRIPE_SECRET_KEY (required)
  */
-import { json, clean } from '../_lib/email.js';
+import { json, clean } from '../lib/email.js';
 
 export async function onRequestPost({ request, env }) {
   let body;
