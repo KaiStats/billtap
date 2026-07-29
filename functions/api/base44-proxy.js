@@ -3,8 +3,8 @@
  *
  * src/api/base44Client.js constructs the SDK with `serverUrl: ''`, so every
  * entity, auth and function call is issued same-origin as /api/apps/<appId>/...
- * That works when Base44 itself serves the app. On Cloudflare Pages there is no
- * such route, so without this every read and write in the app — the consumer
+ * That works when Base44 itself serves the app. Served from Cloudflare there is
+ * no such route, so without this every read and write in the app — the consumer
  * bill-splitter included — would 404.
  *
  * Proxying rather than pointing the SDK at https://base44.app keeps the requests
@@ -16,6 +16,8 @@
  * /api/create-checkout, /api/verify-checkout, /api/monthly-report).
  *
  * Optional binding: BASE44_API_ORIGIN (defaults to https://base44.app).
+ *
+ * @param suffix everything after /api/apps/, still URL-encoded as received
  */
 
 const HOP_BY_HOP = new Set([
@@ -23,12 +25,11 @@ const HOP_BY_HOP = new Set([
   'proxy-authenticate', 'proxy-authorization', 'te', 'trailer',
 ]);
 
-export async function onRequest({ request, env, params }) {
+export async function proxyToBase44(request, env, suffix) {
   const origin = (env.BASE44_API_ORIGIN || 'https://base44.app').replace(/\/+$/, '');
 
-  // params.path is the wildcard segments after /api/apps/
-  const segments = Array.isArray(params.path) ? params.path : [params.path].filter(Boolean);
-  const suffix = segments.map(encodeURIComponent).join('/');
+  // Forward the path exactly as received. Decoding and re-encoding here would
+  // double-escape ids that already contain percent sequences.
   const incoming = new URL(request.url);
   const target = `${origin}/api/apps/${suffix}${incoming.search}`;
 

@@ -38,18 +38,25 @@ attached to them, to a restaurant they don't own.
 | `functions/_lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
 | `functions/api/create-checkout.js` | Stripe Checkout session |
 | `functions/api/verify-checkout.js` | Server-side payment confirmation at signup |
+| `functions/api/base44-proxy.js` | Proxies /api/apps/** to Base44 |
+| `worker/index.js` | Worker entry — routes /api/*, serves ./dist |
+| `wrangler.jsonc` | Deploy config |
 | `base44/functions/stripeWebhook/` | Renewals, failed cards, cancellations |
 
-## Deploying to Cloudflare Pages
+## Deploying to Cloudflare
 
-**Create the project:** Cloudflare → Workers & Pages → Create → Pages → connect
-`KaiStats/billtap`.
+Cloudflare has retired Pages for new projects, so this deploys as a **Worker with
+static assets**: `npm run build` emits `./dist`, then `npx wrangler deploy`
+uploads the assets plus `worker/index.js`. Config lives in `wrangler.jsonc`.
 
-| Setting | Value |
+**Create the project:** Cloudflare → Workers & Pages → Create application →
+Connect to Git → `KaiStats/billtap`.
+
+| Field | Value |
 | --- | --- |
+| Project name | `billtap` (lowercase, letters/numbers/hyphens only) |
 | Build command | `npm run build` |
-| Output directory | `dist` |
-| Root directory | *(leave blank)* |
+| Deploy command | `npx wrangler deploy` |
 
 **Build-time variables** — Vite inlines these, so they must be set *before* the
 build or the app ships pointing at nothing:
@@ -59,29 +66,34 @@ VITE_BASE44_APP_ID         <your Base44 app id>
 VITE_BASE44_APP_BASE_URL   <your Base44 app URL>
 ```
 
-**DNS:** point both `billtap.app` and `www.billtap.app` at the Pages project.
-The apex currently has no record at all, which is why the domain does not
-resolve — the printed flyer QR depends on it.
+**DNS:** attach both `billtap.app` and `www.billtap.app` to the Worker. The apex
+currently has no record at all, which is why the domain does not resolve — the
+printed flyer QR depends on it.
+
+### How routing works
+
+`wrangler.jsonc` sets `run_worker_first: ["/api/*"]`, so API paths reach the
+Worker and everything else is served straight from `./dist`.
+`not_found_handling: "single-page-application"` makes unmatched paths fall back
+to `index.html`, which is what lets `/restaurants` and `/r/<slug>` survive a cold
+visit.
+
+Both parts matter. Without `run_worker_first`, the SPA fallback would answer
+`/api/*` with `index.html` and every API call — including the Base44 data layer
+the whole app runs on — would return HTML instead of JSON.
 
 ### Why /api/apps/** is proxied
 
 `src/api/base44Client.js` builds the SDK with `serverUrl: ''`, so every entity,
 auth and function call is issued **same-origin** as `/api/apps/<appId>/...`. That
-works when Base44 serves the app itself. On Pages there is no such route, so
-without `functions/api/apps/[[path]].js` every read and write in the app — the
-consumer bill-splitter included — would 404.
+works when Base44 serves the app itself. Served from Cloudflare there is no such
+route, so without `functions/api/base44-proxy.js` every read and write in the app
+— the consumer bill-splitter included — would 404.
 
 Proxying rather than repointing the SDK at `https://base44.app` keeps requests
 same-origin, so nothing depends on Base44's CORS policy for the `billtap.app`
-origin and cookie auth keeps working. It is scoped to `/api/apps/**` so it can
-never shadow this app's own endpoints.
-
-This is also what makes the blanket `/*  /index.html  200` in `public/_redirects`
-safe: Pages matches Functions before redirects. **Do not remove the proxy while
-leaving the catch-all** — every data call would be served `index.html` instead.
-
-Set `BASE44_API_ORIGIN` if your Base44 API lives somewhere other than
-`https://base44.app`.
+origin and cookie auth keeps working. Set `BASE44_API_ORIGIN` if your Base44 API
+lives somewhere other than `https://base44.app`.
 
 ### First smoke test after deploying
 
@@ -92,8 +104,8 @@ curl -sS -X POST https://billtap.app/api/restaurant-lead \
   -H 'Content-Type: application/json' -d '{}'                              # 400, not 404
 ```
 
-A **404** on the last one means Functions did not deploy. A **400** means they
-did — it is the endpoint rejecting an empty body, which is correct.
+A **404** on the last one means the Worker did not deploy. A **400** means it
+did — that is the endpoint rejecting an empty body, which is correct.
 
 ## Configuration
 

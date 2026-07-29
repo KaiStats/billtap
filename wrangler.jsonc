@@ -1,0 +1,24 @@
+{
+  // Cloudflare Worker with static assets.
+  //
+  // Cloudflare has retired Pages for new projects, so this app deploys as a
+  // Worker: `npm run build` emits ./dist, then `npx wrangler deploy` uploads the
+  // assets and the Worker in worker/index.js.
+  "name": "billtap",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-07-29",
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+
+    // Deep links must boot the SPA rather than 404 — billtap.app/restaurants
+    // from the flyer QR, and /r/<slug> from a table tent.
+    "not_found_handling": "single-page-application",
+
+    // Without this, /api/* would be answered by the SPA fallback with
+    // index.html and every API call — including the Base44 data layer the whole
+    // app runs on — would silently return HTML instead of JSON.
+    "run_worker_first": ["/api/*"]
+  }
+}
