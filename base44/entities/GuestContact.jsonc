@@ -1,0 +1,38 @@
+{
+  "name": "GuestContact",
+  "type": "object",
+  "properties": {
+    "restaurant_id": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "name": {
+      "type": "string"
+    },
+    "visits": {
+      "type": "number",
+      "default": 1,
+      "description": "Incremented when the same email splits a check again"
+    },
+    "opted_in": {
+      "type": "boolean",
+      "default": true,
+      "description": "Guest ticked the marketing consent box. False means transactional only."
+    },
+    "first_seen": {
+      "type": "number",
+      "description": "Unix timestamp ms"
+    },
+    "last_seen": {
+      "type": "number",
+      "description": "Unix timestamp ms"
+    }
+  },
+  "required": [
+    "restaurant_id",
+    "email"
+  ]
+}

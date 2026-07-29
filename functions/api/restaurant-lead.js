@@ -1,46 +1,17 @@
 /**
  * POST /api/restaurant-lead
  *
- * Cloudflare Pages Function. Sends the "new restaurant lead" alert email.
+ * Sends the "new restaurant lead" alert. The lead row itself is written from the
+ * browser (see src/pages/Restaurants.jsx) the same way the Waitlist capture
+ * works; this endpoint is the notification half only, because the Resend API key
+ * must never reach the client.
  *
- * The lead row itself is written from the browser (see src/pages/Restaurants.jsx),
- * the same way the existing Waitlist capture works. This endpoint is the
- * notification half only, because the Resend API key must never reach the client.
- *
- * Required binding:
- *   RESEND_API_KEY   Resend API key with send permission
- *
- * Optional bindings (defaults shown):
- *   LEAD_NOTIFY_TO    alerts@billtap.app
- *   LEAD_NOTIFY_FROM  BillTap Leads <leads@grandeza.io>
- *
- * LEAD_NOTIFY_FROM must be on a domain verified in Resend. As of this commit
- * only grandeza.io is verified, so that is the default sender. Once billtap.app
- * is verified, set LEAD_NOTIFY_FROM to an address on it and nothing else changes.
+ * Bindings: RESEND_API_KEY (required), LEAD_NOTIFY_TO (default
+ * alerts@billtap.app), LEAD_NOTIFY_FROM (must be a Resend-verified sender).
  */
+import { json, clean, esc, EMAIL_RE, sendEmail } from '../_lib/email.js';
 
-const JSON_HEADERS = {
-  'Content-Type': 'application/json',
-  'Cache-Control': 'no-store',
-  'X-Content-Type-Options': 'nosniff',
-};
-
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BODY_BYTES = 4096;
-
-/** Trim, collapse whitespace, and cap length. Returns '' for non-strings. */
-const clean = (value, max) =>
-  typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '';
-
-/** Escape for interpolation into the HTML email body. */
-const esc = (s) =>
-  s.replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 
 export async function onRequestPost({ request, env }) {
   let body;
@@ -65,17 +36,6 @@ export async function onRequestPost({ request, env }) {
 
   if (!restaurantName) return json({ error: 'Restaurant name is required' }, 400);
   if (!EMAIL_RE.test(email)) return json({ error: 'A valid email is required' }, 400);
-
-  const apiKey = env.RESEND_API_KEY;
-  if (!apiKey) {
-    // The lead is already saved client-side; surface the misconfiguration
-    // without failing the visitor's submission.
-    console.error('restaurant-lead: RESEND_API_KEY is not configured');
-    return json({ ok: true, notified: false, reason: 'email_not_configured' });
-  }
-
-  const to = env.LEAD_NOTIFY_TO || 'alerts@billtap.app';
-  const from = env.LEAD_NOTIFY_FROM || 'BillTap Leads <leads@grandeza.io>';
 
   const rows = [
     ['Restaurant', restaurantName],
@@ -104,32 +64,13 @@ export async function onRequestPost({ request, env }) {
 
   const text = rows.map(([label, value]) => `${label}: ${value}`).join('\n');
 
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        reply_to: email,
-        subject: `New restaurant lead — ${restaurantName}`,
-        html,
-        text,
-      }),
-    });
+  const result = await sendEmail(env, {
+    to: env.LEAD_NOTIFY_TO || 'alerts@billtap.app',
+    subject: `New restaurant lead — ${restaurantName}`,
+    html,
+    text,
+    replyTo: email,
+  });
 
-    if (!res.ok) {
-      const detail = await res.text();
-      console.error('restaurant-lead: Resend rejected the send', res.status, detail);
-      return json({ ok: true, notified: false, reason: 'email_send_failed' });
-    }
-  } catch (err) {
-    console.error('restaurant-lead: Resend request threw', err?.message);
-    return json({ ok: true, notified: false, reason: 'email_send_failed' });
-  }
-
-  return json({ ok: true, notified: true });
+  return json({ ok: true, notified: result.ok, ...(result.ok ? {} : { reason: result.reason }) });
 }

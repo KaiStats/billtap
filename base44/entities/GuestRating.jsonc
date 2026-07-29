@@ -1,0 +1,42 @@
+{
+  "name": "GuestRating",
+  "type": "object",
+  "properties": {
+    "restaurant_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Split session the rating came from"
+    },
+    "stars": {
+      "type": "number",
+      "description": "1-5"
+    },
+    "comment": {
+      "type": "string",
+      "description": "Private feedback. Only collected on low ratings."
+    },
+    "guest_email": {
+      "type": "string",
+      "description": "Optional. Captured on the same screen."
+    },
+    "routed_to_google": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when the guest was shown the Google review handoff"
+    },
+    "alerted_at": {
+      "type": "number",
+      "description": "Unix ms the low-rating alert was sent. Null means no alert fired."
+    },
+    "created_at": {
+      "type": "number",
+      "description": "Unix timestamp ms"
+    }
+  },
+  "required": [
+    "restaurant_id",
+    "stars"
+  ]
+}
