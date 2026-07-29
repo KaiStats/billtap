@@ -20,6 +20,9 @@ import { handleDeepLink } from '@/lib/deepLinking';
 
 const Home        = lazy(() => import('@/pages/Home'));
 const Landing     = lazy(() => import('@/pages/Landing'));
+const Restaurants = lazy(() => import('@/pages/Restaurants'));
+const TableEntry  = lazy(() => import('@/pages/TableEntry'));
+const RestaurantDashboard = lazy(() => import('@/pages/RestaurantDashboard'));
 const Login       = lazy(() => import('@/pages/Login'));
 const Register    = lazy(() => import('@/pages/Register'));
 const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
@@ -123,6 +126,8 @@ const AuthenticatedApp = () => {
             <Route path="/blog" element={<Blog />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
+            <Route path="/restaurants" element={<Restaurants />} />
+            <Route path="/r/:slug" element={<TableEntry />} />
 
             {/* Auth routes */}
             <Route path="/login" element={<Login />} />
@@ -133,6 +138,7 @@ const AuthenticatedApp = () => {
             <Route path="/Blog" element={<Navigate to="/blog" replace />} />
             <Route path="/Changelog" element={<Navigate to="/changelog" replace />} />
             <Route path="/Claim" element={<Navigate to="/claim" replace />} />
+            <Route path="/Restaurants" element={<Navigate to="/restaurants" replace />} />
             <Route path="/Home" element={<Navigate to="/home" replace />} />
             <Route path="/NewReceipt" element={<Navigate to="/new-receipt" replace />} />
             <Route path="/Dashboard" element={<Navigate to="/dashboard" replace />} />
@@ -148,6 +154,7 @@ const AuthenticatedApp = () => {
               <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
               <Route path="/receipt-detail" element={<AnimatedPage direction={direction}><ReceiptDetail /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
+              <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
             </Route>
 
             <Route path="*" element={<PageNotFound />} />

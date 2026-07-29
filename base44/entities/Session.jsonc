@@ -115,6 +115,10 @@
       "type": "number",
       "description": "Unix timestamp when session expires (30 days from creation)"
     },
+    "restaurant_id": {
+      "type": "string",
+      "description": "Set when the host operates a BillTap restaurant. Drives the post-payment rating capture; absent on ordinary consumer splits."
+    },
     "status": {
       "type": "string",
       "enum": [

@@ -114,6 +114,17 @@ Deno.serve(async (req) => {
 
     const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
 
+    // Derive the restaurant from the authenticated host rather than accepting an
+    // id from the client — otherwise anyone could attribute ratings, and the
+    // guest emails that come with them, to a restaurant they don't own.
+    let restaurantId = null;
+    try {
+      const owned = await base44.entities.Restaurant.filter({ owner_id: user.id });
+      if (owned?.length) restaurantId = owned[0].id;
+    } catch (e) {
+      console.error('createSession: restaurant lookup failed', e.message);
+    }
+
     const session = await base44.entities.Session.create({
       title: title.trim().slice(0, 100),
       image_url: image_url || null,
@@ -125,6 +136,7 @@ Deno.serve(async (req) => {
       participants: [],
       status: 'waiting',
       expires_at: expiresAt,
+      ...(restaurantId ? { restaurant_id: restaurantId } : {}),
     });
 
     return secureJson({ session }, 200, origin);

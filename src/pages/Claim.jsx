@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import RatingCapture from "@/components/RatingCapture";
 
 // Haptic feedback helper
 const haptic = (pattern) => {
@@ -52,6 +53,7 @@ export default function Claim() {
   const [loading, setLoading] = useState(true);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showRating, setShowRating] = useState(false);
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
@@ -211,6 +213,8 @@ export default function Claim() {
     trackDeviceAction('payment_completed');
     paidMutation.mutate({ updatedParticipants, newStatus: allPaid ? "completed" : session.status });
     setShowPaymentModal(false);
+    // Restaurant sessions only: catch the guest while they're still at the table.
+    if (session.restaurant_id) setShowRating(true);
   };
 
   const handlePaymentClick = () => {
@@ -670,6 +674,13 @@ export default function Claim() {
         </div>
       </div>
       <PWAInstallPrompt />
+      {showRating && session?.restaurant_id && (
+        <RatingCapture
+          restaurantId={session.restaurant_id}
+          sessionId={sessionId}
+          onDismiss={() => setShowRating(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,61 @@
+{
+  "name": "Restaurant",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Business name shown to guests on the rating screen"
+    },
+    "slug": {
+      "type": "string",
+      "description": "URL-safe id used by the table QR: billtap.app/r/<slug>"
+    },
+    "owner_id": {
+      "type": "string",
+      "description": "User.id of the operator who owns this restaurant"
+    },
+    "google_review_url": {
+      "type": "string",
+      "description": "Where happy guests are sent. Google 'write a review' link."
+    },
+    "alert_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Where low-rating alerts and monthly reports are sent"
+    },
+    "alert_phone": {
+      "type": "string",
+      "description": "Optional. Reserved for SMS alerts."
+    },
+    "rating_threshold": {
+      "type": "number",
+      "default": 3,
+      "description": "Ratings at or below this fire a private alert instead of routing to Google"
+    },
+    "plan": {
+      "type": "string",
+      "default": "trial",
+      "description": "trial | active | cancelled"
+    },
+    "trial_ends_at": {
+      "type": "number",
+      "description": "Unix ms. 14-day free trial per the current offer."
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Set once Checkout completes. Presence means a real subscription exists in Stripe."
+    },
+    "current_period_end": {
+      "type": "number",
+      "description": "Unix ms the paid period runs to, from Stripe."
+    },
+    "created_at": {
+      "type": "number",
+      "description": "Unix timestamp ms"
+    }
+  },
+  "required": [
+    "name",
+    "slug"
+  ]
+}
