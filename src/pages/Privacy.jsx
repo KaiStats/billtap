@@ -1,3 +1,4 @@
+import Seo from "@/components/Seo";
 const Section = ({ title, children }) => (
   <section className="space-y-3">
     <h2 className="text-xl font-bold text-slate-900">{title}</h2>
@@ -34,6 +35,11 @@ const TableHead = ({ cols }) => (
 
 const Privacy = () => (
   <div className="min-h-screen bg-white px-5 py-16">
+    <Seo
+      path="/privacy"
+      title="Privacy Policy | BillTap"
+      description="What BillTap collects, how long it is kept, and how it is deleted. Includes the full data retention schedule."
+    />
     <div className="max-w-2xl mx-auto">
       <a href="/" className="text-violet-600 text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
       <h1 className="text-4xl font-black text-slate-900 mb-2">Privacy Policy</h1>

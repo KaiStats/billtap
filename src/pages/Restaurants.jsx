@@ -6,6 +6,7 @@ import {
   Zap, ThumbsUp, Cpu, Clock, Phone, Loader2,
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import Seo from "@/components/Seo";
 import { art } from "@/lib/restaurant-assets";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -187,6 +188,11 @@ export default function Restaurants() {
 
   return (
     <div className="min-h-screen font-body" style={{ background: INK, color: "#f5f5f4" }}>
+      <Seo
+        path="/restaurants"
+        title="More Google Reviews for Your Restaurant | BillTap"
+        description="Guests split the check from a QR code on the table, then rate you. Good ratings go to Google, bad ones alert you instantly. 14-day free trial, $149/month."
+      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 

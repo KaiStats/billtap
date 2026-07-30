@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { QrCode, Zap } from "lucide-react";
+import Seo from "@/components/Seo";
 
 export default function Changelog() {
   const versions = [
@@ -20,6 +21,11 @@ export default function Changelog() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+      <Seo
+        path="/changelog"
+        title="Changelog | BillTap"
+        description="Every shipped change to BillTap — new features, fixes and improvements, newest first."
+      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
         .font-heading { font-family: 'Space Grotesk', sans-serif; }

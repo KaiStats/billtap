@@ -1,0 +1,26 @@
+# https://billtap.app/robots.txt
+
+User-agent: *
+Allow: /
+
+# Signed-in app surface — no crawl value and nothing renders without a session.
+Disallow: /home
+Disallow: /dashboard
+Disallow: /restaurant-dashboard
+Disallow: /new-receipt
+Disallow: /session-host
+Disallow: /receipt-detail
+Disallow: /profile
+Disallow: /login
+Disallow: /register
+Disallow: /icon-generator
+
+# Per-table guest links from the QR tents. These are one-off session URLs, not
+# pages — indexing them would strand crawlers on dead splits.
+Disallow: /r/
+
+# Tracking parameters are deliberately NOT blocked here — paid traffic lands on
+# /restaurants?utm_*, and disallowing those would stop Google crawling the very
+# page the ads point at. The canonical tag consolidates them instead.
+
+Sitemap: https://billtap.app/sitemap.xml
