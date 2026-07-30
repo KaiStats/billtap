@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
-import { art } from "@/lib/restaurant-assets";
+import { art, artSrcSet, artSizes } from "@/lib/restaurant-assets";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -87,6 +87,12 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
   return (
     <img
       src={src}
+      // Both null until the art is self-hosted — the CDN only has the one
+      // full-size original, so a single-entry srcset would be noise. Once
+      // scripts/fetch-restaurant-art.mjs has run, the browser picks the
+      // smallest file that covers the slot instead of the 2400px original.
+      srcSet={artSrcSet(name) || undefined}
+      sizes={artSizes(name) || undefined}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
       // The hero is the LCP element. Without this it queues behind the JS
