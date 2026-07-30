@@ -17,6 +17,9 @@ import worker from './index.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+/** Page routes an exclusion pattern must never swallow. */
+const SPA_ROUTE_SAMPLE = ['/', '/restaurants', '/about', '/blog', '/privacy', '/terms', '/r/abc'];
+
 /**
  * Minimal JSONC reader — strips comments without mangling the // inside string
  * values. Not a general parser; sufficient for wrangler.jsonc.
@@ -218,14 +221,42 @@ test('non-HTML responses are passed through untouched', async () => {
  */
 test('wrangler.jsonc actually routes page requests through the Worker', () => {
   const { assets } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  const rwf = assets.run_worker_first;
 
-  assert.equal(
-    assets.run_worker_first,
-    true,
-    'run_worker_first must be true — a path list leaves SPA_ROUTES and ' +
-      'LEGACY_REDIRECTS unreachable in production, since the SPA fallback ' +
-      'matches every path before the Worker is consulted.',
-  );
+  // Either `true`, or a list that starts from a catch-all and only subtracts.
+  // What must never come back is a positive allow-list like ["/api/*"], which
+  // is what originally left SPA_ROUTES and LEGACY_REDIRECTS unreachable in
+  // production while this file still passed.
+  if (rwf !== true) {
+    assert.ok(
+      Array.isArray(rwf),
+      'run_worker_first must be true or an array of patterns',
+    );
+    assert.ok(
+      rwf.includes('/*'),
+      `run_worker_first is missing a "/*" catch-all (got ${JSON.stringify(rwf)}). ` +
+        'Without it the Worker never sees page requests, because the SPA fallback ' +
+        'matches every path first — so the 404 statuses, the 301s and the security ' +
+        'headers all silently stop happening.',
+    );
+    const positives = rwf.filter((p) => !p.startsWith('!'));
+    assert.deepEqual(
+      positives,
+      ['/*'],
+      `every entry after the catch-all must be a negation, or coverage has holes: ` +
+        `${JSON.stringify(positives)}`,
+    );
+    // Excluding a page route would silently disable its redirect/404/header path.
+    for (const pattern of rwf.filter((p) => p.startsWith('!'))) {
+      const prefix = pattern.slice(1).replace(/\*$/, '');
+      for (const route of [...SPA_ROUTE_SAMPLE]) {
+        assert.ok(
+          !route.startsWith(prefix),
+          `${pattern} excludes the page route ${route} from the Worker`,
+        );
+      }
+    }
+  }
 
   assert.equal(
     assets.not_found_handling,

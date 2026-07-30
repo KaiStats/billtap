@@ -3,14 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
 const SVG_MARKUP = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" fill="#0d0d0d"/>
+  <rect width="512" height="512" fill="#0b0b0d"/>
   <rect x="156" y="110" width="200" height="230" rx="12" ry="12" fill="none" stroke="#ffffff" stroke-width="14"/>
   <path d="M156 312 Q166 324 176 312 Q186 324 196 312 Q206 324 216 312 Q226 324 236 312 Q246 324 256 312 Q266 324 276 312 Q286 324 296 312 Q306 324 316 312 Q326 324 336 312 Q346 324 356 312" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
   <line x1="186" y1="158" x2="290" y2="158" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.45"/>
   <line x1="186" y1="184" x2="270" y2="184" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.45"/>
   <line x1="186" y1="210" x2="280" y2="210" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.45"/>
   <line x1="186" y1="236" x2="265" y2="236" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.45"/>
-  <polygon points="272,118 238,245 266,245 232,362 290,222 262,222 296,118" fill="#7c3aed"/>
+  <polygon points="272,118 238,245 266,245 232,362 290,222 262,222 296,118" fill="#f0b429"/>
 </svg>`;
 
 function renderIconToCanvas(canvas, size) {
@@ -103,7 +103,7 @@ export default function IconGenerator() {
       <div className="max-w-md text-center text-xs text-muted-foreground bg-muted rounded-xl p-4 space-y-1">
         <p className="font-semibold">After downloading:</p>
         <p>Place both files in <code>public/icons/</code> — they are already referenced in the manifest and HTML.</p>
-        <p>The icon uses your brand violet (#7c3aed) on a near-black background (#0d0d0d) with a receipt + lightning bolt design.</p>
+        <p>The icon uses your brand gold (#f0b429) on a ink background (#0b0b0d) with a receipt + lightning bolt design.</p>
       </div>
     </div>
   );

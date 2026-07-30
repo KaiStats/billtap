@@ -32,3 +32,6 @@ base44/.app.jsonc
 
 # Originals cached by scripts/fetch-restaurant-art.mjs
 .cache
+
+# wrangler dev local state
+.wrangler

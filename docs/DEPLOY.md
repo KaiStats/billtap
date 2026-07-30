@@ -111,14 +111,57 @@ Expect Search Console to stay quiet for a few days. That is normal.
 
 ---
 
-## Known open items
+## Brand colours
 
-- **Logo colour.** The mark in `public/icons/icon.svg` uses violet `#7c3aed`;
-  `/restaurants` is built on gold `#f0b429`. They clash on the OG cards. Pick one
-  and `node scripts/build-brand-images.mjs` will regenerate the icons and cards.
-- **Dependabot.** 13 vulnerabilities on `main` (8 high) as of the last push.
-- **`run_worker_first: true`** routes every request through the Worker, including
-  static assets. Correct, but it turns asset hits into billable Worker requests.
-  `wrangler` 4.115 supports exclusion patterns if that becomes a cost issue —
-  test carefully, since narrowing it wrongly makes the edge routing unreachable
-  again (`npm test` catches the obvious version).
+Gold `#f0b429` on ink `#0b0b0d`. There is no violet in the brand.
+
+Every raster icon and OG card is generated from `public/icons/icon.svg`, so
+change that file and re-run:
+
+```bash
+node scripts/build-brand-images.mjs
+```
+
+Do not hand-edit anything in `public/icons/*.png` or `public/img/og-*.png` — the
+next run of that script overwrites them.
+
+One inconsistency is still open and is a design decision, not a bug: the
+signed-in app (Dashboard, Home, SessionHost, the error screens) is built on green
+`#00c896` with a `#0a0e1a` background, which is a different palette from the gold
+marketing pages. Unifying it means restyling the app surface, so it was left
+alone.
+
+## Dependency vulnerabilities
+
+Down from 13 to 8. Every remaining one is either dev-only or does not apply to
+this app; nothing exploitable in the shipped bundle is outstanding.
+
+Fixed:
+
+- **`react-quill`** — removed. Nothing imported it.
+- **`workbox-build` / `workbox-window`** — removed, along with the dead
+  `src/vite.config.js` and `src/vite.config.augment.js` that referenced them.
+  Vite only reads the *root* config, so that plugin never ran; the packages were
+  carrying five high advisories for a PWA setup that was never wired up. The
+  service worker at `public/service-worker.js` is hand-written and unaffected.
+- **`react-router` / `react-router-dom` 6.30.4 → 7.18.2** — fixes an open
+  redirect leading to XSS in `<Link>` and `useNavigate`, which this app does use.
+  v6 has no patched release; 6.30.4 is the last v6 and is vulnerable. The upgrade
+  was near drop-in: all nine APIs in use kept their signatures.
+
+Remaining, and why:
+
+- **6 × eslint toolchain** (`eslint`, `@eslint/*`, `eslint-plugin-react`,
+  `minimatch`, `brace-expansion`). Dev-only — none of it ships. eslint 10 fixes
+  three of them, but `eslint-plugin-react@7.37.5`, the latest, declares
+  `eslint: ^3 || … || ^9.7` and genuinely crashes on eslint 10
+  (`contextOrFilename.getFilename is not a function`). Revisit when the plugin
+  supports eslint 10.
+- **2 × react-router** — an RSC-mode CSRF advisory affecting `>=7.12.0 <8.3.0`.
+  It requires React Server Components and server actions. This app is a
+  client-side SPA with neither, so it does not apply. **Do not "fix" this by
+  downgrading to 7.11.0 as `npm audit` suggests** — that reintroduces the open
+  redirect and XSS, which do apply.
+
+Re-check with `npm audit`. GitHub's Dependabot count may differ slightly; it
+scans the lockfile, `npm audit` scans the installed tree.

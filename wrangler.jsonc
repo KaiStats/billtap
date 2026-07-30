@@ -24,20 +24,33 @@
     // from the flyer QR, and /r/<slug> from a table tent.
     "not_found_handling": "single-page-application",
 
-    // Must stay `true`. Do not narrow it back to a path list.
+    // Start from a catch-all and only ever SUBTRACT. Never replace this with a
+    // positive allow-list such as ["/api/*"].
     //
-    // Two things depend on it. Obviously: /api/* would otherwise be answered by
-    // the SPA fallback with index.html, and every API call — including the
-    // Base44 data layer the whole app runs on — would silently return HTML
-    // instead of JSON.
+    // Two things depend on the catch-all. Obviously: /api/* would otherwise be
+    // answered by the SPA fallback with index.html, and every API call —
+    // including the Base44 data layer the whole app runs on — would silently
+    // return HTML instead of JSON.
     //
     // Less obviously: "not_found_handling": "single-page-application" makes the
-    // assets binding match *every* path, so with a narrower list the Worker is
-    // never invoked for page requests at all. SPA_ROUTES and LEGACY_REDIRECTS in
-    // worker/index.js — the real 404 statuses and the 301s — become unreachable
-    // in production while still passing their unit tests, because those call the
-    // Worker directly and never exercise this dispatch. worker/index.test.mjs
-    // asserts this value for exactly that reason.
-    "run_worker_first": true
+    // assets binding match *every* path, so an allow-list means the Worker is
+    // never invoked for page requests at all. SPA_ROUTES, LEGACY_REDIRECTS, the
+    // prerendered snapshots, the real 404 statuses and the security headers all
+    // become unreachable in production while the unit tests still pass, because
+    // those call the Worker directly and never exercise this dispatch. That
+    // exact bug shipped once. worker/index.test.mjs now asserts the shape.
+    //
+    // The negations are a cost control: with a bare `true` every hashed bundle,
+    // icon and image is a billable Worker invocation, and none of them need
+    // anything the Worker does — they cannot be framed, and nothing redirects.
+    // Verified under `wrangler dev`: /restaurants and /junk go through the
+    // Worker (security headers present, 404 rewritten), /assets/* does not.
+    //
+    // Only ever exclude static directories. Excluding a page route would
+    // silently disable its redirect, 404 and headers — the test checks for that
+    // too. The tradeoff of excluding them: a missing file under these paths now
+    // returns the SPA shell with a 200 rather than a 404. Crawlers do not index
+    // hashed bundles, so that is an acceptable trade.
+    "run_worker_first": ["/*", "!/assets/*", "!/icons/*", "!/img/*"]
   }
 }
