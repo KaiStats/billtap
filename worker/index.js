@@ -38,6 +38,62 @@ const json = (data, status) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
+/**
+ * Every path the SPA actually renders. Keep in sync with the <Route> table in
+ * src/App.jsx.
+ *
+ * Anything outside this list is a genuine miss. The assets binding still hands
+ * back index.html — that is what not_found_handling: "single-page-application"
+ * is for, and the QR deep links depend on it — but it does so with a 200, which
+ * Search Console reports as a Soft 404 and which tells crawlers every typo is a
+ * real page. Serving the same shell with a 404 status keeps the SPA booting
+ * while being honest about what was found.
+ */
+const SPA_ROUTES = new Set([
+  '/',
+  '/about',
+  '/blog',
+  '/changelog',
+  '/claim',
+  '/restaurants',
+  '/privacy',
+  '/terms',
+  '/icon-generator',
+  '/login',
+  '/register',
+  '/home',
+  '/new-receipt',
+  '/dashboard',
+  '/session-host',
+  '/receipt-detail',
+  '/profile',
+  '/restaurant-dashboard',
+]);
+
+/** Per-table guest links from the QR tents: /r/<slug>. */
+const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
+
+/** Real HTML files that are not SPA routes and must pass through untouched. */
+const STATIC_HTML = new Set(['/offline.html']);
+
+/**
+ * Legacy capitalised paths. App.jsx redirects these client-side too, but a 301
+ * at the edge consolidates link equity and saves a render.
+ */
+const LEGACY_REDIRECTS = {
+  '/About': '/about',
+  '/Blog': '/blog',
+  '/Changelog': '/changelog',
+  '/Claim': '/claim',
+  '/Restaurants': '/restaurants',
+  '/Home': '/home',
+  '/NewReceipt': '/new-receipt',
+  '/Dashboard': '/dashboard',
+  '/SessionHost': '/session-host',
+  '/ReceiptDetail': '/receipt-detail',
+  '/Profile': '/profile',
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -59,6 +115,33 @@ export default {
     // binding would hand back index.html and turn a typo into a parse error.
     if (path.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
-    return env.ASSETS.fetch(request);
+    const legacy = LEGACY_REDIRECTS[path];
+    if (legacy) {
+      return Response.redirect(new URL(legacy + url.search, url.origin).toString(), 301);
+    }
+
+    // Treat /about/ and /about as the same route.
+    const route = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+    const known =
+      SPA_ROUTES.has(route) ||
+      STATIC_HTML.has(route) ||
+      DYNAMIC_ROUTES.some((re) => re.test(route));
+
+    const response = await env.ASSETS.fetch(request);
+
+    // Only rewrite the status when the assets binding fell back to the SPA
+    // shell for a path we do not serve. Real files — hashed bundles, icons,
+    // robots.txt, sitemap.xml — come back with their own content type and are
+    // passed through untouched.
+    const isShell = (response.headers.get('content-type') || '').includes('text/html');
+    if (!known && response.status === 200 && isShell) {
+      return new Response(response.body, {
+        status: 404,
+        statusText: 'Not Found',
+        headers: response.headers,
+      });
+    }
+
+    return response;
   },
 };

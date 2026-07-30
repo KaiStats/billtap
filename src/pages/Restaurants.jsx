@@ -192,6 +192,7 @@ export default function Restaurants() {
         path="/restaurants"
         title="More Google Reviews for Your Restaurant | BillTap"
         description="Guests split the check from a QR code on the table, then rate you. Good ratings go to Google, bad ones alert you instantly. 14-day free trial, $149/month."
+        image="https://billtap.app/img/og-restaurants.png"
       />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');

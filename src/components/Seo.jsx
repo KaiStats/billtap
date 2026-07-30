@@ -18,7 +18,9 @@ import { useEffect } from "react";
  */
 
 const SITE = "https://billtap.app";
-const DEFAULT_IMAGE = `${SITE}/icons/icon-512.png`;
+// 1200x630 card built by scripts/build-brand-images.mjs. A square app icon
+// gets letterboxed or cropped by every social scraper.
+const DEFAULT_IMAGE = `${SITE}/img/og-default.png`;
 
 function tag(selector, create) {
   let el = document.head.querySelector(selector);

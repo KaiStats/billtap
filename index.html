@@ -13,10 +13,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>BillTap — Split Bills in 30 Seconds</title>
     <meta name="description" content="BillTap lets you split restaurant bills instantly. Scan a receipt, share a QR code, everyone pays their exact share. No math, no IOUs." />
+    <!--
+      Defaults only. Each route overwrites title/description/canonical/OG via
+      src/components/Seo.jsx once React mounts; these are what a scraper that
+      does not run JS will read.
+    -->
+    <link rel="canonical" href="https://billtap.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BillTap" />
+    <meta property="og:title" content="BillTap — Split Bills in 30 Seconds" />
+    <meta property="og:description" content="Scan the receipt, share a QR code, everyone pays their exact share. No app, no accounts, no math." />
+    <meta property="og:url" content="https://billtap.app/" />
+    <meta property="og:image" content="https://billtap.app/img/og-default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://billtap.app/img/og-default.png" />
     <!-- Meta Pixel -->
     <script>
       !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
