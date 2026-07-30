@@ -60,24 +60,44 @@ const html = (body = '<!doctype html><html>shell</html>') =>
 const file = (type, body) =>
   new Response(body, { status: 200, headers: { 'content-type': type } });
 
-/** Stands in for the Cloudflare assets binding, including its SPA fallback. */
-const env = {
-  ASSETS: {
-    fetch: (request) => {
-      const path = new URL(request.url).pathname;
-      switch (path) {
-        case '/robots.txt': return file('text/plain', 'User-agent: *');
-        case '/sitemap.xml': return file('application/xml', '<urlset/>');
-        case '/assets/app-abc123.js': return file('application/javascript', '');
-        case '/icons/icon-512.png': return file('image/png', '');
-        case '/offline.html': return html('<html>offline</html>');
-        default: return html(); // not_found_handling: single-page-application
-      }
+/**
+ * Stands in for the Cloudflare assets binding, including its SPA fallback.
+ * `prerendered` controls whether the build produced static snapshots, so both
+ * `npm run build` and `npm run build:static` are covered.
+ */
+function makeEnv({ prerendered = true } = {}) {
+  const SNAPSHOTS = new Set([
+    '/index-prerendered.html',
+    '/restaurants.html',
+    '/about.html',
+    '/blog.html',
+    '/changelog.html',
+    '/privacy.html',
+    '/terms.html',
+  ]);
+  return {
+    ASSETS: {
+      fetch: (request) => {
+        const path = new URL(request.url).pathname;
+        if (SNAPSHOTS.has(path)) {
+          return prerendered ? html(`<html>prerendered ${path}</html>`) : html();
+        }
+        switch (path) {
+          case '/robots.txt': return file('text/plain', 'User-agent: *');
+          case '/sitemap.xml': return file('application/xml', '<urlset/>');
+          case '/assets/app-abc123.js': return file('application/javascript', '');
+          case '/icons/icon-512.png': return file('image/png', '');
+          case '/offline.html': return html('<html>offline</html>');
+          default: return html(); // not_found_handling: single-page-application
+        }
+      },
     },
-  },
-};
+  };
+}
 
-const get = (path) => worker.fetch(new Request(`https://billtap.app${path}`), env);
+const env = makeEnv();
+
+const get = (path, e = env) => worker.fetch(new Request(`https://billtap.app${path}`), e);
 
 test('serves the SPA shell for real routes', async () => {
   for (const path of ['/', '/restaurants', '/privacy', '/terms', '/about', '/dashboard']) {
@@ -127,6 +147,46 @@ test('unmatched API paths 404 as JSON, never as HTML', async () => {
   const res = await get('/api/does-not-exist');
   assert.equal(res.status, 404);
   assert.equal(res.headers.get('content-type'), 'application/json');
+});
+
+test('prerendered snapshots are served for the routes that have them', async () => {
+  for (const [route, expected] of [
+    ['/', '/index-prerendered.html'],
+    ['/restaurants', '/restaurants.html'],
+    ['/about', '/about.html'],
+    ['/privacy', '/privacy.html'],
+  ]) {
+    const res = await get(route);
+    assert.equal(res.status, 200, route);
+    assert.match(await res.text(), new RegExp(`prerendered ${expected}`), route);
+  }
+});
+
+test('a trailing slash still finds the snapshot', async () => {
+  assert.match(await (await get('/restaurants/')).text(), /prerendered \/restaurants\.html/);
+});
+
+test('without snapshots the routes fall back to the SPA shell', async () => {
+  // i.e. after a plain `npm run build` rather than `npm run build:static`.
+  const bare = makeEnv({ prerendered: false });
+  const res = await get('/restaurants', bare);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /shell/);
+});
+
+test('snapshot .html paths 301 to the clean route', async () => {
+  // Two URLs serving one page is duplicate content; the redirect settles it.
+  const res = await get('/restaurants.html');
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get('location'), 'https://billtap.app/restaurants');
+});
+
+test('every prerendered route is also a known SPA route', async () => {
+  // A snapshot for a path the SPA cannot render would serve static HTML that
+  // React then blanks on boot.
+  for (const route of ['/', '/restaurants', '/about', '/blog', '/changelog', '/privacy', '/terms']) {
+    assert.equal((await get(route)).status, 200, route);
+  }
 });
 
 test('HTML responses carry the anti-framing headers a meta tag cannot set', async () => {

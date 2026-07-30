@@ -2,8 +2,16 @@
   // Cloudflare Worker with static assets.
   //
   // Cloudflare has retired Pages for new projects, so this app deploys as a
-  // Worker: `npm run build` emits ./dist, then `npx wrangler deploy` uploads the
-  // assets and the Worker in worker/index.js.
+  // Worker: a build emits ./dist, then `npx wrangler deploy` uploads the assets
+  // and the Worker in worker/index.js.
+  //
+  // Deploy with `npm run build:static`, not `npm run build`.
+  //
+  // build:static also prerenders the public routes to static HTML, which is what
+  // lets a crawler's first fetch contain the actual copy instead of an empty
+  // <div id="root">. Plain `npm run build` still produces a working site — the
+  // Worker falls back to the SPA shell when no snapshot is present — it just
+  // ships the SEO handicap that prerendering exists to remove.
   "name": "billtap",
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
