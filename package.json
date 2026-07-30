@@ -11,7 +11,9 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "build:static": "vite build && node scripts/prerender.mjs"
+    "build:static": "vite build && node scripts/prerender.mjs",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "deploy": "npm run build:static && wrangler deploy"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.41",

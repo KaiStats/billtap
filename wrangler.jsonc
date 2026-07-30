@@ -16,6 +16,21 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
 
+  // Gate every deploy on the artefacts actually being complete.
+  //
+  // wrangler runs build.command before deploy and before dev, and aborts if it
+  // exits non-zero — so this catches `npx wrangler deploy` typed straight into a
+  // terminal, not just the npm script.
+  //
+  // It exists because the opposite happened: build:static is
+  // `vite build && node scripts/prerender.mjs`, the prerender step died on a
+  // missing Playwright browser, and vite had already written a valid dist/
+  // without snapshots. A follow-up `wrangler deploy` shipped it, and the only
+  // symptom in production was the wrong <title>.
+  "build": {
+    "command": "node scripts/verify-dist.mjs"
+  },
+
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

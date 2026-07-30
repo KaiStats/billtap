@@ -20,19 +20,31 @@
  * is a worse failure than a re-render. The static HTML exists for crawlers and
  * for the paint before JS arrives; React takes over a few hundred ms later with
  * identical content.
+ *
+ * On ANY failure this deletes every snapshot and writes dist/PRERENDER-FAILED.
+ * scripts/verify-dist.mjs — wired to wrangler's build.command — then refuses to
+ * deploy. Without that, a failure here left a valid-looking dist/ that vite had
+ * already written, and a follow-up `wrangler deploy` shipped it silently.
  */
 import { createServer } from 'node:http';
-import { readFile, writeFile, stat } from 'node:fs/promises';
+import { readFile, writeFile, unlink, stat } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
+import { PRERENDERED } from '../worker/index.js';
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
+const MARKER = join(DIST, 'PRERENDER-FAILED');
 const PORT = 4173;
 
-/** Routes worth prerendering: the ones crawlers and ad traffic land on. */
-const ROUTES = ['/restaurants', '/', '/about', '/blog', '/changelog', '/privacy', '/terms'];
+// Routes and output filenames both come from the Worker's table, so the files
+// written here and the files it looks for cannot drift apart.
+const ROUTES = Object.entries(PRERENDERED).map(([route, file]) => ({
+  route,
+  file: file.replace(/^\//, ''),
+}));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -47,6 +59,33 @@ const MIME = {
   '.xml': 'application/xml',
   '.woff2': 'font/woff2',
 };
+
+/** Remove every snapshot, so nothing stale survives a failed run. */
+async function clearSnapshots() {
+  for (const { file } of ROUTES) await unlink(join(DIST, file)).catch(() => {});
+}
+
+async function fail(reason, hint) {
+  await clearSnapshots();
+  await writeFile(MARKER, `${reason}\n`).catch(() => {});
+
+  const line = '─'.repeat(68);
+  console.error(`\n${line}`);
+  console.error('  PRERENDER FAILED — snapshots removed, dist/ marked unshippable');
+  console.error(line);
+  console.error(`  ${reason}`);
+  if (hint) console.error(`\n  Fix:  ${hint}`);
+  console.error('\n  wrangler deploy will refuse this build until it is fixed.');
+  console.error(`${line}\n`);
+  process.exit(1);
+}
+
+if (!(await stat(join(DIST, 'index.html')).catch(() => null))) {
+  await fail('dist/index.html is missing — vite build did not run', 'npm run build:static');
+}
+
+// A previous failure must not linger and block a now-good build.
+await unlink(MARKER).catch(() => {});
 
 // Minimal static server with the same SPA fallback the Worker provides.
 const server = createServer(async (req, res) => {
@@ -68,9 +107,19 @@ const server = createServer(async (req, res) => {
 
 await new Promise((resolve) => server.listen(PORT, resolve));
 
-const browser = await chromium.launch({
-  executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
-});
+let browser;
+try {
+  browser = await chromium.launch({
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
+  });
+} catch (err) {
+  server.close();
+  const missing = /Executable doesn't exist|browserType.launch/.test(err.message);
+  await fail(
+    missing ? 'Playwright has no browser installed' : err.message.split('\n')[0],
+    missing ? 'npx playwright install chromium' : null,
+  );
+}
 
 // Reduced motion matters: Reveal returns a plain <div> under it, so the captured
 // DOM holds finished, visible content instead of elements frozen at opacity 0
@@ -80,10 +129,9 @@ const context = await browser.newContext({
   viewport: { width: 1280, height: 900 },
 });
 
-let written = 0;
-const failed = [];
+const failures = [];
 
-for (const route of ROUTES) {
+for (const { route, file } of ROUTES) {
   const page = await context.newPage();
   try {
     await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'load', timeout: 45000 });
@@ -108,16 +156,17 @@ for (const route of ROUTES) {
       return '<!doctype html>\n' + document.documentElement.outerHTML;
     });
 
-    if (!html.includes('<h1') && route !== '/privacy' && route !== '/terms') {
-      throw new Error('no <h1> in captured DOM — React may not have mounted');
+    if (/<div id="root">\s*<\/div>/.test(html)) {
+      throw new Error('#root is empty — React did not render');
+    }
+    if (html.length < 4000) {
+      throw new Error(`only ${html.length} bytes captured`);
     }
 
-    const name = route === '/' ? 'index-prerendered.html' : `${route.slice(1)}.html`;
-    await writeFile(join(DIST, name), html);
-    written += 1;
-    console.log(`  ok   ${route.padEnd(13)} -> dist/${name}  ${(html.length / 1024).toFixed(0)} KB`);
+    await writeFile(join(DIST, file), html);
+    console.log(`  ok   ${route.padEnd(13)} -> dist/${file}  ${(html.length / 1024).toFixed(0)} KB`);
   } catch (err) {
-    failed.push(route);
+    failures.push(`${route}: ${err.message}`);
     console.log(`  FAIL ${route.padEnd(13)} ${err.message}`);
   } finally {
     await page.close();
@@ -128,8 +177,11 @@ await context.close();
 await browser.close();
 server.close();
 
-console.log(`\n${written}/${ROUTES.length} routes prerendered`);
-if (failed.length) {
-  console.log(`failed: ${failed.join(', ')}`);
-  process.exitCode = 1;
+if (failures.length) {
+  await fail(
+    `${failures.length} of ${ROUTES.length} routes failed:\n    ${failures.join('\n    ')}`,
+    'npm run build:static',
+  );
 }
+
+console.log(`\n${ROUTES.length}/${ROUTES.length} routes prerendered`);

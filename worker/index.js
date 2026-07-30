@@ -85,7 +85,7 @@ const STATIC_HTML = new Set(['/offline.html']);
  * `npm run build` — every route falls through to the SPA shell and the site
  * works exactly as before, just without the head start.
  */
-const PRERENDERED = {
+export const PRERENDERED = {
   '/': '/index-prerendered.html',
   '/restaurants': '/restaurants.html',
   '/about': '/about.html',

@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import worker from './index.js';
+import worker, { PRERENDERED } from './index.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -190,6 +190,40 @@ test('every prerendered route is also a known SPA route', async () => {
   for (const route of ['/', '/restaurants', '/about', '/blog', '/changelog', '/privacy', '/terms']) {
     assert.equal((await get(route)).status, 200, route);
   }
+});
+
+test('the build scripts share the Worker PRERENDERED table', () => {
+  // prerender.mjs writes the snapshots and verify-dist.mjs checks them; if
+  // either kept its own copy of the route list, the build could write files the
+  // Worker never looks for, or pass a verification that checks nothing.
+  assert.ok(Object.keys(PRERENDERED).length > 0, 'PRERENDERED must be exported and non-empty');
+
+  for (const [route, file] of Object.entries(PRERENDERED)) {
+    assert.ok(route.startsWith('/'), `route ${route} must be absolute`);
+    assert.match(file, /^\/[\w./-]+\.html$/, `${route} must map to an .html file`);
+  }
+
+  for (const script of ['scripts/prerender.mjs', 'scripts/verify-dist.mjs']) {
+    const src = readFileSync(join(ROOT, script), 'utf8');
+    assert.match(
+      src,
+      /import \{ PRERENDERED \} from '\.\.\/worker\/index\.js'/,
+      `${script} must import PRERENDERED rather than hardcode its own route list`,
+    );
+  }
+});
+
+test('wrangler.jsonc gates deploys on the dist verifier', () => {
+  // Without this, `npx wrangler deploy` typed straight into a terminal skips
+  // every check and can ship a dist/ whose prerender step failed — which is
+  // exactly what happened once.
+  const { build } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  assert.ok(build && build.command, 'wrangler.jsonc needs a build.command');
+  assert.match(
+    build.command,
+    /verify-dist\.mjs/,
+    `build.command must run the dist verifier (got "${build?.command}")`,
+  );
 });
 
 test('HTML responses carry the anti-framing headers a meta tag cannot set', async () => {

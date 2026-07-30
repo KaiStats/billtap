@@ -74,8 +74,36 @@ because those pages will fall back to the empty-shell HTML crawlers cannot read.
 ## 4. Deploy
 
 ```bash
-npx wrangler deploy
+npm run deploy
 ```
+
+That is `build:static` followed by `wrangler deploy`.
+
+You cannot ship a half-built `dist/` any more, whichever way you invoke it. If
+prerendering fails, `scripts/prerender.mjs` deletes every snapshot and writes
+`dist/PRERENDER-FAILED`; `wrangler.jsonc` runs `scripts/verify-dist.mjs` as its
+`build.command`, so even `npx wrangler deploy` typed straight into a terminal
+aborts:
+
+```
+────────────────────────────────────────────────────────────────
+  DEPLOY BLOCKED — dist/ is not in a shippable state
+────────────────────────────────────────────────────────────────
+  • prerendering failed and left dist/ incomplete:
+    Playwright has no browser installed
+
+  Fix:  npx playwright install chromium && npm run build:static
+```
+
+This guard exists because the opposite happened once. `build:static` is
+`vite build && node scripts/prerender.mjs`; the prerender step died on a missing
+browser, but vite had already written a valid `dist/` without snapshots, and a
+follow-up `wrangler deploy` shipped it. The Worker's fallback to the SPA shell is
+deliberately graceful, so the only symptom in production was the wrong `<title>`.
+
+The verifier also rejects a snapshot whose `<div id="root">` is empty — that
+means React never rendered, so the file would be as useless to a crawler as no
+snapshot at all.
 
 Then confirm the things that only exist in production:
 
