@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
-import { art } from "@/lib/restaurant-assets";
+import { art, artSrcSet, artSizes } from "@/lib/restaurant-assets";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -87,8 +87,17 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
   return (
     <img
       src={src}
+      // Both null until the art is self-hosted — the CDN only has the one
+      // full-size original, so a single-entry srcset would be noise. Once
+      // scripts/fetch-restaurant-art.mjs has run, the browser picks the
+      // smallest file that covers the slot instead of the 2400px original.
+      srcSet={artSrcSet(name) || undefined}
+      sizes={artSizes(name) || undefined}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
+      // The hero is the LCP element. Without this it queues behind the JS
+      // chunks at default priority and the largest paint waits on it.
+      fetchPriority={eager ? "high" : "low"}
       decoding="async"
       onLoad={() => setLoaded(true)}
       onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -195,7 +204,6 @@ export default function Restaurants() {
         image="https://billtap.app/img/og-restaurants.png"
       />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
         .font-display { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; }
         .font-body    { font-family: 'Inter Tight', system-ui, sans-serif; }
@@ -367,7 +375,9 @@ export default function Restaurants() {
 
                 <div className="flex-1 p-6 pt-9">
                   <p className="rst-eyebrow mb-3" style={{ color: `${p.tone}cc` }}>{p.kicker}</p>
-                  <h3 className="font-display text-[1.4rem] leading-[1.12] tracking-[-0.005em]">{p.title}</h3>
+                  {/* h2, not h3: these are the page's top-level claims and sit
+                      directly under the h1 with no intervening section heading. */}
+                  <h2 className="font-display text-[1.4rem] leading-[1.12] tracking-[-0.005em]">{p.title}</h2>
                   <p className="mt-3 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.6)" }}>{p.desc}</p>
                 </div>
               </article>

@@ -8,7 +8,6 @@ import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import SplitConfigModal from "@/components/SplitConfigModal";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
 
 function SessionHostComponent() {

@@ -12,9 +12,9 @@ Sentry.init({
   tracesSampleRate: 1.0,
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
+  // Replay is added after boot instead of here — see attachSessionReplay below.
   integrations: [
     Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration(),
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value || "";
@@ -24,6 +24,56 @@ Sentry.init({
     return event;
   },
 });
+
+/**
+ * Session Replay, loaded off the critical path.
+ *
+ * Listing replayIntegration() in integrations above pulled ~313 KB of parsed
+ * source into the entry bundle and evaluated it before first paint — on every
+ * page, including the marketing pages that exist to be fast. Deferring it to an
+ * idle callback keeps the recording (replaysSessionSampleRate and
+ * replaysOnErrorSampleRate above still apply) while letting the page render
+ * first.
+ *
+ * The tradeoff: the first moments after boot are not recorded. For a session
+ * replay used to reproduce user-reported bugs that is a fair trade; if you ever
+ * need to debug something that happens during startup itself, move it back.
+ */
+function attachSessionReplay() {
+  import('@/lib/sentry-replay')
+    .then(({ default: replayIntegration }) => {
+      Sentry.addIntegration(replayIntegration());
+    })
+    .catch(() => {
+      // Offline, or an ad blocker eating anything named "sentry". Error
+      // reporting keeps working; only replay is missing.
+    });
+}
+
+/**
+ * Wait for `load`, then for the main thread to go idle.
+ *
+ * Idle alone is not enough: the thread goes quiet while images are still in
+ * flight, so a bare requestIdleCallback pulled the 123 KB chunk down at 363 ms,
+ * competing with the hero image for bandwidth on the one page that most needs
+ * it. Waiting for `load` first means replay never contends with anything the
+ * user can see.
+ */
+function scheduleSessionReplay() {
+  const whenIdle = () => {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(attachSessionReplay, { timeout: 5000 });
+    } else {
+      // Safari has no requestIdleCallback.
+      window.setTimeout(attachSessionReplay, 2000);
+    }
+  };
+
+  if (document.readyState === 'complete') whenIdle();
+  else window.addEventListener('load', whenIdle, { once: true });
+}
+
+scheduleSessionReplay();
 
 // Register PWA service worker for offline support and caching
 registerServiceWorker().catch(err => console.error('Failed to register SW:', err))
