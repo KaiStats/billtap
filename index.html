@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-ancestors 'none';" />
+    <!--
+      frame-ancestors is deliberately absent: browsers ignore it when delivered
+      via <meta> and log a warning. Clickjacking protection is enforced by the
+      X-Frame-Options header the Worker sets on every HTML response
+      (see HTML_SECURITY_HEADERS in worker/index.js).
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
@@ -15,6 +21,44 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
+
+    <!--
+      Fonts for the whole app in one request.
+
+      These used to live in @import rules inside each page's <style> block, which
+      meant the browser could not even discover them until React had mounted and
+      painted — the worst possible time for the font that renders the headline.
+      Declared here they start downloading alongside the JS.
+
+      Listing every family costs one small CSS file; the woff2 binaries are only
+      fetched for families a page actually uses, so pages on Space Grotesk pay
+      nothing for Instrument Serif.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Loaded async, not as a plain stylesheet. A render-blocking stylesheet on a
+      third-party origin means the page cannot paint at all when that origin is
+      slow, firewalled or unreachable — measured here as a 376ms first paint
+      becoming 13s. preload fetches it at high priority without blocking, the
+      onload promotes it to a stylesheet, and display=swap paints the fallback
+      face immediately either way. <noscript> covers scripting-off clients.
+    -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
+
+    <!-- /restaurants loads 15 frames from this origin; warm the connection early. -->
+    <link rel="preconnect" href="https://d8j0ntlcm91z4.cloudfront.net" crossorigin />
     <title>BillTap — Split Bills in 30 Seconds</title>
     <meta name="description" content="BillTap lets you split restaurant bills instantly. Scan a receipt, share a QR code, everyone pays their exact share. No math, no IOUs." />
     <!--

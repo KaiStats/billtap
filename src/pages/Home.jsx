@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
-import { useTabNav } from '@/lib/TabNavigationContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Home() {

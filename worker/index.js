@@ -80,6 +80,33 @@ const STATIC_HTML = new Set(['/offline.html']);
  * Legacy capitalised paths. App.jsx redirects these client-side too, but a 301
  * at the edge consolidates link equity and saves a render.
  */
+/**
+ * Headers that only work when sent as real headers.
+ *
+ * index.html carries a <meta http-equiv="Content-Security-Policy">, but browsers
+ * ignore frame-ancestors delivered that way — it logs a console warning and the
+ * site stays framable. Clickjacking protection has to come from a header, so it
+ * is set here for HTML responses.
+ *
+ * Deliberately not touching the resource directives (script-src, img-src, ...).
+ * Those already work from the meta tag, and a header CSP would intersect with
+ * it, where one mistake silently blocks the Base44 data layer or the pixels.
+ */
+const HTML_SECURITY_HEADERS = {
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
+
+/** Returns a copy of `response` with the HTML security headers applied. */
+function withSecurityHeaders(response, status = response.status) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(HTML_SECURITY_HEADERS)) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, { status, statusText: response.statusText, headers });
+}
+
 const LEGACY_REDIRECTS = {
   '/About': '/about',
   '/Blog': '/blog',
@@ -133,15 +160,13 @@ export default {
     // shell for a path we do not serve. Real files — hashed bundles, icons,
     // robots.txt, sitemap.xml — come back with their own content type and are
     // passed through untouched.
-    const isShell = (response.headers.get('content-type') || '').includes('text/html');
-    if (!known && response.status === 200 && isShell) {
-      return new Response(response.body, {
-        status: 404,
-        statusText: 'Not Found',
-        headers: response.headers,
-      });
-    }
+    const isHtml = (response.headers.get('content-type') || '').includes('text/html');
+    if (!isHtml) return response;
 
-    return response;
+    // Unknown route: the assets binding fell back to the SPA shell with a 200.
+    // Same body, honest status.
+    if (!known && response.status === 200) return withSecurityHeaders(response, 404);
+
+    return withSecurityHeaders(response);
   },
 };

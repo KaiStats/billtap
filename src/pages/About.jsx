@@ -11,7 +11,6 @@ export default function About() {
         description="BillTap started with one annoying question at the end of every meal: who owes what? Here's how we set out to answer it in under a minute."
       />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
         .font-heading { font-family: 'Space Grotesk', sans-serif; }
         .font-body { font-family: 'Inter', sans-serif; }
       `}</style>

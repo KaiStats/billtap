@@ -129,6 +129,23 @@ test('unmatched API paths 404 as JSON, never as HTML', async () => {
   assert.equal(res.headers.get('content-type'), 'application/json');
 });
 
+test('HTML responses carry the anti-framing headers a meta tag cannot set', async () => {
+  for (const path of ['/', '/restaurants', '/totally-made-up']) {
+    const res = await get(path);
+    assert.equal(res.headers.get('x-frame-options'), 'DENY', path);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff', path);
+    assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', path);
+  }
+});
+
+test('non-HTML responses are passed through untouched', async () => {
+  // Wrapping every asset would cost a copy for no benefit; only documents can
+  // be framed.
+  const res = await get('/assets/app-abc123.js');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-frame-options'), null);
+});
+
 /**
  * The deploy config is part of the routing contract.
  *
