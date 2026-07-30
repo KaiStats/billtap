@@ -10,7 +10,49 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import worker from './index.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Minimal JSONC reader — strips comments without mangling the // inside string
+ * values. Not a general parser; sufficient for wrangler.jsonc.
+ */
+function readJsonc(path) {
+  const src = readFileSync(path, 'utf8');
+  let out = '';
+  let inString = false;
+  let inLine = false;
+  let inBlock = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const next = src[i + 1];
+
+    if (inLine) {
+      if (c === '\n') { inLine = false; out += c; }
+      continue;
+    }
+    if (inBlock) {
+      if (c === '*' && next === '/') { inBlock = false; i++; }
+      continue;
+    }
+    if (inString) {
+      if (c === '\\') { out += c + (next ?? ''); i++; continue; }
+      if (c === '"') inString = false;
+      out += c;
+      continue;
+    }
+    if (c === '"') { inString = true; out += c; continue; }
+    if (c === '/' && next === '/') { inLine = true; i++; continue; }
+    if (c === '/' && next === '*') { inBlock = true; i++; continue; }
+    out += c;
+  }
+  return JSON.parse(out);
+}
 
 const html = (body = '<!doctype html><html>shell</html>') =>
   new Response(body, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
@@ -85,4 +127,32 @@ test('unmatched API paths 404 as JSON, never as HTML', async () => {
   const res = await get('/api/does-not-exist');
   assert.equal(res.status, 404);
   assert.equal(res.headers.get('content-type'), 'application/json');
+});
+
+/**
+ * The deploy config is part of the routing contract.
+ *
+ * Every test above calls worker.fetch() directly, which proves the logic is
+ * correct but says nothing about whether Cloudflare ever invokes it. With
+ * not_found_handling: "single-page-application" the assets binding matches every
+ * path, so unless run_worker_first is true the Worker only sees the routes named
+ * in that list — and the 404s and 301s below it are dead code in production
+ * while this file still reports all green. That is exactly what shipped once.
+ */
+test('wrangler.jsonc actually routes page requests through the Worker', () => {
+  const { assets } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+
+  assert.equal(
+    assets.run_worker_first,
+    true,
+    'run_worker_first must be true — a path list leaves SPA_ROUTES and ' +
+      'LEGACY_REDIRECTS unreachable in production, since the SPA fallback ' +
+      'matches every path before the Worker is consulted.',
+  );
+
+  assert.equal(
+    assets.not_found_handling,
+    'single-page-application',
+    'the QR deep links (/r/<slug>, /restaurants) depend on the SPA fallback',
+  );
 });

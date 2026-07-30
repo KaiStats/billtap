@@ -16,9 +16,20 @@
     // from the flyer QR, and /r/<slug> from a table tent.
     "not_found_handling": "single-page-application",
 
-    // Without this, /api/* would be answered by the SPA fallback with
-    // index.html and every API call — including the Base44 data layer the whole
-    // app runs on — would silently return HTML instead of JSON.
+    // Must stay `true`. Do not narrow it back to a path list.
+    //
+    // Two things depend on it. Obviously: /api/* would otherwise be answered by
+    // the SPA fallback with index.html, and every API call — including the
+    // Base44 data layer the whole app runs on — would silently return HTML
+    // instead of JSON.
+    //
+    // Less obviously: "not_found_handling": "single-page-application" makes the
+    // assets binding match *every* path, so with a narrower list the Worker is
+    // never invoked for page requests at all. SPA_ROUTES and LEGACY_REDIRECTS in
+    // worker/index.js — the real 404 statuses and the 301s — become unreachable
+    // in production while still passing their unit tests, because those call the
+    // Worker directly and never exercise this dispatch. worker/index.test.mjs
+    // asserts this value for exactly that reason.
     "run_worker_first": true
   }
 }
