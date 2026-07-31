@@ -18,10 +18,14 @@ import { onRequestPost as restaurantLead } from './routes/restaurant-lead.js';
 import { onRequestPost as ratingAlert } from './routes/rating-alert.js';
 import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
+import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { proxyToBase44 } from './routes/base44-proxy.js';
 
 const BASE44_PREFIX = '/api/apps/';
+
+/** Where the ported Base44 functions answer. */
+const FN_PREFIX = '/api/fn/';
 
 /** POST-only endpoints owned by this app. */
 const POST_ROUTES = {
@@ -159,6 +163,18 @@ export default {
     // and function calls arrive same-origin under /api/apps/<appId>/...
     if (path.startsWith(BASE44_PREFIX)) {
       return proxyToBase44(request, env, path.slice(BASE44_PREFIX.length));
+    }
+
+    // The Base44 functions, running here. Base44 blocks backend functions on
+    // this app's plan, so every one of them answered "Functions are blocked"
+    // and no core operation worked. src/api/base44Client.js rewrites
+    // functions.invoke() to point here.
+    if (path.startsWith(FN_PREFIX)) {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+      const name = path.slice(FN_PREFIX.length);
+      // No slashes: the name indexes a handler table, not a filesystem.
+      if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(name)) return json({ error: 'Not found' }, 404);
+      return invokeFunction({ request, env, name });
     }
 
     const handler = POST_ROUTES[path];
