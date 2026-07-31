@@ -88,9 +88,22 @@ function makeEnv({ prerendered = true } = {}) {
     ASSETS: {
       fetch: (request) => {
         const path = new URL(request.url).pathname;
+
+        // Model Cloudflare's html_handling, which is what made the root
+        // snapshot unreachable in production: a request carrying ".html" is
+        // redirected to the extensionless form, and the extensionless form is
+        // what actually serves the file. Asking for "/index-prerendered.html"
+        // gets a 301, not the document.
         if (SNAPSHOTS.has(path)) {
-          return prerendered ? html(`<html>prerendered ${path}</html>`) : html();
+          return new Response(null, {
+            status: 301,
+            headers: { location: path.replace(/\.html$/, "") },
+          });
         }
+        if (SNAPSHOTS.has(`${path}.html`)) {
+          return prerendered ? html(`<html>prerendered ${path}.html</html>`) : html();
+        }
+
         switch (path) {
           case '/robots.txt': return file('text/plain', 'User-agent: *');
           case '/sitemap.xml': return file('application/xml', '<urlset/>');
@@ -173,6 +186,21 @@ test('prerendered snapshots are served for the routes that have them', async () 
 
 test('a trailing slash still finds the snapshot', async () => {
   assert.match(await (await get('/restaurants/')).text(), /prerendered \/restaurants\.html/);
+});
+
+test('the ROOT route serves its snapshot', async () => {
+  // Called out on its own because the root is the one route html_handling does
+  // not rescue. "/restaurants" resolves to restaurants.html by itself, so the
+  // other routes looked correct even while the Worker's snapshot lookup was
+  // failing; "/" maps to index.html — the SPA shell — so only the root exposed
+  // the bug, and it shipped unprerendered.
+  const res = await get('/');
+  assert.equal(res.status, 200);
+  assert.match(
+    await res.text(),
+    /prerendered \/index-prerendered\.html/,
+    '/ must serve dist/index-prerendered.html, not the SPA shell',
+  );
 });
 
 test('without snapshots the routes fall back to the SPA shell', async () => {
