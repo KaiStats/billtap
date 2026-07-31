@@ -27,35 +27,42 @@ downloads a browser on first install. If that was skipped in your environment:
 npx playwright install chromium
 ```
 
-## 2. Self-host the /restaurants art  — one time
+## 2. Self-host the marketing art  — one time per page
 
-The fifteen images are Higgsfield renders currently served from their CDN as
-2400–3168px PNGs, so a 190px thumbnail downloads a file sized for the hero.
-
-```bash
-node scripts/fetch-restaurant-art.mjs
-```
-
-This downloads each original once (cached in `.cache/`, which is gitignored) and
-re-encodes it to WebP at every width that slot actually renders at — about 46
-files into `public/img/restaurants/`. It prints the before/after byte count.
-
-Then flip the switch in `src/lib/restaurant-assets.js`:
-
-```js
-const SELF_HOSTED = true;
-```
-
-The page starts emitting `srcset`/`sizes` and browsers fetch the smallest file
-that covers each slot. Commit the generated images — they are part of the site,
-not build output:
+Both `/` and `/restaurants` are illustrated with Higgsfield (Nano Banana 2)
+renders. Straight out of the box they are served from Higgsfield's CDN as
+2400–3168px PNGs, so a 190px thumbnail downloads a file sized for the hero, and
+the URLs are tied to a personal Higgsfield account.
 
 ```bash
-git add public/img/restaurants src/lib/restaurant-assets.js
-git commit -m "Self-host the /restaurants art"
+node scripts/fetch-art.mjs
 ```
 
-If the download fails, the page keeps working — it falls back to the CDN URLs.
+This downloads each original once (cached in `.cache/`, gitignored) and
+re-encodes it to WebP at every width that slot actually renders at — roughly 46
+files into `public/img/restaurants/` and 28 into `public/img/landing/`. It
+prints the before/after byte count.
+
+Then flip the switch in **both** assets modules:
+
+```bash
+sed -i '' 's/^const SELF_HOSTED = false;/const SELF_HOSTED = true;/' src/lib/landing-assets.js
+sed -i '' 's/^const SELF_HOSTED = false;/const SELF_HOSTED = true;/' src/lib/restaurant-assets.js
+grep -n "^const SELF_HOSTED" src/lib/landing-assets.js src/lib/restaurant-assets.js
+```
+
+Both must read `true`. The pages then emit `srcset`/`sizes` and browsers fetch
+the smallest file that covers each slot. On the first run for `/restaurants`
+that took the originals from **126 MB to about 537 KB** on a desktop load.
+
+Commit the generated images — they are part of the site, not build output:
+
+```bash
+git add public/img src/lib/landing-assets.js src/lib/restaurant-assets.js
+git commit -m "Self-host the marketing art at responsive widths"
+```
+
+If a download fails, the page keeps working — it falls back to the CDN URLs.
 Nothing breaks; you just do not get the saving.
 
 ## 3. Check it locally

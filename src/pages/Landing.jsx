@@ -18,7 +18,7 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
       src={src}
       // Both null until the art is self-hosted — the CDN holds only the one
       // full-size original, so a single-entry srcset would be noise. After
-      // scripts/fetch-landing-art.mjs runs, the browser picks the smallest file
+      // scripts/fetch-art.mjs runs, the browser picks the smallest file
       // that covers the slot instead of a 2400px PNG for a 290px card.
       srcSet={artSrcSet(name) || undefined}
       sizes={artSizes(name) || undefined}

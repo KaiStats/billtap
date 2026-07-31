@@ -102,7 +102,7 @@ if (!(await exists(join(DIST, 'index.html')))) {
       `${missingImages.length} referenced image(s) are missing from dist/, so they will 404:\n    ` +
         missingImages.join('\n    '),
     );
-    hint = 'node scripts/fetch-landing-art.mjs && node scripts/fetch-restaurant-art.mjs && npm run build:static';
+    hint = 'node scripts/fetch-art.mjs && npm run build:static';
   }
 }
 
