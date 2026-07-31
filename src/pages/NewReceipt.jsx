@@ -10,6 +10,7 @@ import TipSelector from "@/components/TipSelector";
 import SplitModeSelector from "@/components/SplitModeSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
+import { compressImage } from "@/lib/compressImage";
 
 const RESTAURANT_SUGGESTIONS = [
   "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
@@ -70,7 +71,13 @@ export default function NewReceipt() {
     if (!imageFile) return;
     try {
       setUploading(true);
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: imageFile });
+      // Downscale first. A phone photo is 4032x3024 and several megabytes, and
+      // all of it was being pushed over a restaurant's wifi before the OCR
+      // model even started. The upload was most of the wait. 2000px on the long
+      // edge keeps receipt line items legible and typically cuts the payload by
+      // an order of magnitude; it returns the original if anything goes wrong.
+      const upload = await compressImage(imageFile);
+      const { file_url } = await base44.integrations.Core.UploadFile({ file: upload });
       setUploading(false);
       setParsing(true);
 
