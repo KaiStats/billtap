@@ -106,10 +106,27 @@ export default function Claim() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const stored = localStorage.getItem(`billtap-guest-name-${sessionId}`);
-    if (stored) {
-      setMyName(stored);
-      setNameInput(stored);
+    // This session's name first, then whatever name this person used last time.
+    //
+    // Only the per-session key was read, so a regular retyped their name on
+    // every visit. At a table of six that is six people typing before anyone
+    // can claim anything — most of the thirty seconds the product is sold on.
+    // handleNameGateSubmit has always written the global key; nothing read it.
+    //
+    // divvy_ is the pre-rename key, checked so someone who used the app before
+    // the rename is not asked again either.
+    const stored =
+      localStorage.getItem(`billtap-guest-name-${sessionId}`) ||
+      localStorage.getItem("billtap_participant_name") ||
+      localStorage.getItem("divvy_participant_name");
+
+    if (stored && stored.trim().length >= 2) {
+      const name = stored.trim();
+      setMyName(name);
+      setNameInput(name);
+      // Pin it to this session as well, so renaming here later changes only
+      // this split rather than the name they carry everywhere.
+      localStorage.setItem(`billtap-guest-name-${sessionId}`, name);
     } else {
       setShowNameGate(true);
     }
