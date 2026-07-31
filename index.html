@@ -1,5 +1,18 @@
 <!doctype html>
-<html lang="en">
+<!--
+  class="dark" is load-bearing, not a preference.
+
+  Every page paints its own chrome with hard-coded dark hex (#0a0e1a, #111827),
+  but the shadcn tokens in src/index.css only go dark under a `.dark` ancestor.
+  Without it they fell back to the light theme, so --foreground resolved to
+  0 0% 3.9% — near-black type on a near-black background. Scanned receipt items,
+  their prices, the bill title: all rendering, none readable. Placeholders looked
+  brighter than real values, because those use --muted-foreground at 45% grey.
+
+  There is no light theme to fall back to; the design is dark-only. Removing
+  this does not offer a choice, it just makes the text invisible again.
+-->
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <!--

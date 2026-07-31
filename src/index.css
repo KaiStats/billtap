@@ -176,6 +176,24 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
 
+    /* WCAG AA Compliant Text Colors (dark)
+     *
+     * These existed only under :root. body sets `color: var(--text-primary)` as
+     * a hard declaration, which beats the `text-foreground` utility on the very
+     * same rule — so everything inheriting from body got #0f172a whether or not
+     * the dark class was present. Against the app's own near-black chrome that
+     * is a contrast ratio of 1.11:1. Scanned receipt items, their prices, the
+     * bill title: all rendering correctly, none of them readable.
+     *
+     * The ramp is inverted here rather than deleted, because the light values
+     * are still what a light theme would need if the pages ever stop
+     * hard-coding their own hex. */
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-tertiary: #94a3b8;
+    --text-placeholder: #64748b;
+    --text-disabled: #475569;
+
     /* App brand + semantic tokens (dark) */
     --brand: 262 83% 68%;
     --brand-foreground: 0 0% 100%;
