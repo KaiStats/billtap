@@ -8,59 +8,26 @@
  *
  * ── Self-hosting ────────────────────────────────────────────────────────────
  *
- * Out of the box these point at Higgsfield's CDN as full-size PNGs. That is
- * fine for a preview and wrong for production: they are 2400px+ originals, the
- * URLs are tied to a Higgsfield account, and the browser downloads the same
- * bytes for a 190px thumbnail as for the hero.
+ *     node scripts/fetch-art.mjs
  *
- *     node scripts/fetch-restaurant-art.mjs
- *
- * re-encodes every frame to WebP at the widths each slot actually renders, into
- * public/img/restaurants/. Then set SELF_HOSTED to true below. The page starts
- * emitting srcset/sizes and the browser picks the smallest file that fits the
- * viewport — on a phone that is the 240px strip thumbnail, not the 2400px PNG.
+ * downloads each original once and re-encodes it to WebP at the widths each
+ * slot actually renders, into public/img/restaurants/. Then set SELF_HOSTED to
+ * true and the page emits srcset/sizes, so the browser picks the smallest file
+ * that fits — on a phone that is the 240px strip thumbnail, not the 2400px PNG.
  *
  * Nothing on the page depends on any of this loading: every image sits on top
  * of a CSS-composed gradient, so a dead URL degrades to the gradient treatment
  * rather than a broken box.
  */
+// Relative, not the "@/" alias: scripts/fetch-art.mjs imports this file in
+// plain Node, which cannot resolve Vite's path alias.
+import { createArt, ROLES } from "./art.js";
 
 const SELF_HOSTED = true;
 
 const CDN = "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5";
 
 const LOCAL_DIR = "/img/restaurants";
-
-/**
- * How each slot is rendered, and therefore which widths are worth generating.
- * `sizes` mirrors the grid in Restaurants.jsx — if the layout changes, this
- * changes with it, or the browser picks the wrong file.
- */
-export const ROLES = {
-  hero: {
-    widths: [640, 1280, 1920, 2560],
-    sizes: "100vw",
-  },
-  band: {
-    widths: [640, 1280, 2000],
-    sizes: "(max-width: 1200px) 100vw, 1152px",
-  },
-  pillar: {
-    // Four across at 1152px container → ~270px CSS, so ~540px at 2x.
-    widths: [320, 640, 1100],
-    sizes: "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw",
-  },
-  step: {
-    // Three across → ~360px CSS, ~720px at 2x.
-    widths: [400, 800, 1200],
-    sizes: "(max-width: 640px) 100vw, 33vw",
-  },
-  strip: {
-    // Six across → ~190px CSS, ~380px at 2x. The originals are 2400px.
-    widths: [240, 480, 640],
-    sizes: "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 17vw",
-  },
-};
 
 /** name → { file: CDN filename, role: key of ROLES }. */
 export const ART_MANIFEST = {
@@ -86,41 +53,20 @@ export const ART_MANIFEST = {
   "strip-setup": { file: "hf_20260730_004630_cd65722d-9673-4286-9db2-73a2007b6e14.png", role: "strip" },
 };
 
+export { ROLES };
+
+export const SELF_HOSTED_RESTAURANTS = SELF_HOSTED;
+export const RESTAURANTS_DIR = LOCAL_DIR;
+
 /** True when the page is serving re-encoded local WebP rather than CDN PNGs. */
 export const isSelfHosted = () => SELF_HOSTED;
 
-/** Widest generated width for a slot — used as the plain `src` fallback. */
-function widestWidth(role) {
-  const widths = ROLES[role].widths;
-  return widths[widths.length - 1];
-}
-
-/** Resolve an art key to a URL. Unknown keys return null so callers show the gradient. */
-export function art(name) {
-  const entry = ART_MANIFEST[name];
-  if (!entry) return null;
-  if (!SELF_HOSTED) return `${CDN}/${entry.file}`;
-  return `${LOCAL_DIR}/${name}-${widestWidth(entry.role)}.webp`;
-}
-
-/**
- * srcset for a slot, or null when serving from the CDN — the CDN only has the
- * one full-size original, and a single-entry srcset would just be noise.
- */
-export function artSrcSet(name) {
-  const entry = ART_MANIFEST[name];
-  if (!entry || !SELF_HOSTED) return null;
-  return ROLES[entry.role].widths
-    .map((w) => `${LOCAL_DIR}/${name}-${w}.webp ${w}w`)
-    .join(", ");
-}
-
-/** The `sizes` hint matching this slot's place in the layout. */
-export function artSizes(name) {
-  const entry = ART_MANIFEST[name];
-  if (!entry || !SELF_HOSTED) return null;
-  return ROLES[entry.role].sizes;
-}
+export const { art, artSrcSet, artSizes } = createArt({
+  manifest: ART_MANIFEST,
+  dir: LOCAL_DIR,
+  cdn: CDN,
+  selfHosted: SELF_HOSTED,
+});
 
 // Kept for any older import sites.
 export const HERO_IMAGE = art("hero");
