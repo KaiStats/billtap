@@ -85,7 +85,8 @@ const AnimatedPage = ({ children, direction }) => {
  */
 const AUTH_GATED_ROUTES = new Set([
   '/home',
-  '/new-receipt',
+  // Not /new-receipt: a guest arriving from a table tent has no account, and
+  // gating it would make them wait on an auth round-trip only to be bounced.
   '/dashboard',
   '/session-host',
   '/receipt-detail',
