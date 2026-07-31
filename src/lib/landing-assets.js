@@ -49,8 +49,15 @@ export const ROLES = {
     sizes: "32px",
   },
   // Full-bleed section backgrounds.
+  //
+  // Capped at 1920 because the hero original is 2048px and the fetch script
+  // refuses to upscale. A declared 2560 was never written, but art() still
+  // advertised it as the widest variant — so the plain src 404'd, and a 2x
+  // display picked the 2560w srcset candidate and got nothing. Never declare a
+  // width the source cannot actually fill; verify-dist.mjs now fails the build
+  // if this drifts again.
   hero: {
-    widths: [640, 1280, 1920, 2560],
+    widths: [640, 1280, 1920],
     sizes: "100vw",
   },
   band: {

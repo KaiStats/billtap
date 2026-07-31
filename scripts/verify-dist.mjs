@@ -14,8 +14,8 @@
  *
  * So: check the artefacts, not the exit code of whatever ran last.
  */
-import { readFile, access } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { readFile, access, readdir } from 'node:fs/promises';
+import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PRERENDERED } from '../worker/index.js';
@@ -24,6 +24,34 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 
 const exists = (p) => access(p).then(() => true, () => false);
+
+/** Every file under dir whose extension is in `exts`, recursively. */
+async function walk(dir, exts, out = []) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) await walk(path, exts, out);
+    else if (exts.has(extname(entry.name))) out.push(path);
+  }
+  return out;
+}
+
+/**
+ * Every /img/... URL the built output actually asks for.
+ *
+ * Covers src, srcset and anything a bundled module builds by string
+ * concatenation, which is how src/lib/*-assets.js emits its paths.
+ */
+async function referencedImages() {
+  const files = await walk(DIST, new Set(['.html', '.js', '.css']));
+  const refs = new Set();
+  for (const file of files) {
+    const text = await readFile(file, 'utf8');
+    for (const m of text.matchAll(/\/img\/[a-zA-Z0-9/_.-]+\.(?:webp|png|jpe?g|svg|avif)/g)) {
+      refs.add(m[0]);
+    }
+  }
+  return [...refs].sort();
+}
 
 const problems = [];
 let hint = null;
@@ -53,6 +81,29 @@ if (!(await exists(join(DIST, 'index.html')))) {
     }
   }
   if (problems.length) hint = 'npm run build:static';
+
+  // Every image the build asks for has to exist, or it 404s in production.
+  //
+  // This shipped once: src/lib/landing-assets.js declared a 2560px hero variant,
+  // the fetch script skipped it because the original was only 2048px wide and it
+  // will not upscale, and nothing connected the two. The plain src 404'd and a 2x
+  // display picked the missing 2560w srcset candidate, so the hero art simply
+  // vanished on Retina screens. The gradient fallback meant nothing looked
+  // broken — which is exactly why it went unnoticed.
+  //
+  // The manifests and the files on disk are produced by different scripts at
+  // different times, so the only reliable check is against the built output.
+  const missingImages = [];
+  for (const ref of await referencedImages()) {
+    if (!(await exists(join(DIST, ref)))) missingImages.push(ref);
+  }
+  if (missingImages.length) {
+    problems.push(
+      `${missingImages.length} referenced image(s) are missing from dist/, so they will 404:\n    ` +
+        missingImages.join('\n    '),
+    );
+    hint = 'node scripts/fetch-landing-art.mjs && node scripts/fetch-restaurant-art.mjs && npm run build:static';
+  }
 }
 
 if (problems.length) {
