@@ -38,6 +38,118 @@ const json = (data, status) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
+/**
+ * Every path the SPA actually renders. Keep in sync with the <Route> table in
+ * src/App.jsx.
+ *
+ * Anything outside this list is a genuine miss. The assets binding still hands
+ * back index.html — that is what not_found_handling: "single-page-application"
+ * is for, and the QR deep links depend on it — but it does so with a 200, which
+ * Search Console reports as a Soft 404 and which tells crawlers every typo is a
+ * real page. Serving the same shell with a 404 status keeps the SPA booting
+ * while being honest about what was found.
+ */
+const SPA_ROUTES = new Set([
+  '/',
+  '/about',
+  '/blog',
+  '/changelog',
+  '/claim',
+  '/restaurants',
+  '/privacy',
+  '/terms',
+  '/icon-generator',
+  '/login',
+  '/register',
+  '/home',
+  '/new-receipt',
+  '/dashboard',
+  '/session-host',
+  '/receipt-detail',
+  '/profile',
+  '/restaurant-dashboard',
+]);
+
+/** Per-table guest links from the QR tents: /r/<slug>. */
+const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
+
+/** Real HTML files that are not SPA routes and must pass through untouched. */
+const STATIC_HTML = new Set(['/offline.html']);
+
+/**
+ * Routes with a prerendered snapshot, written by scripts/prerender.mjs during
+ * `npm run build:static`.
+ *
+ * Serving these means a crawler's first fetch contains the actual copy, headings
+ * and metadata instead of an empty <div id="root">. Absent — after a plain
+ * `npm run build` — every route falls through to the SPA shell and the site
+ * works exactly as before, just without the head start.
+ */
+export const PRERENDERED = {
+  '/': '/index-prerendered.html',
+  '/restaurants': '/restaurants.html',
+  '/about': '/about.html',
+  '/blog': '/blog.html',
+  '/changelog': '/changelog.html',
+  '/privacy': '/privacy.html',
+  '/terms': '/terms.html',
+};
+
+/**
+ * The snapshots are reachable at their own .html paths, which would be
+ * duplicate content — two URLs, identical page. The canonical tag inside each
+ * one already points at the clean route; this makes it a redirect as well so
+ * crawlers never have to reconcile the two.
+ */
+const PRERENDERED_ALIASES = Object.fromEntries(
+  Object.entries(PRERENDERED).map(([route, file]) => [file, route]),
+);
+
+/**
+ * Legacy capitalised paths. App.jsx redirects these client-side too, but a 301
+ * at the edge consolidates link equity and saves a render.
+ */
+/**
+ * Headers that only work when sent as real headers.
+ *
+ * index.html carries a <meta http-equiv="Content-Security-Policy">, but browsers
+ * ignore frame-ancestors delivered that way — it logs a console warning and the
+ * site stays framable. Clickjacking protection has to come from a header, so it
+ * is set here for HTML responses.
+ *
+ * Deliberately not touching the resource directives (script-src, img-src, ...).
+ * Those already work from the meta tag, and a header CSP would intersect with
+ * it, where one mistake silently blocks the Base44 data layer or the pixels.
+ */
+const HTML_SECURITY_HEADERS = {
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
+
+/** Returns a copy of `response` with the HTML security headers applied. */
+function withSecurityHeaders(response, status = response.status) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(HTML_SECURITY_HEADERS)) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, { status, statusText: response.statusText, headers });
+}
+
+const LEGACY_REDIRECTS = {
+  '/About': '/about',
+  '/Blog': '/blog',
+  '/Changelog': '/changelog',
+  '/Claim': '/claim',
+  '/Restaurants': '/restaurants',
+  '/Home': '/home',
+  '/NewReceipt': '/new-receipt',
+  '/Dashboard': '/dashboard',
+  '/SessionHost': '/session-host',
+  '/ReceiptDetail': '/receipt-detail',
+  '/Profile': '/profile',
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -59,6 +171,41 @@ export default {
     // binding would hand back index.html and turn a typo into a parse error.
     if (path.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
-    return env.ASSETS.fetch(request);
+    const legacy = LEGACY_REDIRECTS[path] || PRERENDERED_ALIASES[path];
+    if (legacy) {
+      return Response.redirect(new URL(legacy + url.search, url.origin).toString(), 301);
+    }
+
+    // Treat /about/ and /about as the same route.
+    const route = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+
+    // Prefer the prerendered snapshot when one was built for this route.
+    const snapshot = PRERENDERED[route];
+    if (snapshot && request.method === 'GET') {
+      // When the snapshot is absent the assets binding answers with the SPA
+      // shell anyway (not_found_handling), which is precisely the fallback we
+      // want — so this one call covers both cases.
+      const hit = await env.ASSETS.fetch(new Request(new URL(snapshot, url.origin), request));
+      if (hit.status === 200) return withSecurityHeaders(hit);
+    }
+    const known =
+      SPA_ROUTES.has(route) ||
+      STATIC_HTML.has(route) ||
+      DYNAMIC_ROUTES.some((re) => re.test(route));
+
+    const response = await env.ASSETS.fetch(request);
+
+    // Only rewrite the status when the assets binding fell back to the SPA
+    // shell for a path we do not serve. Real files — hashed bundles, icons,
+    // robots.txt, sitemap.xml — come back with their own content type and are
+    // passed through untouched.
+    const isHtml = (response.headers.get('content-type') || '').includes('text/html');
+    if (!isHtml) return response;
+
+    // Unknown route: the assets binding fell back to the SPA shell with a 200.
+    // Same body, honest status.
+    if (!known && response.status === 200) return withSecurityHeaders(response, 404);
+
+    return withSecurityHeaders(response);
   },
 };

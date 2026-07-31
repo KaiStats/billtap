@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { QrCode, Calendar } from "lucide-react";
+import Seo from "@/components/Seo";
 
 export default function Blog() {
   const posts = [
@@ -25,8 +26,12 @@ export default function Blog() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+      <Seo
+        path="/blog"
+        title="BillTap Blog — Splitting Bills, Reviews & Restaurants"
+        description="Notes on splitting checks, getting more Google reviews, and running a restaurant that guests come back to."
+      />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
         .font-heading { font-family: 'Space Grotesk', sans-serif; }
         .font-body { font-family: 'Inter', sans-serif; }
       `}</style>

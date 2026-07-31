@@ -25,7 +25,7 @@ export async function onRequestPost({ request, env }) {
 
   const ratingId = body.rating_id;
   if (!ratingId || typeof ratingId !== 'string') {
-    return json({ error: 'rating_id is required' }, 400, origin);
+    return json({ error: 'rating_id is required' }, 400);
   }
 
   try {

@@ -1,11 +1,16 @@
 import { Link } from "react-router-dom";
 import { QrCode } from "lucide-react";
+import Seo from "@/components/Seo";
 
 export default function About() {
   return (
     <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+      <Seo
+        path="/about"
+        title="About BillTap — Why We Built It"
+        description="BillTap started with one annoying question at the end of every meal: who owes what? Here's how we set out to answer it in under a minute."
+      />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
         .font-heading { font-family: 'Space Grotesk', sans-serif; }
         .font-body { font-family: 'Inter', sans-serif; }
       `}</style>

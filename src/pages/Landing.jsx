@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import Seo from "@/components/Seo";
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -119,8 +120,12 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen font-body" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+      <Seo
+        path="/"
+        title="BillTap — Split the Bill in 30 Seconds, No App"
+        description="Scan the receipt, share a QR code, everyone claims their items and pays their exact share. No app, no accounts, no math, no IOUs."
+      />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
         .font-heading { font-family: 'Space Grotesk', sans-serif; }
         .font-body { font-family: 'Inter', sans-serif; }
 

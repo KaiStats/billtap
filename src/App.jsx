@@ -76,6 +76,23 @@ const AnimatedPage = ({ children, direction }) => {
   );
 };
 
+/**
+ * Routes that genuinely cannot render before we know who the user is. Everything
+ * else — the marketing pages, the guest /r/<slug> flow, auth screens — paints
+ * immediately and lets auth resolve underneath.
+ *
+ * Mirrors the ProtectedRoute block below; keep the two in step.
+ */
+const AUTH_GATED_ROUTES = new Set([
+  '/home',
+  '/new-receipt',
+  '/dashboard',
+  '/session-host',
+  '/receipt-detail',
+  '/profile',
+  '/restaurant-dashboard',
+]);
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
   const location = useLocation();
@@ -102,7 +119,19 @@ const AuthenticatedApp = () => {
     }
   }, [location]);
 
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  // Only the signed-in surface waits on auth.
+  //
+  // This gate used to be unconditional, which meant every public page —
+  // including /restaurants, where the ads land — rendered a loading skeleton
+  // until base44.auth.me() came back. For an anonymous visitor that call is
+  // guaranteed to fail, so the landing page's first paint was blocked on a
+  // round-trip whose only possible outcome was 401.
+  //
+  // Nothing is lost by dropping it here: ProtectedRoute already returns its own
+  // fallback while isLoadingAuth is true, and Dashboard, Home, Profile and
+  // SessionHost each check the flag themselves. This is belt-and-braces that
+  // only ever charged the pages which do not need it.
+  if ((isLoadingPublicSettings || isLoadingAuth) && AUTH_GATED_ROUTES.has(location.pathname)) {
     return <AuthLoadingSkeleton />;
   }
 

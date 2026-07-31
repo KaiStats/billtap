@@ -2,11 +2,34 @@
   // Cloudflare Worker with static assets.
   //
   // Cloudflare has retired Pages for new projects, so this app deploys as a
-  // Worker: `npm run build` emits ./dist, then `npx wrangler deploy` uploads the
-  // assets and the Worker in worker/index.js.
+  // Worker: a build emits ./dist, then `npx wrangler deploy` uploads the assets
+  // and the Worker in worker/index.js.
+  //
+  // Deploy with `npm run build:static`, not `npm run build`.
+  //
+  // build:static also prerenders the public routes to static HTML, which is what
+  // lets a crawler's first fetch contain the actual copy instead of an empty
+  // <div id="root">. Plain `npm run build` still produces a working site — the
+  // Worker falls back to the SPA shell when no snapshot is present — it just
+  // ships the SEO handicap that prerendering exists to remove.
   "name": "billtap",
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
+
+  // Gate every deploy on the artefacts actually being complete.
+  //
+  // wrangler runs build.command before deploy and before dev, and aborts if it
+  // exits non-zero — so this catches `npx wrangler deploy` typed straight into a
+  // terminal, not just the npm script.
+  //
+  // It exists because the opposite happened: build:static is
+  // `vite build && node scripts/prerender.mjs`, the prerender step died on a
+  // missing Playwright browser, and vite had already written a valid dist/
+  // without snapshots. A follow-up `wrangler deploy` shipped it, and the only
+  // symptom in production was the wrong <title>.
+  "build": {
+    "command": "node scripts/verify-dist.mjs"
+  },
 
   "assets": {
     "directory": "./dist",
@@ -16,9 +39,33 @@
     // from the flyer QR, and /r/<slug> from a table tent.
     "not_found_handling": "single-page-application",
 
-    // Without this, /api/* would be answered by the SPA fallback with
-    // index.html and every API call — including the Base44 data layer the whole
-    // app runs on — would silently return HTML instead of JSON.
-    "run_worker_first": ["/api/*"]
+    // Start from a catch-all and only ever SUBTRACT. Never replace this with a
+    // positive allow-list such as ["/api/*"].
+    //
+    // Two things depend on the catch-all. Obviously: /api/* would otherwise be
+    // answered by the SPA fallback with index.html, and every API call —
+    // including the Base44 data layer the whole app runs on — would silently
+    // return HTML instead of JSON.
+    //
+    // Less obviously: "not_found_handling": "single-page-application" makes the
+    // assets binding match *every* path, so an allow-list means the Worker is
+    // never invoked for page requests at all. SPA_ROUTES, LEGACY_REDIRECTS, the
+    // prerendered snapshots, the real 404 statuses and the security headers all
+    // become unreachable in production while the unit tests still pass, because
+    // those call the Worker directly and never exercise this dispatch. That
+    // exact bug shipped once. worker/index.test.mjs now asserts the shape.
+    //
+    // The negations are a cost control: with a bare `true` every hashed bundle,
+    // icon and image is a billable Worker invocation, and none of them need
+    // anything the Worker does — they cannot be framed, and nothing redirects.
+    // Verified under `wrangler dev`: /restaurants and /junk go through the
+    // Worker (security headers present, 404 rewritten), /assets/* does not.
+    //
+    // Only ever exclude static directories. Excluding a page route would
+    // silently disable its redirect, 404 and headers — the test checks for that
+    // too. The tradeoff of excluding them: a missing file under these paths now
+    // returns the SPA shell with a 200 rather than a 404. Crawlers do not index
+    // hashed bundles, so that is an acceptable trade.
+    "run_worker_first": ["/*", "!/assets/*", "!/icons/*", "!/img/*"]
   }
 }

@@ -1,5 +1,11 @@
+import Seo from "@/components/Seo";
 const Terms = () => (
   <div className="min-h-screen bg-white px-5 py-16">
+    <Seo
+      path="/terms"
+      title="Terms of Service | BillTap"
+      description="The terms that govern use of BillTap, including payments, guest sessions and acceptable use."
+    />
     <div className="max-w-2xl mx-auto">
       <a href="/" className="text-[#667eea] text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
       <h1 className="text-4xl font-black text-slate-900 mb-4">Terms of Service</h1>

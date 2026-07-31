@@ -1,22 +1,32 @@
+<!--
+  BillTap mark — receipt + split bolt.
+
+  Gold #f0b429 on ink #0b0b0d, matching the brand colours used across the site.
+  This was previously violet #7c3aed, which clashed with the gold everywhere
+  else and read as a second brand on the OG cards.
+
+  The bolt is a single filled polygon. It used to be drawn three times — a
+  stroked path, a 15%-opacity fill of that same path, and this polygon — and the
+  three shapes did not agree, so the bolt rendered doubled and haloed at large
+  sizes.
+
+  scripts/build-brand-images.mjs renders every PNG icon and OG card from this
+  file, so edit here and re-run that script rather than editing the outputs.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- Background -->
-  <rect width="512" height="512" fill="#0d0d0d"/>
-  
-  <!-- Receipt shape -->
+  <rect width="512" height="512" fill="#0b0b0d"/>
+
+  <!-- Receipt body -->
   <rect x="156" y="110" width="200" height="260" rx="12" ry="12" fill="none" stroke="#ffffff" stroke-width="14"/>
-  
-  <!-- Receipt tear lines at bottom -->
+
+  <!-- Torn bottom edge -->
   <path d="M156 340 Q166 352 176 340 Q186 352 196 340 Q206 352 216 340 Q226 352 236 340 Q246 352 256 340 Q266 352 276 340 Q286 352 296 340 Q306 352 316 340 Q326 352 336 340 Q346 352 356 340" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
-  
-  <!-- Horizontal lines on receipt (items) -->
+
+  <!-- Line items -->
   <line x1="186" y1="165" x2="286" y2="165" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
   <line x1="186" y1="193" x2="266" y2="193" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
   <line x1="186" y1="221" x2="276" y2="221" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
-  
-  <!-- Lightning bolt split line (brand violet accent) -->
-  <path d="M268 128 L234 255 L262 255 L228 384" fill="none" stroke="#7c3aed" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M268 128 L234 255 L262 255 L228 384" fill="#7c3aed" opacity="0.15"/>
-  
-  <!-- Lightning bolt filled -->
-  <polygon points="272,128 238,255 266,255 232,370 290,230 262,230 296,128" fill="#7c3aed"/>
+
+  <!-- Split bolt -->
+  <polygon points="272,128 238,255 266,255 232,370 290,230 262,230 296,128" fill="#f0b429"/>
 </svg>
