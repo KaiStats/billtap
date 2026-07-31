@@ -6,8 +6,19 @@
  * fetch the restaurant's contact info server-side, preventing spam.
  *
  * Requires: rating_id (UUID of the GuestRating record)
- * Bindings: BASE44_APP_ID, BASE44_MASTER_KEY (for service-role lookups),
- *           POSTMARK_SERVER_TOKEN or RESEND_API_KEY, TWILIO_* for SMS.
+ * Bindings: BASE44_APP_ID (or VITE_BASE44_APP_ID) and BASE44_MASTER_KEY for the
+ *           service-role lookups; POSTMARK_SERVER_TOKEN or RESEND_API_KEY;
+ *           TWILIO_* for the SMS half.
+ *
+ * Both app-id names are accepted because this file documented BASE44_APP_ID and
+ * read VITE_BASE44_APP_ID. Setting the documented one left every alert failing
+ * with "Service misconfigured", and nothing surfaced it: RatingCapture fires
+ * this best-effort and never checks the status, so a 500 is indistinguishable
+ * from a delivered page. A silently dead low-rating alert is the entire B2B
+ * product not working, so accept either name rather than make an operator guess.
+ *
+ * Never give the master key a VITE_ prefix. Vite inlines every VITE_* variable
+ * into the client bundle at build time, so that would publish it.
  */
 import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js';
 
@@ -30,9 +41,17 @@ export async function onRequestPost({ request, env }) {
 
   try {
     // Fetch rating as service role — this also validates it exists
-    const { VITE_BASE44_APP_ID: appId, BASE44_MASTER_KEY } = env;
+    const appId = env.BASE44_APP_ID || env.VITE_BASE44_APP_ID;
+    const { BASE44_MASTER_KEY } = env;
     if (!appId || !BASE44_MASTER_KEY) {
-      console.error('Missing BASE44 credentials for rating lookup');
+      // Name the missing binding. This is the only signal that exists — the
+      // caller ignores the response — so a log that just says "misconfigured"
+      // costs an operator the evening it takes to work out which one.
+      const missing = [
+        appId ? null : 'BASE44_APP_ID',
+        BASE44_MASTER_KEY ? null : 'BASE44_MASTER_KEY',
+      ].filter(Boolean).join(', ');
+      console.error(`rating-alert: cannot page the operator, missing binding(s): ${missing}`);
       return json({ error: 'Service misconfigured' }, 500);
     }
 

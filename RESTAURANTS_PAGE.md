@@ -113,6 +113,8 @@ did — that is the endpoint rejecting an empty body, which is correct.
 
 | Variable | Required | Default |
 | --- | --- | --- |
+| `BASE44_APP_ID` | for rating alerts | — |
+| `BASE44_MASTER_KEY` | for rating alerts | — |
 | `POSTMARK_SERVER_TOKEN` | yes* | — |
 | `POSTMARK_MESSAGE_STREAM` | no | `outbound` |
 | `RESEND_API_KEY` | yes* | — |
@@ -128,6 +130,19 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `REPORT_WEBHOOK_SECRET` | for reports | — |
 
 Base44 also needs `STRIPE_WEBHOOK_SECRET` for the subscription webhook.
+
+**The two `BASE44_*` values are runtime secrets, not build variables.**
+`/api/rating-alert` uses them to look the rating up server-side and derive the
+restaurant — that lookup is what stops the endpoint being an open mail relay.
+Without them every low-rating alert returns 500 and nobody is paged, and nothing
+tells you: `RatingCapture` fires the request best-effort and never reads the
+response. Check the Worker log for `rating-alert: cannot page the operator` if
+alerts go quiet. `VITE_BASE44_APP_ID` is also accepted for the app id, since
+that is the name the Worker originally read.
+
+Never prefix a secret with `VITE_`. Vite inlines every `VITE_*` variable into
+the client bundle at build time, so a `VITE_BASE44_MASTER_KEY` would ship the
+master key to every visitor.
 
 \* One email provider is required, not both. Postmark wins when its token is
 present — that account owns `billtap.app`, so mail comes from
