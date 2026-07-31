@@ -95,10 +95,22 @@ Deno.serve(async (req) => {
       return secureJson({ error: 'tax or tip value is unreasonably large' }, 400, origin);
     }
 
-    // Check rate limit
-    const rateLimitRes = await base44.functions.invoke('checkSessionRateLimit', {});
-    if (!rateLimitRes.data?.allowed) {
-      return secureJson({ error: rateLimitRes.data?.message || 'Rate limit exceeded' }, 429, origin);
+    // Rate limit, by whichever identity this caller actually has.
+    //
+    // checkSessionRateLimit starts with `if (!user) return 401`, and a 401 body
+    // carries no `allowed` key — so for an anonymous guest the check below was
+    // always true and every table-tent split died on "Rate limit exceeded".
+    // That is the guest half of the product, so the limiter cannot simply be
+    // asked about a user who does not exist.
+    //
+    // Guests are still limited, just per restaurant instead of per account.
+    // Skipping the limit entirely would leave an unauthenticated endpoint that
+    // mints Session rows without bound.
+    if (user) {
+      const rateLimitRes = await base44.functions.invoke('checkSessionRateLimit', {});
+      if (!rateLimitRes.data?.allowed) {
+        return secureJson({ error: rateLimitRes.data?.message || 'Rate limit exceeded' }, 429, origin);
+      }
     }
 
     let total;
@@ -124,19 +136,52 @@ Deno.serve(async (req) => {
     let restaurantId = null;
     try {
       if (restaurant_slug) {
-        // Guest scanned table-tent QR with a restaurant slug
-        const bySlug = await base44.entities.Restaurant.filter({ slug: restaurant_slug });
+        // Guest scanned a table-tent QR. asServiceRole because Restaurant.read
+        // is owner-scoped — a request-scoped filter here runs as nobody and
+        // returns nothing, which would silently drop restaurant_id and with it
+        // the rating capture the restaurant is paying for.
+        const bySlug = await base44.asServiceRole.entities.Restaurant.filter({ slug: restaurant_slug });
         if (bySlug?.length) restaurantId = bySlug[0].id;
       } else if (user) {
-        // Authenticated host: use their owned restaurant
-        const owned = await base44.entities.Restaurant.filter({ owner_id: user.id });
+        // Authenticated host: use their owned restaurant.
+        const owned = await base44.asServiceRole.entities.Restaurant.filter({ owner_id: user.id });
         if (owned?.length) restaurantId = owned[0].id;
       }
     } catch (e) {
       console.error('createSession: restaurant lookup failed', e.message);
     }
 
-    const session = await base44.entities.Session.create({
+    // Per-restaurant hourly cap for anonymous callers, standing in for the
+    // per-account limit above. Generous enough for a full dining room turning
+    // over, bounded enough that the endpoint is not a free row factory.
+    if (!user && restaurantId) {
+      const since = Date.now() - 60 * 60 * 1000;
+      try {
+        const recent = await base44.asServiceRole.entities.Session.filter({ restaurant_id: restaurantId });
+        const inWindow = (recent || []).filter((s) => {
+          const t = new Date(s.created_date).getTime();
+          return !Number.isNaN(t) && t >= since;
+        });
+        if (inWindow.length >= 100) {
+          return secureJson({ error: 'This restaurant has too many splits in progress. Try again shortly.' }, 429, origin);
+        }
+      } catch (e) {
+        // A failed count must not block a paying restaurant's diners.
+        console.error('createSession: guest rate-limit check failed', e.message);
+      }
+    }
+
+    // Service role for the guest, request-scoped for a signed-in host.
+    //
+    // Session.jsonc requires created_by_id == {{user.id}} on create, so the
+    // request-scoped client cannot write this row for someone with no account —
+    // the second, independent reason the table-tent split failed even once the
+    // rate limiter was out of the way. The host path stays request-scoped so
+    // created_by_id is stamped with the real owner and the session shows up in
+    // their dashboard.
+    const writer = user ? base44.entities : base44.asServiceRole.entities;
+
+    const session = await writer.Session.create({
       title: title.trim().slice(0, 100),
       image_url: image_url || null,
       split_mode: mode,

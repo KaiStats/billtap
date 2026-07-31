@@ -96,19 +96,29 @@ Return a JSON with:
         }
       });
 
-      const validation = await base44.functions.invoke("validateReceiptParse", {
-        items: result.items || [],
-        tax: result.tax || 0,
-        tip: result.tip || 0,
-        total: result.total || 0
-      });
+      // In its own catch. This is an advisory "does the arithmetic look right"
+      // check, and it sat bare inside the upload handler — so when it threw,
+      // the OCR parse above it was discarded with it and the guest was told the
+      // upload had failed. A missing sanity check is worth far less than the
+      // parse it was sanity-checking.
+      let validation = null;
+      try {
+        validation = await base44.functions.invoke("validateReceiptParse", {
+          items: result.items || [],
+          tax: result.tax || 0,
+          tip: result.tip || 0,
+          total: result.total || 0
+        });
+      } catch {
+        /* Advisory only — keep the parse. */
+      }
 
       setTitle(result.title || "Receipt");
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
       setImageUrl(file_url);
-      if (validation.data) setParseValidation(validation.data);
+      if (validation?.data) setParseValidation(validation.data);
       setStep(2);
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'receipt_scanned', { items_count: (result.items || []).length });
@@ -126,6 +136,29 @@ Return a JSON with:
   const updateItem = (i, field, value) => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item));
   const removeItem = (i) => setItems(prev => prev.filter((_, idx) => idx !== i));
   const addItem = () => setItems(prev => [...prev, { id: `item-${Date.now()}`, name: "", price: 0, quantity: 1, claimed_by: [] }]);
+
+  /**
+   * Where to send someone once their split exists.
+   *
+   * /session-host is inside <ProtectedRoute> and additionally redirects to /
+   * when unauthenticated, so a guest who came from a table tent — the one
+   * person this page was deliberately opened up for — was bounced to /login and
+   * then off the flow entirely. They have no account and are not going to make
+   * one while their table waits.
+   *
+   * /claim?id= is the same session without the host-only controls, which is
+   * everything a guest needs: their own items, their share, and the pay button.
+   * The signed-in host still gets the full host view.
+   */
+  const afterCreate = async (sessionId) => {
+    let authed = false;
+    try {
+      authed = await base44.auth.isAuthenticated();
+    } catch {
+      /* Treat an unanswerable auth check as "guest" — /claim works for both. */
+    }
+    navigate(authed ? `/session-host?id=${sessionId}` : `/claim?id=${sessionId}`);
+  };
 
   const handleCreateSession = async () => {
     setSaving(true);
@@ -153,7 +186,7 @@ Return a JSON with:
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'session_created', { session_id: session.id, split_mode: splitMode });
       }
-      navigate(`/session-host?id=${session.id}`);
+      await afterCreate(session.id);
     } catch (err) {
       console.error("Failed to create session:", err);
       Sentry.captureException(err, { tags: { feature: 'join_session' } });
@@ -189,7 +222,7 @@ Return a JSON with:
       });
       if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
       trackDeviceAction('split_created');
-      navigate(`/session-host?id=${res.data.session.id}`);
+      await afterCreate(res.data.session.id);
     } catch (err) {
       Sentry.captureException(err);
       alert("Failed to create session.");

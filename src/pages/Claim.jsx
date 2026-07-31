@@ -41,6 +41,7 @@ export default function Claim() {
   const [sessionId, setSessionId] = useState(legacyId);
   const [tokenVerified, setTokenVerified] = useState(!qrToken);
   const [tokenError, setTokenError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [session, setSession] = useState(null);
   const [myId] = useState(() => {
     let id = localStorage.getItem("billtap_participant_id") || localStorage.getItem("divvy_participant_id");
@@ -71,19 +72,36 @@ export default function Claim() {
         Sentry.captureException(err, { tags: { feature: 'qr_verify' } });
         setTokenError(res.data?.error || "Invalid or expired QR code");
       }
+    }).catch(err => {
+      // Without this the promise rejected into nothing: tokenVerified stayed
+      // false, so fetchSession returned early and never cleared loading, and
+      // the guest sat on a spinner for as long as they were willing to. On a
+      // restaurant's wifi that is the single most likely failure at the table.
+      Sentry.captureException(err, { tags: { feature: 'qr_verify' } });
+      setTokenError("Couldn't check this code. Check your connection and try again.");
     });
   }, [qrToken]);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId || !tokenVerified) return;
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    const found = data[0];
-    if (found) {
-      setSession(found);
-      const existing = (found.participants || []).find(p => p.participant_id === myId);
-      if (existing && existing.name) setMyName(existing.name);
+    try {
+      const data = await base44.entities.Session.filter({ id: sessionId });
+      const found = data[0];
+      if (found) {
+        setSession(found);
+        const existing = (found.participants || []).find(p => p.participant_id === myId);
+        if (existing && existing.name) setMyName(existing.name);
+      } else {
+        setLoadError("This split couldn't be found. It may have expired.");
+      }
+    } catch (err) {
+      Sentry.captureException(err, { tags: { feature: 'claim_fetch' } });
+      setLoadError("Couldn't load this split. Check your connection and try again.");
+    } finally {
+      // In a finally: setLoading(false) used to be the last statement of the
+      // happy path, so any throw above it left the spinner up permanently.
+      setLoading(false);
     }
-    setLoading(false);
   }, [sessionId, myId, tokenVerified]);
 
   useEffect(() => {
@@ -290,11 +308,43 @@ export default function Claim() {
   }, [session, splitMode, participants, items, myId]);
 
   const meParticipant = participants.find(p => p.participant_id === myId);
-  const alreadyPaid = meParticipant?.payment_status === "paid";
+  const payStatus = meParticipant?.payment_status;
+  // markMePaid writes "pending_verification", never "paid" — only the host
+  // confirming does that. Checking for "paid" alone meant the guest tapped
+  // "I've Sent Payment", nothing changed, and the button stayed live and
+  // re-opened Venmo prefilled with the same amount. Someone pays twice.
+  // SessionHost already treats both as settled; this now matches it.
+  const paymentSent = payStatus === "paid" || payStatus === "pending_verification";
+  const alreadyPaid = paymentSent;
+  const awaitingHost = payStatus === "pending_verification";
 
   if (tokenError) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
-      <div><p className="text-lg font-semibold">QR code expired or invalid</p><p className="text-sm mt-1">Ask the host to share a fresh QR code.</p></div>
+      <div>
+        <p className="text-lg font-semibold">QR code expired or invalid</p>
+        <p className="text-sm mt-1">{tokenError}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-6 px-6 py-3 rounded-2xl font-bold bg-brand text-white"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold">Couldn't load this split</p>
+        <p className="text-sm mt-1">{loadError}</p>
+        <button
+          onClick={() => { setLoadError(null); setLoading(true); fetchSession(); }}
+          className="mt-6 px-6 py-3 rounded-2xl font-bold bg-brand text-white"
+        >
+          Try again
+        </button>
+      </div>
     </div>
   );
 
@@ -497,7 +547,10 @@ export default function Claim() {
                   <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand/20 text-brand-muted-foreground border border-brand/30" : "bg-white/5 text-white/50 border border-white/10"}`}>
                     <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-current opacity-60">{(p.name || "?")[0].toUpperCase()}</div>
                     {p.participant_id === myId ? "You" : p.name}
-                    {p.payment_status === "paid" && " ✓"}
+                    {/* pending_verification counts too — it is what markMePaid
+                        writes, so checking only "paid" left every guest who had
+                        paid still showing as unpaid to the whole table. */}
+                    {(p.payment_status === "paid" || p.payment_status === "pending_verification") && " ✓"}
                   </div>
                 ))}
               </div>
@@ -664,12 +717,16 @@ export default function Claim() {
           ) : (
             <button
               onClick={markMePaid}
-              disabled={splitMode === "itemized" && (myMyClaimed.length === 0 || alreadyPaid)}
-              aria-label={alreadyPaid ? "Payment complete" : `Pay $${myShare.toFixed(2)}`}
-              className={`w-full h-14 font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 ${alreadyPaid ? "bg-success text-white" : "text-white hover:-translate-y-0.5 active:translate-y-0"}`}
-              style={alreadyPaid ? {} : { background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+              // Disabled once sent, whatever the split mode. Previously the
+              // guard only applied to itemized, so on an even or custom split
+              // the button stayed tappable after payment and fired markMePaid
+              // again.
+              disabled={paymentSent || (splitMode === "itemized" && myMyClaimed.length === 0)}
+              aria-label={awaitingHost ? "Payment sent, waiting for the host to confirm" : paymentSent ? "Payment complete" : `Pay $${myShare.toFixed(2)}`}
+              className={`w-full h-14 font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-100 ${paymentSent ? "bg-success text-white" : "text-white hover:-translate-y-0.5 active:translate-y-0"}`}
+              style={paymentSent ? {} : { background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
             >
-              {alreadyPaid ? "✓ Marked as Paid" : `Pay $${myShare.toFixed(2)}`}
+              {awaitingHost ? "✓ Sent — waiting for host" : paymentSent ? "✓ Marked as Paid" : `Pay $${myShare.toFixed(2)}`}
             </button>
           )}
         </div>

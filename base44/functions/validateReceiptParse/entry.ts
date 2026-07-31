@@ -1,13 +1,17 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-
+/**
+ * Sanity-checks a parsed receipt: does the arithmetic hold, and does anything
+ * look mis-read.
+ *
+ * Deliberately unauthenticated. This is arithmetic over numbers the caller
+ * already holds — it sums the items, compares against the stated total and
+ * flags what looks wrong. It reads no stored data and writes nothing, so a
+ * login requirement protected nothing while breaking the guest path: a diner
+ * scanning a table tent has no account, and the 401 raised here aborted the
+ * whole upload handler in NewReceipt, throwing away an OCR parse that had
+ * already succeeded and costing the guest their photo.
+ */
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { items, tax, tip, total } = await req.json();
 
     if (!items || !Array.isArray(items)) {
