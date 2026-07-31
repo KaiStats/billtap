@@ -21,6 +21,10 @@
  * into the client bundle at build time, so that would publish it.
  */
 import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js';
+// Same origin helper the ported functions use. This file previously hard-coded
+// api.base44.com/v0, which 404s — every lookup here had been failing silently,
+// because the caller fires this best-effort and never reads the response.
+import { base44Origin } from '../lib/base44.js';
 
 const MAX_BODY_BYTES = 512;
 
@@ -57,7 +61,7 @@ export async function onRequestPost({ request, env }) {
 
     // Call Base44 API with service-role auth to fetch the rating
     const ratingResp = await fetch(
-      `https://api.base44.com/v0/apps/${appId}/entities/GuestRating/${ratingId}`,
+      `${base44Origin(env)}/api/apps/${appId}/entities/GuestRating/${ratingId}`,
       {
         headers: {
           'Authorization': `Bearer ${BASE44_MASTER_KEY}`,
@@ -91,7 +95,7 @@ export async function onRequestPost({ request, env }) {
 
     // Fetch restaurant to get contact info
     const restaurantResp = await fetch(
-      `https://api.base44.com/v0/apps/${appId}/entities/Restaurant/${rating.restaurant_id}`,
+      `${base44Origin(env)}/api/apps/${appId}/entities/Restaurant/${rating.restaurant_id}`,
       {
         headers: {
           'Authorization': `Bearer ${BASE44_MASTER_KEY}`,
@@ -224,7 +228,7 @@ export async function onRequestPost({ request, env }) {
 async function stampAlerted(appId, masterKey, ratingId, value = Date.now()) {
   try {
     const res = await fetch(
-      `https://api.base44.com/v0/apps/${appId}/entities/GuestRating/${ratingId}`,
+      `${base44Origin(env)}/api/apps/${appId}/entities/GuestRating/${ratingId}`,
       {
         method: 'PUT',
         headers: {

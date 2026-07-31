@@ -8,9 +8,13 @@
  * product could not perform a single action.
  *
  * So the logic moves here, where the same work is a plain authenticated fetch.
- * worker/routes/rating-alert.js already did exactly this against GuestRating
- * and Restaurant, so the approach was already proven in production before it
- * became the plan.
+ *
+ * worker/routes/rating-alert.js looked like precedent for this — it fetched
+ * GuestRating and Restaurant over REST already. It was not: it used a host and
+ * path that 404, and because it is fired best-effort from a bare catch that
+ * never reads the response, it had been failing silently the whole time. The
+ * shape below comes from base44-proxy.js instead, which is the path the browser
+ * has been using successfully all along.
  *
  * ── Two identities, and the difference matters ──────────────────────────────
  *
@@ -28,7 +32,25 @@
  * "the server did this as you".
  */
 
-const DEFAULT_API = 'https://api.base44.com';
+/**
+ * Where Base44 actually answers: `https://base44.app/api/apps/<id>/…`.
+ *
+ * That is the same origin and path shape worker/routes/base44-proxy.js has been
+ * forwarding successfully all along, and therefore the only shape proven to work
+ * against this app — every entity read the browser makes goes through it.
+ *
+ * Worth recording what it is not. The first version of this file used
+ * `https://api.base44.com/v0/apps/<id>/…`, copied from rating-alert.js, and
+ * every call came back 404 with an empty body. That path had never worked.
+ * Nothing caught it because rating-alert is fired best-effort from a bare catch
+ * that never reads the response, so its lookups had been failing silently for as
+ * long as they existed. Copy the shape that demonstrably works, not the one
+ * already written down.
+ *
+ * BASE44_API_ORIGIN overrides it, and is the variable the proxy already reads,
+ * so the two cannot drift apart.
+ */
+const DEFAULT_API = 'https://base44.app';
 
 /**
  * The app id, under either name, with an `app_` prefix stripped.
@@ -47,8 +69,9 @@ export function appId(env) {
   return raw ? String(raw).trim().replace(/^app_/, '') : null;
 }
 
-function apiBase(env) {
-  return (env.BASE44_API_BASE || DEFAULT_API).replace(/\/+$/, '');
+/** Base44's origin, shared with worker/routes/base44-proxy.js. */
+export function base44Origin(env) {
+  return (env.BASE44_API_ORIGIN || env.BASE44_API_BASE || DEFAULT_API).replace(/\/+$/, '');
 }
 
 /** Thrown for a non-2xx from Base44, carrying the status so callers can map it. */
@@ -64,7 +87,7 @@ async function request(env, { path, method = 'GET', body, headers = {} }) {
   const id = appId(env);
   if (!id) throw new Error('BASE44_APP_ID is not configured');
 
-  const res = await fetch(`${apiBase(env)}/v0/apps/${id}${path}`, {
+  const res = await fetch(`${base44Origin(env)}/api/apps/${id}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
