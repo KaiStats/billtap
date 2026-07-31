@@ -245,6 +245,238 @@ const HANDLERS = {
     return json({ error: "action must be 'rate' or 'contact'" }, 400);
   },
 
+  /**
+   * Creates a split. The one function a guest reaches with no account at all.
+   *
+   * Auth is conditional: a restaurant_slug means a diner scanned a table tent,
+   * and requiring a login there would defeat the entire product.
+   */
+  async createSession({ env, request, body }) {
+    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = body;
+    const user = await currentUser(env, request);
+
+    if (!user && !restaurant_slug) return json({ error: 'Unauthorized' }, 401);
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return json({ error: 'title is required' }, 400);
+    }
+
+    const mode = ['itemized', 'even', 'custom'].includes(split_mode) ? split_mode : 'itemized';
+    const taxVal = Number(tax) || 0;
+    const tipVal = Number(tip) || 0;
+    if (taxVal < 0 || tipVal < 0) return json({ error: 'tax and tip cannot be negative' }, 400);
+    if (taxVal > 10000 || tipVal > 10000) return json({ error: 'tax or tip value is unreasonably large' }, 400);
+
+    const list = Array.isArray(items) ? items : [];
+    const subtotal = list.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+    const total = mode === 'itemized'
+      ? subtotal + taxVal + tipVal
+      : (Number(customTotal) || subtotal + taxVal + tipVal);
+
+    if (total > 10000) return json({ error: 'Bill total cannot exceed $10,000' }, 400);
+
+    const svc = serviceRole(env);
+
+    // Derived server-side, never accepted from the client — otherwise anyone
+    // could attribute ratings, and the guest emails attached to them, to a
+    // restaurant they have never been to.
+    let restaurantId = null;
+    try {
+      if (restaurant_slug) {
+        const bySlug = await svc.entity('Restaurant').filter({ slug: restaurant_slug });
+        if (bySlug.length) restaurantId = bySlug[0].id;
+      } else if (user) {
+        const owned = await svc.entity('Restaurant').filter({ owner_id: user.id });
+        if (owned.length) restaurantId = owned[0].id;
+      }
+    } catch (e) {
+      console.error('createSession: restaurant lookup failed', e?.message);
+    }
+
+    // Guests are rate-limited per restaurant rather than per account. Skipping
+    // it would leave an unauthenticated endpoint minting rows without bound.
+    if (!user && restaurantId) {
+      try {
+        const since = Date.now() - 60 * 60 * 1000;
+        const recent = await svc.entity('Session').filter({ restaurant_id: restaurantId });
+        const inWindow = recent.filter((s) => {
+          const t = new Date(s.created_date).getTime();
+          return !Number.isNaN(t) && t >= since;
+        });
+        if (inWindow.length >= 100) {
+          return json({ error: 'This restaurant has too many splits in progress. Try again shortly.' }, 429);
+        }
+      } catch (e) {
+        // A failed count must not block a paying restaurant's diners.
+        console.error('createSession: guest rate-limit check failed', e?.message);
+      }
+    }
+
+    // As the caller when there is one, so created_by_id is the real owner and
+    // the session shows up in their dashboard; as the app for a guest, who has
+    // no id to stamp.
+    const writer = user ? asCaller(env, request) : svc;
+
+    const session = await writer.entity('Session').create({
+      title: title.trim().slice(0, 100),
+      image_url: image_url || null,
+      split_mode: mode,
+      total_amount: Math.round(total * 100) / 100,
+      tax: Math.round(taxVal * 100) / 100,
+      tip: Math.round(tipVal * 100) / 100,
+      items: list,
+      participants: [],
+      status: 'waiting',
+      expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+    });
+
+    return json({ session });
+  },
+
+  /**
+   * Joins a split and claims items.
+   *
+   * The port fixes what the original did here. It wrote the client's entire
+   * `items` and `participants` arrays back to the session, so two people
+   * claiming at the same table raced: whoever saved second overwrote the other's
+   * claim with their own stale snapshot, silently. The same trust let a crafted
+   * client rewrite anyone's amount_owed or mark another diner paid.
+   *
+   * Now only the caller's own participant row and their own claim deltas are
+   * applied, against the stored session rather than the one the browser
+   * remembers.
+   */
+  async joinSession({ env, body }) {
+    const { session_id, participant_id, name, items } = body;
+    if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
+    if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
+      return json({ error: 'Invalid participant_id' }, 400);
+    }
+
+    const svc = serviceRole(env);
+    const sessions = await svc.entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+    if (session.expires_at && session.expires_at < Date.now()) {
+      return json({ error: 'Session has expired' }, 410);
+    }
+
+    const current = session.participants || [];
+    const already = current.find((p) => p.participant_id === participant_id);
+    if (!already && current.length >= 50) {
+      return json({ error: 'Session is full (max 50 participants)' }, 400);
+    }
+
+    const splitMode = session.split_mode || 'itemized';
+    const cleanName = clean(name, 40);
+    const storedItems = Array.isArray(session.items) ? session.items : [];
+
+    // Apply this caller's claim deltas to the STORED items, one item at a time.
+    let nextItems = storedItems;
+    if (splitMode === 'itemized' && Array.isArray(items)) {
+      const wanted = new Set(
+        items.filter((i) => (i.claimed_by || []).includes(participant_id)).map((i) => i.id),
+      );
+      const touched = new Set(items.map((i) => i.id));
+
+      for (const item of items) {
+        const original = storedItems.find((i) => i.id === item.id);
+        if (!original) continue;
+        const originalClaimed = original.claimed_by || [];
+        const stealing =
+          wanted.has(item.id) &&
+          originalClaimed.length > 0 &&
+          !originalClaimed.includes(participant_id);
+        if (stealing) return json({ error: `Item "${original.name}" is already claimed` }, 409);
+      }
+
+      // Everything except this caller's own membership is carried over from the
+      // stored row, so a concurrent claim by someone else survives.
+      nextItems = storedItems.map((stored) => {
+        if (!touched.has(stored.id)) return stored;
+        const others = (stored.claimed_by || []).filter((id) => id !== participant_id);
+        return { ...stored, claimed_by: wanted.has(stored.id) ? [...others, participant_id] : others };
+      });
+    }
+
+    const count = already ? current.length : current.length + 1;
+    const evenShare = count > 0 ? Math.round(((session.total_amount || 0) / count) * 100) / 100 : 0;
+
+    /** This caller's share, recomputed from stored data — never taken from the body. */
+    const shareFor = (pid) => {
+      if (splitMode === 'even') return evenShare;
+      if (splitMode === 'custom') return current.find((p) => p.participant_id === pid)?.amount_owed || 0;
+      const claimed = nextItems.filter((i) => (i.claimed_by || []).includes(pid));
+      const sub = claimed.reduce((s, i) => {
+        const share = (i.claimed_by || []).length || 1;
+        return s + ((Number(i.price) || 0) * (Number(i.quantity) || 1)) / share;
+      }, 0);
+      const allSub = nextItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+      const ratio = allSub > 0 ? sub / allSub : 0;
+      const extras = (Number(session.tax) || 0) + (Number(session.tip) || 0);
+      return Math.round((sub + extras * ratio) * 100) / 100;
+    };
+
+    let nextParticipants = already
+      ? current.map((p) =>
+          p.participant_id === participant_id
+            ? { ...p, ...(cleanName ? { name: cleanName } : {}) }
+            : p,
+        )
+      : [...current, {
+          participant_id,
+          name: cleanName || 'Anonymous',
+          amount_owed: 0,
+          payment_status: 'unpaid',
+        }];
+
+    // payment_status is never taken from the request: markMePaid owns it, and
+    // accepting it here would let one diner mark another as paid.
+    nextParticipants = nextParticipants.map((p) => ({
+      ...p,
+      amount_owed: splitMode === 'even' ? evenShare : shareFor(p.participant_id),
+    }));
+
+    const updated = await svc.entity('Session').update(session_id, {
+      participants: nextParticipants,
+      status: session.status === 'waiting' ? 'claiming' : session.status,
+      ...(splitMode === 'itemized' ? { items: nextItems } : {}),
+    });
+
+    return json({ session: scopeForParticipant(updated, participant_id) });
+  },
+
+  /** Marks the caller — and only the caller — as having sent payment. */
+  async markMePaid({ env, body }) {
+    const { session_id, participant_id } = body;
+    if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
+    if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
+      return json({ error: 'Invalid participant_id' }, 400);
+    }
+
+    const svc = serviceRole(env);
+    const sessions = await svc.entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+
+    const participants = session.participants || [];
+    if (!participants.find((p) => p.participant_id === participant_id)) {
+      return json({ error: 'Participant not found in session' }, 404);
+    }
+
+    // pending_verification, not paid: only the host confirms receipt of money.
+    const next = participants.map((p) =>
+      p.participant_id === participant_id ? { ...p, payment_status: 'pending_verification' } : p,
+    );
+
+    const updated = await svc.entity('Session').update(session_id, {
+      participants: next,
+      status: next.every((p) => p.payment_status === 'paid') ? 'completed' : session.status,
+    });
+
+    return json({ session: scopeForParticipant(updated, participant_id) });
+  },
+
   /** The operator's own ratings and contacts. Ownership from their identity. */
   async getRestaurantDashboardData({ env, request }) {
     const user = await currentUser(env, request);
@@ -291,3 +523,34 @@ export async function onRequestPost({ request, env, name }) {
 }
 
 export { HANDLERS };
+
+/**
+ * A guest's view of a session.
+ *
+ * Everyone at the table shares one session row, but a diner has no business
+ * seeing what anyone else owes, nor the host's payment details. Only the
+ * caller's own amount_owed is included; names and paid-or-not stay visible
+ * because the table needs to see who has settled up.
+ */
+function scopeForParticipant(session, participantId) {
+  return {
+    id: session.id,
+    title: session.title,
+    split_mode: session.split_mode,
+    total_amount: session.total_amount,
+    tax: session.tax,
+    tip: session.tip,
+    items: session.items,
+    status: session.status,
+    expires_at: session.expires_at,
+    host_payment_info: session.host_payment_info,
+    participants: (session.participants || []).map((p) => ({
+      participant_id: p.participant_id,
+      name: p.name,
+      payment_status: p.payment_status,
+      ...(p.participant_id === participantId ? { amount_owed: p.amount_owed } : {}),
+    })),
+    // Needed by the client to decide whether to show the rating prompt at all.
+    ...(session.restaurant_id ? { restaurant_id: session.restaurant_id } : {}),
+  };
+}

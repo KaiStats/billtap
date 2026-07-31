@@ -30,9 +30,21 @@
 
 const DEFAULT_API = 'https://api.base44.com';
 
-/** The app id, under either name. See worker/routes/rating-alert.js for why both. */
+/**
+ * The app id, under either name, with an `app_` prefix stripped.
+ *
+ * Both names are in use — see worker/routes/rating-alert.js. The prefix strip
+ * is not cosmetic: `app_69a5…` returns "App not found" from Base44 while the
+ * bare id works, and that exact value spent a while in the frontend's build
+ * config making every API call 404 while the prerendered marketing pages
+ * carried on looking healthy.
+ *
+ * Two secrets hold this value and they can disagree. Normalising here means a
+ * stale prefixed one cannot quietly take precedence and 404 every function.
+ */
 export function appId(env) {
-  return env.BASE44_APP_ID || env.VITE_BASE44_APP_ID || null;
+  const raw = env.BASE44_APP_ID || env.VITE_BASE44_APP_ID || null;
+  return raw ? String(raw).trim().replace(/^app_/, '') : null;
 }
 
 function apiBase(env) {
