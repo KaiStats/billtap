@@ -31,7 +31,7 @@
  * gradient rather than a broken box.
  */
 
-const SELF_HOSTED = false;
+const SELF_HOSTED = true;
 
 const CDN = "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5";
 
