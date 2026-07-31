@@ -28,8 +28,11 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     let alive = true;
     (async () => {
       try {
-        const rows = await base44.entities.Restaurant.filter({ id: restaurantId });
-        if (alive) setRestaurant(rows?.[0] || null);
+        // Restaurant.read is owner-scoped now, so this goes through the public
+        // projection — which is all this component ever needed anyway: the
+        // name, the Google URL and the threshold.
+        const res = await base44.functions.invoke("getPublicRestaurant", { id: restaurantId });
+        if (alive) setRestaurant(res?.data?.restaurant || null);
       } catch {
         if (alive) setRestaurant(null);
       }
@@ -49,14 +52,15 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     const happy = value > threshold;
 
     try {
-      const row = await base44.entities.GuestRating.create({
-        restaurant_id: restaurantId,
+      // Server-side: it derives restaurant_id from the stored session rather
+      // than trusting this component, so a forged rating cannot be attributed
+      // to a restaurant the guest was never at.
+      const res = await base44.functions.invoke("submitGuestRating", {
+        action: "rate",
         session_id: sessionId,
         stars: value,
-        routed_to_google: happy,
-        created_at: Date.now(),
       });
-      setRatingId(row?.id || null);
+      setRatingId(res?.data?.rating_id || null);
     } catch {
       /* Never block the guest on our bookkeeping. */
     }
@@ -69,40 +73,33 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     }
   };
 
-  const saveEmail = async () => {
+  /**
+   * Hand the email, and optionally the comment, to the server in one call.
+   *
+   * This used to be a filter-then-create-or-update against GuestContact
+   * straight from the browser, which is why that entity's read and update rules
+   * had to be open to everyone. The upsert now happens as service role inside
+   * submitGuestRating, so the rules could be closed.
+   */
+  const saveContact = async ({ comment: text } = {}) => {
     const clean = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(clean)) return;
+    const body = clean && EMAIL_RE.test(clean) ? { email: clean } : {};
+    if (text) body.comment = text;
+    if (!ratingId || (!body.email && !body.comment)) return;
     try {
-      const existing = await base44.entities.GuestContact.filter({
-        restaurant_id: restaurantId,
-        email: clean,
+      await base44.functions.invoke("submitGuestRating", {
+        action: "contact",
+        rating_id: ratingId,
+        ...body,
       });
-      if (existing?.length) {
-        await base44.entities.GuestContact.update(existing[0].id, {
-          visits: (existing[0].visits || 1) + 1,
-          last_seen: Date.now(),
-        });
-      } else {
-        await base44.entities.GuestContact.create({
-          restaurant_id: restaurantId,
-          email: clean,
-          opted_in: true,
-          visits: 1,
-          first_seen: Date.now(),
-          last_seen: Date.now(),
-        });
-      }
-      if (ratingId) {
-        await base44.entities.GuestRating.update(ratingId, { guest_email: clean });
-      }
     } catch {
-      /* Best effort. */
+      /* Best effort — the rating itself is already stored. */
     }
   };
 
   const goToGoogle = async () => {
     setBusy(true);
-    await saveEmail();
+    await saveContact();
     setBusy(false);
     if (restaurant.google_review_url) {
       window.open(restaurant.google_review_url, "_blank", "noopener,noreferrer");
@@ -112,15 +109,15 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
 
   const sendPrivate = async () => {
     setBusy(true);
-    await saveEmail();
+    // Email and comment land in one server call, so the comment is stored
+    // before the alert fires and the operator's email is never emptier than
+    // the record behind it.
+    await saveContact({ comment: comment.trim() });
 
     try {
-      if (ratingId && comment.trim()) {
-        await base44.entities.GuestRating.update(ratingId, { comment: comment.trim() });
-      }
       // Page the operator. The rating is already stored, so a failure here
-      // costs the alert, not the record. The server looks up the rating to fetch
-      // the restaurant's alert contact, preventing spam.
+      // costs the alert, not the record. The server looks the rating up to find
+      // the restaurant's alert contact, which is what stops this being a relay.
       await fetch("/api/rating-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

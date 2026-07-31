@@ -47,12 +47,13 @@ export default function RestaurantDashboard() {
           alert_phone: r.alert_phone || "",
           rating_threshold: r.rating_threshold ?? 3,
         });
-        const [rt, ct] = await Promise.all([
-          base44.entities.GuestRating.filter({ restaurant_id: r.id }),
-          base44.entities.GuestContact.filter({ restaurant_id: r.id }),
-        ]);
-        setRatings(rt || []);
-        setContacts(ct || []);
+        // Through the function: GuestRating.read and GuestContact.read are
+        // admin-only now, because as open rules they let anyone on the internet
+        // enumerate every restaurant's guest list. The function re-derives
+        // ownership from the signed-in user rather than accepting an id here.
+        const res = await base44.functions.invoke("getRestaurantDashboardData", {});
+        setRatings(res?.data?.ratings || []);
+        setContacts(res?.data?.contacts || []);
       }
     } catch {
       setRestaurant(null);
@@ -171,8 +172,22 @@ export default function RestaurantDashboard() {
       const me = await base44.auth.me();
       const base = slugify(name) || "restaurant";
       // Collision-safe: append a short suffix if the slug is taken.
-      const taken = await base44.entities.Restaurant.filter({ slug: base });
-      const slug = taken?.length ? `${base}-${Math.random().toString(36).slice(2, 6)}` : base;
+      //
+      // Via getPublicRestaurant rather than a direct filter. Restaurant.read is
+      // owner-scoped now, so an owner querying by slug can only ever see their
+      // own row — every other restaurant's slug would read as free, and the
+      // check would silently stop detecting collisions. Two restaurants sharing
+      // a slug means one of their table tents points at the other's listing.
+      let taken = false;
+      try {
+        const res = await base44.functions.invoke("getPublicRestaurant", { slug: base });
+        taken = Boolean(res?.data?.restaurant);
+      } catch {
+        // 404 is the expected "free" answer; anything else we treat as taken
+        // and suffix, since a collision is worse than an ugly slug.
+        taken = false;
+      }
+      const slug = taken ? `${base}-${Math.random().toString(36).slice(2, 6)}` : base;
 
       await base44.entities.Restaurant.create({
         name,

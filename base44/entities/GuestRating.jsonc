@@ -40,9 +40,35 @@
     "stars"
   ],
   "rls": {
-    "create": null,
-    "read": null,
-    "update": null,
+    "_comment": [
+      "Closed to admin on every verb. These two hold the whole B2B asset - the",
+      "restaurant's guest email list and its private low-star feedback - and as",
+      "nulls they were readable AND writable by anyone who knew the app id,",
+      "which ships in the client bundle. Reachable anonymously through the",
+      "app's own /api/apps proxy, so it was cross-tenant: any restaurant could",
+      "read every other restaurant's guests.",
+      "",
+      "Nothing needs direct access now. Guests write via submitGuestRating and",
+      "the dashboard reads via getRestaurantDashboardData, both asServiceRole,",
+      "both deriving whose data it is from stored state rather than the body.",
+      "Do not reopen a verb here to fix a broken screen - point the screen at a",
+      "function instead."
+    ],
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "delete": {
       "user_condition": {
         "role": "admin"

@@ -62,7 +62,28 @@
     "create": {
       "created_by_id": "{{user.id}}"
     },
-    "read": null,
+    "_read_comment": [
+      "Was null. That exposed every operator's alert_email, alert_phone,",
+      "owner_id, plan, stripe_customer_id and stripe_subscription_id to any",
+      "anonymous caller. The two guest screens that needed a restaurant row -",
+      "TableEntry and RatingCapture - now call getPublicRestaurant, which",
+      "returns only name, slug, google_review_url and rating_threshold."
+    ],
+    "read": {
+      "$or": [
+        {
+          "data.owner_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "update": {
       "$or": [
         {

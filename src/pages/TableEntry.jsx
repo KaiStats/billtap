@@ -16,23 +16,31 @@ export default function TableEntry() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [restaurant, setRestaurant] = useState(null);
-  const [state, setState] = useState("loading"); // loading | ready | missing
+  const [state, setState] = useState("loading"); // loading | ready | missing | error
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const rows = await base44.entities.Restaurant.filter({ slug });
+        // Via the function, not the entity. Restaurant.read is owner-scoped now,
+        // so a direct filter from an anonymous guest returns nothing — and this
+        // returns only the four guest-visible fields rather than the operator's
+        // alert email, phone and Stripe state.
+        const res = await base44.functions.invoke("getPublicRestaurant", { slug });
         if (!alive) return;
-        if (rows?.length) {
-          setRestaurant(rows[0]);
+        const found = res?.data?.restaurant;
+        if (found) {
+          setRestaurant(found);
           sessionStorage.setItem("billtap_restaurant_slug", slug);
           setState("ready");
         } else {
           setState("missing");
         }
       } catch {
-        if (alive) setState("missing");
+        // A dropped request is not a dead slug. Telling a guest sitting at a
+        // real table that their code is not active, when the network merely
+        // hiccuped, sends them away and they do not come back.
+        if (alive) setState("error");
       }
     })();
     return () => { alive = false; };
@@ -42,6 +50,23 @@ export default function TableEntry() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#0a0e1a" }}>
         <Loader2 className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
+      </div>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 text-center" style={{ background: "#0a0e1a", color: "#fff" }}>
+        <div>
+          <h1 className="text-2xl font-black">Couldn't load this table</h1>
+          <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
+            Check your connection and try again.
+          </p>
+          <button onClick={() => window.location.reload()} className="mt-7 px-6 py-3 rounded-2xl font-bold"
+            style={{ background: GOLD, color: "#0a0e1a" }}>
+            Try again
+          </button>
+        </div>
       </div>
     );
   }
