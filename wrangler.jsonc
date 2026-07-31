@@ -16,6 +16,24 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
 
+  // Declared here so a deploy stops offering to delete them.
+  //
+  // These three were created in the dashboard and lived only there. Because
+  // this file said nothing about routes, every `wrangler deploy` printed a diff
+  // proposing to remove all three — including the apex custom domain — and
+  // waited for a yes. Answering yes is the normal thing to do at that prompt,
+  // and the one time it did what it threatened, billtap.app stops resolving and
+  // the printed table-tent QR codes stop working with it.
+  //
+  // Mirrors the remote exactly, so deploys are now idempotent rather than a
+  // question. Change routing here from now on, not in the dashboard, or the
+  // prompt comes back.
+  "routes": [
+    { "pattern": "billtap.app", "custom_domain": true },
+    { "pattern": "billtap.app/*", "zone_name": "billtap.app" },
+    { "pattern": "www.billtap.app/*", "zone_name": "billtap.app" }
+  ],
+
   // Gate every deploy on the artefacts actually being complete.
   //
   // wrangler runs build.command before deploy and before dev, and aborts if it
