@@ -12,6 +12,7 @@
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
     "build:static": "vite build && node scripts/prerender.mjs",
+    "build:ci": "vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy"
   },

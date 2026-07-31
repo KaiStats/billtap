@@ -55,8 +55,19 @@ Connect to Git → `KaiStats/billtap`.
 | Field | Value |
 | --- | --- |
 | Project name | `billtap` (lowercase, letters/numbers/hyphens only) |
-| Build command | `npm run build` |
+| Build command | `npm run build:ci` |
 | Deploy command | `npx wrangler deploy` |
+
+**Not `npm run build`.** That is `vite build` alone: it emits a valid-looking
+`dist/` with no prerendered snapshots, so `scripts/verify-dist.mjs` refuses the
+deploy with "`/` has no snapshot" and every CI build fails. That is the gate
+working, not a fault in it — a build with no snapshots is the exact SEO
+regression prerendering exists to prevent.
+
+`build:ci` is `build:static` with `playwright install chromium` in front.
+Prerendering drives a real browser and Cloudflare's build image ships without
+one. On a laptop you already have the browser, so `npm run build:static` remains
+the right command there.
 
 **Build-time variables** — Vite inlines these, so they must be set *before* the
 build or the app ships pointing at nothing:
