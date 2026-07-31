@@ -3,6 +3,96 @@ import { Link, useNavigate } from "react-router-dom";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
+import { art, artSrcSet, artSizes } from "@/lib/landing-assets";
+
+/**
+ * Content image that fades up once decoded and removes itself on error, so the
+ * gradient underneath becomes the design rather than a broken box.
+ */
+function Img({ name, alt, className = "", to = 1, eager = false, position = "center" }) {
+  const [loaded, setLoaded] = useState(false);
+  const src = art(name);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      // Both null until the art is self-hosted — the CDN holds only the one
+      // full-size original, so a single-entry srcset would be noise. After
+      // scripts/fetch-landing-art.mjs runs, the browser picks the smallest file
+      // that covers the slot instead of a 2400px PNG for a 290px card.
+      srcSet={artSrcSet(name) || undefined}
+      sizes={artSizes(name) || undefined}
+      alt={alt}
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : "low"}
+      decoding="async"
+      onLoad={() => setLoaded(true)}
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+      className={`lp-img ${loaded ? "is-loaded" : ""} ${className}`}
+      style={{ "--to": to, objectPosition: position }}
+    />
+  );
+}
+
+/**
+ * Decorative section wash. Purely presentational, so it is aria-hidden and its
+ * opacity is baked into CSS rather than gated on a load event — a background
+ * that fades in after the copy has already painted reads as a glitch.
+ */
+function Wash({ name, opacity = 0.14, position = "center", className = "", eager = false }) {
+  const src = art(name);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      srcSet={artSrcSet(name) || undefined}
+      sizes={artSizes(name) || undefined}
+      alt=""
+      aria-hidden="true"
+      // The hero wash is above the fold: lazy-loading it would leave the first
+      // screen flat until after layout. Every other wash is below it.
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : "low"}
+      decoding="async"
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+      className={`lp-wash ${className}`}
+      style={{ opacity, objectPosition: position }}
+    />
+  );
+}
+
+/**
+ * The BillTap mark. Falls back to the lucide glyph if the render fails to load,
+ * because a nav with no logo at all is worse than a generic one.
+ */
+function Logo({ size = 32 }) {
+  const [failed, setFailed] = useState(false);
+  const src = art("logo");
+  if (!src || failed) {
+    return (
+      <div
+        className="rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ background: "#00c896", width: size, height: size }}
+      >
+        <QrCode className="text-white" style={{ width: size * 0.62, height: size * 0.62 }} />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      srcSet={artSrcSet("logo") || undefined}
+      sizes={artSizes("logo") || undefined}
+      alt="BillTap"
+      width={size}
+      height={size}
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="rounded-lg flex-shrink-0 object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
+}
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -62,16 +152,16 @@ export default function Landing() {
   };
 
   const steps = [
-    { icon: "📸", title: "Photo the Bill", desc: "Host photographs the receipt. AI reads every item instantly. No typing.", ariaHidden: true },
-    { icon: "📱", title: "Share the QR", desc: "A unique QR code appears. Everyone scans it. No app download. No account needed.", ariaHidden: true },
-    { icon: "✅", title: "Claim Your Items", desc: "Each person claims what they ordered. Tax and tip split proportionally.", ariaHidden: true },
-    { icon: "💸", title: "Pay in One Tap", desc: "Venmo, Cash App, or Zelle. One tap. Host sees paid/unpaid in real time.", ariaHidden: true },
+    { img: "step-photo", alt: "A restaurant table seen from above, hands reaching toward a phone that reads the paper check.", title: "Photo the Bill", desc: "Host photographs the receipt. AI reads every item instantly. No typing." },
+    { img: "step-share", alt: "A phone floating against dark space, its screen filled with a glowing QR code.", title: "Share the QR", desc: "A unique QR code appears. Everyone scans it. No app download. No account needed." },
+    { img: "step-claim", alt: "Phones arranged in a circle, each screen showing a claimed item marked with a check.", title: "Claim Your Items", desc: "Each person claims what they ordered. Tax and tip split proportionally." },
+    { img: "step-pay", alt: "A phone screen showing a payment confirmed, coins drifting upward from it.", title: "Pay in One Tap", desc: "Venmo, Cash App, or Zelle. One tap. Host sees paid/unpaid in real time." },
   ];
 
   const splitModes = [
-    { icon: "⚖️", title: "Even Split", desc: "Everyone pays the same. Auto-divides as guests join.", accentColor: "#00c896", borderStyle: "4px solid #00c896", ariaHidden: true },
-    { icon: "📋", title: "Itemized Split", desc: "Claim exactly what you ordered. Tax and tip prorated automatically.", accentColor: "#60a5fa", borderStyle: "4px solid #60a5fa", ariaHidden: true },
-    { icon: "⚙️", title: "Custom Split", desc: "Percentage, fixed amounts, or shares. You control who pays what.", accentColor: "#d4af37", borderStyle: "4px solid #d4af37", ariaHidden: true },
+    { img: "mode-even", alt: "A receipt divided into equal glowing slices, like a pie chart.", title: "Even Split", desc: "Everyone pays the same. Auto-divides as guests join.", borderStyle: "4px solid #00c896" },
+    { img: "mode-itemized", alt: "A receipt with individual line items lit up separately, each floating above the paper.", title: "Itemized Split", desc: "Claim exactly what you ordered. Tax and tip prorated automatically.", borderStyle: "4px solid #60a5fa" },
+    { img: "mode-custom", alt: "Adjustable percentage sliders and segments arranged on a grid.", title: "Custom Split", desc: "Percentage, fixed amounts, or shares. You control who pays what.", borderStyle: "4px solid #d4af37" },
   ];
 
   const features = [
@@ -177,6 +267,47 @@ export default function Landing() {
         .floating {
           animation: float 6s ease-in-out infinite;
         }
+        /* ── Art ──────────────────────────────────────────────────────────
+           The renders are 3D product illustration on the same deep navy the
+           page already uses, so they composite into the sections rather than
+           sitting on top of them as photographs would. */
+        .lp-img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          opacity: 0;
+          transition: opacity 0.5s ease;
+        }
+        .lp-img.is-loaded { opacity: var(--to, 1); }
+
+        .lp-wash {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          pointer-events: none;
+          user-select: none;
+        }
+        /* Every wash carries a scrim above it so body copy keeps its contrast
+           no matter how bright a patch of the render lands behind it. */
+        .lp-scrim { position: absolute; inset: 0; pointer-events: none; }
+
+        /* Card media band. The aspect ratio is fixed so a row of cards stays on
+           a baseline whether or not the art has arrived. */
+        .lp-media {
+          position: relative;
+          aspect-ratio: 16 / 10;
+          overflow: hidden;
+          background: linear-gradient(135deg, rgba(0,200,150,0.12) 0%, rgba(10,14,26,0.9) 70%);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .lp-img { transition: none; }
+          .floating, .qr-pulse { animation: none; }
+        }
+
         .hero-text-1 { animation: fade-up 0.6s ease both; }
         .hero-text-2 { animation: fade-up 0.6s ease 0.1s both; }
         .hero-text-3 { animation: fade-up 0.6s ease 0.2s both; }
@@ -190,9 +321,7 @@ export default function Landing() {
           <div className="flex items-center justify-between h-16 md:h-20">
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#00c896" }}>
-                <QrCode className="w-5 h-5 text-white" />
-              </div>
+              <Logo size={32} />
               <span className="font-heading font-bold text-lg" style={{ color: "#00c896" }}>BillTap</span>
             </div>
 
@@ -216,11 +345,15 @@ export default function Landing() {
 
       {/* ── HERO ── */}
       <section className="relative min-h-[100dvh] flex items-center pt-16 overflow-hidden dot-grid">
-        {/* Background glow circles */}
+        {/* Full-bleed art, then the dot grid and glows on top of it. The scrim
+            is heavy on the left because that is where the H1 and subhead sit —
+            the copy has to stay legible over whatever the render does there. */}
         <div className="absolute inset-0 pointer-events-none">
+          <Wash name="hero" opacity={0.5} eager />
+          <div className="lp-scrim" style={{ background: "linear-gradient(90deg, rgba(10,14,26,0.96) 0%, rgba(10,14,26,0.86) 45%, rgba(10,14,26,0.6) 100%)" }} />
+          <div className="lp-scrim" style={{ background: "linear-gradient(180deg, rgba(10,14,26,0.85) 0%, transparent 30%, transparent 65%, #0a0e1a 100%)" }} />
           <div className="qr-pulse absolute" style={{ top: "20%", left: "50%", transform: "translateX(-50%)", width: "min(80vw, 600px)", height: "min(80vw, 600px)", borderRadius: "50%", background: "radial-gradient(circle, rgba(0,200,150,0.08) 0%, transparent 70%)" }} />
           <div className="qr-pulse absolute" style={{ top: "15%", left: "50%", transform: "translateX(-50%)", width: "min(60vw, 450px)", height: "min(60vw, 450px)", borderRadius: "50%", background: "radial-gradient(circle, rgba(0,200,150,0.06) 0%, transparent 70%)", animationDelay: "1s" }} />
-          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 30%, rgba(10,14,26,0.9) 100%)" }} />
         </div>
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 w-full">
@@ -302,19 +435,28 @@ export default function Landing() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" className="py-16 md:py-24" style={{ background: "#111827" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="how-it-works" className="relative py-16 md:py-24 overflow-hidden" style={{ background: "#111827" }}>
+        <Wash name="band-steps" opacity={0.16} />
+        <div className="lp-scrim" style={{ background: "linear-gradient(180deg, #111827 0%, rgba(17,24,39,0.72) 35%, rgba(17,24,39,0.72) 65%, #111827 100%)" }} />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12 md:mb-16">
             <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>How It Works</h2>
             <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>Four steps to split any bill. No math required.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {steps.map((step, idx) => (
-              <div key={idx} className="card-hover p-6 md:p-8 rounded-2xl border relative" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
-                <div className="absolute top-4 right-4 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(0,200,150,0.1)", color: "#00c896" }}>0{idx + 1}</div>
-                <div className="text-4xl mb-4" aria-hidden={step.ariaHidden}>{step.icon}</div>
-                <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "#f2f2f4" }}>{step.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#8b90a8" }}>{step.desc}</p>
+              <div key={idx} className="card-hover rounded-2xl border relative overflow-hidden" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
+                <div className="lp-media">
+                  <Img name={step.img} alt={step.alt} />
+                  {/* Fades the render into the card body so the media band
+                      reads as part of the card rather than a pasted-in tile. */}
+                  <div className="lp-scrim" style={{ background: "linear-gradient(180deg, transparent 45%, rgba(30,37,51,0.85) 85%, #1e2533 100%)" }} />
+                  <div className="absolute top-3 right-3 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(10,14,26,0.75)", color: "#00c896" }}>0{idx + 1}</div>
+                </div>
+                <div className="p-6 md:p-7 pt-4">
+                  <h3 className="font-heading font-bold text-lg mb-2" style={{ color: "#f2f2f4" }}>{step.title}</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: "#8b90a8" }}>{step.desc}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -330,10 +472,15 @@ export default function Landing() {
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {splitModes.map((mode, idx) => (
-              <div key={idx} className="card-hover p-8 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: mode.borderStyle }}>
-                <div className="text-4xl mb-4" aria-hidden={mode.ariaHidden}>{mode.icon}</div>
-                <h3 className="font-heading font-bold text-xl mb-3" style={{ color: "#f2f2f4" }}>{mode.title}</h3>
-                <p className="text-base leading-relaxed" style={{ color: "#8b90a8" }}>{mode.desc}</p>
+              <div key={idx} className="card-hover rounded-2xl overflow-hidden" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: mode.borderStyle }}>
+                <div className="lp-media" style={{ aspectRatio: "3 / 2" }}>
+                  <Img name={mode.img} alt={mode.alt} />
+                  <div className="lp-scrim" style={{ background: "linear-gradient(180deg, transparent 50%, rgba(30,37,51,0.85) 88%, #1e2533 100%)" }} />
+                </div>
+                <div className="p-8 pt-5">
+                  <h3 className="font-heading font-bold text-xl mb-3" style={{ color: "#f2f2f4" }}>{mode.title}</h3>
+                  <p className="text-base leading-relaxed" style={{ color: "#8b90a8" }}>{mode.desc}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -341,8 +488,10 @@ export default function Landing() {
       </section>
 
       {/* ── FEATURES GRID ── */}
-      <section id="features" className="py-16 md:py-24" style={{ background: "#111827" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="features" className="relative py-16 md:py-24 overflow-hidden" style={{ background: "#111827" }}>
+        <Wash name="band-features" opacity={0.18} />
+        <div className="lp-scrim" style={{ background: "linear-gradient(180deg, #111827 0%, rgba(17,24,39,0.7) 40%, rgba(17,24,39,0.7) 60%, #111827 100%)" }} />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12 md:mb-16">
             <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>Built for Real Dinners</h2>
             <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>Everything you need to split bills without the drama.</p>
@@ -428,8 +577,10 @@ export default function Landing() {
           </div>
 
           {/* Waitlist card */}
-          <div className="max-w-2xl mx-auto mt-10 p-6 rounded-2xl" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
-            <div className="text-3xl mb-3">🚀</div>
+          <div className="relative max-w-2xl mx-auto mt-10 p-6 rounded-2xl overflow-hidden" style={{ background: "#1e2533", border: "1px solid #2d3748", borderLeft: "4px solid #00c896" }}>
+            <Wash name="celebrate" opacity={0.22} position="top" />
+            <div className="lp-scrim" style={{ background: "linear-gradient(180deg, rgba(30,37,51,0.55) 0%, rgba(30,37,51,0.92) 55%, #1e2533 100%)" }} />
+            <div className="relative">
             <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>Pro Features Coming Soon</h3>
             <p className="text-sm mb-5" style={{ color: "#8b90a8" }}>
               We're watching how people use BillTap. When we see what you actually need, we'll build it. Tell us what would make BillTap worth paying for.
@@ -471,13 +622,16 @@ export default function Landing() {
                 <p className="text-xs mt-3" style={{ color: "#4a5068" }}>No spam. One email when Pro launches. Unsubscribe anytime.</p>
               </>
             )}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── TRUST SIGNALS ── */}
-      <section id="security" className="py-16 md:py-24" style={{ background: "#111827" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="security" className="relative py-16 md:py-24 overflow-hidden" style={{ background: "#111827" }}>
+        <Wash name="band-stats" opacity={0.16} />
+        <div className="lp-scrim" style={{ background: "linear-gradient(180deg, #111827 0%, rgba(17,24,39,0.74) 40%, rgba(17,24,39,0.74) 60%, #111827 100%)" }} />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="font-heading text-3xl md:text-4xl font-bold mb-4" style={{ color: "#f2f2f4" }}>By the Numbers</h2>
           </div>
@@ -507,8 +661,10 @@ export default function Landing() {
       </section>
 
       {/* ── FINAL CTA ── */}
-      <section className="py-16 md:py-24" style={{ background: "#0a0e1a" }}>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <section className="relative py-16 md:py-24 overflow-hidden" style={{ background: "#0a0e1a" }}>
+        <Wash name="band-cta" opacity={0.28} />
+        <div className="lp-scrim" style={{ background: "radial-gradient(ellipse at center, rgba(10,14,26,0.55) 0%, rgba(10,14,26,0.9) 60%, #0a0e1a 100%)" }} />
+        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="font-heading text-3xl md:text-5xl font-bold mb-6 leading-tight" style={{ color: "#f2f2f4" }}>
             The bill just came.
             <br />
@@ -560,9 +716,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-4 gap-8 mb-10">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#00c896" }}>
-                  <QrCode className="w-5 h-5 text-white" />
-                </div>
+                <Logo size={32} />
                 <span className="font-heading font-bold text-xl" style={{ color: "#00c896" }}>BillTap</span>
               </div>
               <p className="text-sm max-w-xs leading-relaxed" style={{ color: "#8b90a8" }}>
