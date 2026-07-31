@@ -32,6 +32,7 @@ function SessionHostComponent() {
   const [allPaidCelebrated, setAllPaidCelebrated] = useState(false);
   const [showSummaryCard, setShowSummaryCard] = useState(false);
   const celebratedRef = useRef(false);
+  const qrTokenExpiryRef = useRef(null);
 
   const sessionId = new URLSearchParams(window.location.search).get("id");
   const participants = session?.participants || [];
@@ -44,7 +45,13 @@ function SessionHostComponent() {
     const res = await base44.functions.invoke("generateQRSignature", { session_id: sessionId });
     if (res.data?.qr_token) {
       setQrToken(res.data.qr_token);
-      setQrTokenExpiry(Date.now() + 25 * 60 * 1000); // refresh before 30-min expiry
+      const expiry = Date.now() + 25 * 60 * 1000; // refresh before 30-min expiry
+      // Mirrored into a ref as well as state. The refresh interval below reads
+      // the ref, so it can check freshness without taking a dependency on a
+      // value this function sets — which is what made the effect re-run and
+      // re-fire itself.
+      qrTokenExpiryRef.current = expiry;
+      setQrTokenExpiry(expiry);
     }
   }, [sessionId]);
 
@@ -60,14 +67,25 @@ function SessionHostComponent() {
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
-  // Generate signed QR token on mount and refresh before expiry
+  // Generate a signed QR token on mount, then refresh it shortly before expiry.
+  //
+  // qrTokenExpiry must NOT be a dependency here. refreshQrToken sets it, so
+  // listing it meant: effect runs, mints a token, sets expiry, effect re-runs
+  // because expiry changed, mints another token, and so on for as long as the
+  // host page stayed open. Every iteration is a generateQRSignature invocation,
+  // and the host page is the one people leave open on the table all evening.
+  //
+  // The interval reads the expiry from a ref instead, which is exactly the case
+  // refs exist for: state the callback needs to see but must not re-subscribe
+  // to.
   useEffect(() => {
     refreshQrToken();
     const interval = setInterval(() => {
-      if (!qrTokenExpiry || Date.now() > qrTokenExpiry) refreshQrToken();
+      const expiry = qrTokenExpiryRef.current;
+      if (!expiry || Date.now() > expiry) refreshQrToken();
     }, 60 * 1000);
     return () => clearInterval(interval);
-  }, [refreshQrToken, qrTokenExpiry]);
+  }, [refreshQrToken]);
 
   useEffect(() => {
     if (!sessionId) return;

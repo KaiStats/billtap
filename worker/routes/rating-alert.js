@@ -73,6 +73,18 @@ export async function onRequestPost({ request, env }) {
     }
 
     const { data: rating } = await ratingResp.json();
+
+    // Already paged for this rating — do not page again.
+    //
+    // This endpoint is unauthenticated by necessity: the guest firing it has no
+    // account. Without a dedupe, the same rating_id could be replayed for as
+    // long as anyone cared to, and each replay is another email and another
+    // SMS. There is no spend cap on the Twilio or Postmark accounts, so the
+    // ceiling on that was the attacker's patience.
+    if (rating?.alerted_at) {
+      return json({ ok: true, already_alerted: true }, 200);
+    }
+
     if (!rating || !rating.restaurant_id) {
       return json({ error: 'Invalid rating' }, 400);
     }
@@ -146,6 +158,19 @@ export async function onRequestPost({ request, env }) {
       guestEmail ? `Reply: ${guestEmail}` : 'No guest email.',
     ].join(' — ');
 
+    // Claim the alert BEFORE sending, not after.
+    //
+    // Stamping afterwards leaves the whole send window open to a replay, and
+    // two concurrent requests would both read alerted_at as empty and both
+    // page. Claiming first means the loser of that race sends nothing.
+    const claimed = await stampAlerted(appId, BASE44_MASTER_KEY, ratingId);
+    if (!claimed) {
+      // Could not claim, so cannot guarantee this is not a duplicate. Refusing
+      // is the safe direction when the failure mode is an unbounded phone bill.
+      console.error('rating-alert: could not stamp alerted_at, refusing to send');
+      return json({ error: 'Service error' }, 500);
+    }
+
     // Email and SMS in parallel
     const [emailResult, smsResult] = await Promise.all([
       sendEmail(env, {
@@ -158,6 +183,24 @@ export async function onRequestPost({ request, env }) {
       alertPhone ? sendSms(env, { to: alertPhone, body: smsBody }) : { ok: false },
     ]);
 
+    // Nothing reached the operator. Release the claim so a retry is possible —
+    // a permanently swallowed alert is the failure this endpoint exists to
+    // prevent — and answer 5xx rather than 200.
+    //
+    // An operator with no phone number configured is not a failure: email alone
+    // is the documented behaviour, so only treat it as failed when the email
+    // failed too.
+    if (!emailResult.ok && !smsResult.ok) {
+      await stampAlerted(appId, BASE44_MASTER_KEY, ratingId, null);
+      console.error(
+        `rating-alert: no channel delivered (email: ${emailResult.reason}, sms: ${smsResult.reason})`,
+      );
+      return json(
+        { error: 'Alert could not be delivered', reason: emailResult.reason, sms_reason: smsResult.reason },
+        502,
+      );
+    }
+
     return json({
       ok: true,
       notified: emailResult.ok,
@@ -168,5 +211,32 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     console.error('rating-alert error:', error.message);
     return json({ error: 'Internal server error' }, 500);
+  }
+}
+
+/**
+ * Sets (or clears) GuestRating.alerted_at as service role.
+ *
+ * Returns true when the write landed. The caller treats a failure as "do not
+ * send", because the whole point of the stamp is that it is the only thing
+ * standing between an unauthenticated endpoint and an unbounded SMS bill.
+ */
+async function stampAlerted(appId, masterKey, ratingId, value = Date.now()) {
+  try {
+    const res = await fetch(
+      `https://api.base44.com/v0/apps/${appId}/entities/GuestRating/${ratingId}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${masterKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ alerted_at: value }),
+      },
+    );
+    return res.ok;
+  } catch (error) {
+    console.error('rating-alert: alerted_at write failed:', error.message);
+    return false;
   }
 }

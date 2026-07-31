@@ -102,14 +102,32 @@
 1. **Stop writes** — if loss is ongoing, temporarily disable session creation by returning a maintenance error in `checkSessionRateLimit`.
 2. **Do not run any delete/cleanup jobs** — pause `cleanupExpiredSessions` automation immediately (Base44 Dashboard → Automations → toggle off).
 3. **Contact Base44 support** at support@base44.com with: app ID, entity names, approximate time of loss, and a description.
-4. **Check nightly backup** — latest snapshot in `/tmp` or storage location (see `nightlyBackup` function logs).
+### ⚠️ There is no restorable backup. Do not spend incident time looking for one.
 
-### Recovery from Backup
-1. Locate the most recent backup file produced by `nightlyBackup` function.
-2. Parse the JSON snapshot.
-3. Re-import records using `base44.asServiceRole.entities.X.bulkCreate()` in a one-off script.
-4. Verify record counts match backup.
-5. Re-enable session creation.
+`nightlyBackup` does not produce a recoverable artefact today:
+
+- It writes to `/tmp` inside an ephemeral Deno isolate. That filesystem is gone
+  the moment the invocation ends, so nothing is readable afterwards — not hours
+  later, not minutes later.
+- The upload to external storage is still commented out.
+- It covers 2 of 8 entities (`Session`, `Receipt`), each capped at the SDK's
+  200-record `list()` default, so even the in-memory snapshot is partial.
+
+This section used to describe locating that file and re-importing from it. That
+procedure could never have worked. The danger was not the missing backup so much
+as the confident instructions for restoring from it, which read as reassurance
+during exactly the incident where someone needs the truth quickly.
+
+**The real position: Base44 holds the only copy of production data.** If data is
+lost, recovery depends entirely on Base44 support and whatever retention they
+keep. Escalate to them immediately (step 3) rather than delaying that call to
+hunt for a local snapshot.
+
+**To make this section real**, `nightlyBackup` needs three things: durable
+upload wired up (Cloudflare R2 is already in the stack, so a bucket plus
+`BACKUP_S3_*` secrets), pagination past the 200-record cap, and the remaining
+six entities — `Restaurant`, `GuestRating`, `GuestContact`, `RestaurantLead`,
+`Waitlist`, `User`. Until all three are done, leave this warning where it is.
 
 ### Data Loss Triage Matrix
 | Scope | Likely Cause | Owner |
