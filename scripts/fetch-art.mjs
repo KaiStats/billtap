@@ -31,6 +31,8 @@ import {
   ART_MANIFEST as LANDING_ART,
   ROLES as LANDING_ROLES,
   LANDING_DIR,
+  VIDEO_MANIFEST,
+  VIDEO_DIR,
 } from "../src/lib/landing-assets.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -116,7 +118,32 @@ for (const { label, manifest, roles, dir } of SETS) {
   }
 }
 
-console.log(`\n${ok}/${total} re-encoded`);
+// Video is copied rather than re-encoded: sharp does not touch it, and there is
+// no width ladder to build because a <video> scales itself. It still has to be
+// self-hosted — index.html's CSP has no media-src, so it falls back to
+// default-src 'self' and a CDN URL simply would not play.
+const videoOut = join(ROOT, "public", VIDEO_DIR.replace(/^\//, ""));
+await mkdir(videoOut, { recursive: true });
+if (Object.keys(VIDEO_MANIFEST).length) console.log(`\nvideo  ->  public${VIDEO_DIR}`);
+
+for (const [name, { file }] of Object.entries(VIDEO_MANIFEST)) {
+  total += 1;
+  try {
+    const buf = await original(name, file);
+    const path = join(videoOut, `${name}.mp4`);
+    await writeFile(path, buf);
+    sourceBytes += buf.length;
+    outputBytes += buf.length;
+    widestSetBytes += buf.length;
+    ok += 1;
+    console.log(`  ok   ${name.padEnd(15)} ${kb(buf.length).padStart(9)}  ->  public${VIDEO_DIR}/${name}.mp4`);
+  } catch (err) {
+    missing.push(`video ${name}`);
+    console.log(`  MISS ${name.padEnd(15)} ${err.message}`);
+  }
+}
+
+console.log(`\n${ok}/${total} fetched`);
 
 if (ok) {
   console.log(`  originals            ${kb(sourceBytes)}`);

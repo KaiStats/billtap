@@ -3,7 +3,53 @@ import { Link, useNavigate } from "react-router-dom";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
-import { art, artSrcSet, artSizes } from "@/lib/landing-assets";
+import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/lib/landing-assets";
+
+/**
+ * The product demo, framed as a phone because the clip is 9:16.
+ *
+ * Autoplay is muted and inline or mobile browsers refuse it outright. It is
+ * also silent by design: the render carries an audio track, but a landing page
+ * that makes noise on arrival is a page people close.
+ *
+ * `preload="none"` keeps ten seconds of 720p off the critical path. The poster
+ * is the still the clip was generated from — already on the page as step-photo —
+ * so a real frame paints immediately and the video streams in behind it.
+ *
+ * Under prefers-reduced-motion nothing plays on its own: the poster stands and
+ * the controls appear, so the demo stays reachable by anyone who wants it.
+ */
+function DemoVideo({ name, className = "" }) {
+  const [reduced, setReduced] = useState(false);
+  const src = video(name);
+  const entry = VIDEO_MANIFEST[name];
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = (e) => setReduced(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  if (!src || !entry) return null;
+
+  return (
+    <video
+      className={className}
+      style={{ aspectRatio: entry.aspect, width: "100%", display: "block", objectFit: "cover" }}
+      src={src}
+      poster={videoPoster(name) || undefined}
+      autoPlay={!reduced}
+      loop={!reduced}
+      muted
+      playsInline
+      controls={reduced}
+      preload="none"
+      aria-label="Ten-second demo: a phone scans a paper receipt, the items light up one by one, a QR code appears, friends' phones check off what they ordered, and the payment confirms."
+    />
+  );
+}
 
 /**
  * Content image that fades up once decoded and removes itself on error, so the
@@ -442,6 +488,18 @@ export default function Landing() {
           <div className="text-center mb-12 md:mb-16">
             <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold mb-4" style={{ color: "#f2f2f4" }}>How It Works</h2>
             <p className="text-lg md:text-xl max-w-2xl mx-auto" style={{ color: "#8b90a8" }}>Four steps to split any bill. No math required.</p>
+          </div>
+
+          {/* The whole flow in ten seconds, above the four steps that describe
+              it. Phone-framed because the clip is 9:16, and capped narrow so it
+              introduces the section rather than swallowing it. */}
+          <div className="flex justify-center mb-12 md:mb-16">
+            <div className="relative floating" style={{ width: "min(72vw, 260px)" }}>
+              <div className="qr-pulse absolute -inset-6 rounded-3xl" style={{ background: "radial-gradient(circle, rgba(0,200,150,0.18) 0%, transparent 70%)" }} />
+              <div className="relative rounded-3xl p-2.5 border shadow-2xl" style={{ background: "#111827", borderColor: "#2d3748" }}>
+                <DemoVideo name="product-demo" className="rounded-2xl" />
+              </div>
+            </div>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {steps.map((step, idx) => (

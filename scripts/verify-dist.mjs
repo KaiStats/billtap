@@ -36,17 +36,22 @@ async function walk(dir, exts, out = []) {
 }
 
 /**
- * Every /img/... URL the built output actually asks for.
+ * Every /img/ and /video/ URL the built output actually asks for.
  *
- * Covers src, srcset and anything a bundled module builds by string
+ * Covers src, srcset, poster and anything a bundled module builds by string
  * concatenation, which is how src/lib/*-assets.js emits its paths.
  */
-async function referencedImages() {
+async function referencedMedia() {
   const files = await walk(DIST, new Set(['.html', '.js', '.css']));
   const refs = new Set();
   for (const file of files) {
     const text = await readFile(file, 'utf8');
     for (const m of text.matchAll(/\/img\/[a-zA-Z0-9/_.-]+\.(?:webp|png|jpe?g|svg|avif)/g)) {
+      refs.add(m[0]);
+    }
+    // Video too: it is fetched by a separate step that can fail on its own, and
+    // a <video> whose src 404s just sits on its poster showing nothing wrong.
+    for (const m of text.matchAll(/\/video\/[a-zA-Z0-9/_.-]+\.(?:mp4|webm|mov)/g)) {
       refs.add(m[0]);
     }
   }
@@ -94,12 +99,12 @@ if (!(await exists(join(DIST, 'index.html')))) {
   // The manifests and the files on disk are produced by different scripts at
   // different times, so the only reliable check is against the built output.
   const missingImages = [];
-  for (const ref of await referencedImages()) {
+  for (const ref of await referencedMedia()) {
     if (!(await exists(join(DIST, ref)))) missingImages.push(ref);
   }
   if (missingImages.length) {
     problems.push(
-      `${missingImages.length} referenced image(s) are missing from dist/, so they will 404:\n    ` +
+      `${missingImages.length} referenced asset(s) are missing from dist/, so they will 404:\n    ` +
         missingImages.join('\n    '),
     );
     hint = 'node scripts/fetch-art.mjs && npm run build:static';

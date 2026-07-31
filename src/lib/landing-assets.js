@@ -125,6 +125,40 @@ export const ART_MANIFEST = {
 /** Where scripts/fetch-art.mjs writes this set. */
 export const LANDING_DIR = LOCAL_DIR;
 
+/** Where scripts/fetch-art.mjs writes video, which is copied rather than re-encoded. */
+export const VIDEO_DIR = "/video";
+
+/**
+ * Video, which unlike the stills has no choice about being self-hosted.
+ *
+ * index.html's CSP sets `default-src 'self'` and never names media-src, so a
+ * <video> src falls back to 'self' and a Higgsfield CDN URL is blocked outright
+ * — img-src is the directive that was widened to https:, and it does not cover
+ * media. Pointing at the CDN here would silently play nothing.
+ *
+ * `poster` is the render the clip was generated from, so the first frame is
+ * already on the page as step-photo and costs no extra bytes.
+ */
+export const VIDEO_MANIFEST = {
+  "product-demo": {
+    file: "hf_20260725_170536_238990be-50ff-4511-b005-9f802c9f663f.mp4",
+    poster: "step-photo",
+    // 9:16 portrait, 720x1280, 10s.
+    aspect: "9 / 16",
+  },
+};
+
+/** Resolve a video key to its self-hosted path. */
+export function video(name) {
+  return VIDEO_MANIFEST[name] ? `${VIDEO_DIR}/${name}.mp4` : null;
+}
+
+/** The still to paint until the video is decoded — its own first frame. */
+export function videoPoster(name) {
+  const entry = VIDEO_MANIFEST[name];
+  return entry ? art(entry.poster) : null;
+}
+
 /** True when the page is serving re-encoded local WebP rather than CDN PNGs. */
 export const isSelfHosted = () => SELF_HOSTED;
 
