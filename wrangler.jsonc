@@ -45,6 +45,31 @@
   // missing Playwright browser, and vite had already written a valid dist/
   // without snapshots. A follow-up `wrangler deploy` shipped it, and the only
   // symptom in production was the wrong <title>.
+  // Per-IP rate limiting on the unauthenticated /api endpoints.
+  //
+  // COMMENTED OUT so a deploy cannot fail on a binding that may not be enabled
+  // for this account. Uncomment to activate — worker/lib/rate-limit.js already
+  // reads it and no-ops when it is absent, so nothing else changes.
+  //
+  // 60 requests per minute per IP. A whole table splitting one check is a
+  // handful of calls; 60 is comfortably above real use and far below abuse.
+  //
+  // Covers createSession, joinSession, markMePaid, submitGuestRating,
+  // verifyQRToken, rating-alert and restaurant-lead — every endpoint that
+  // accepts an anonymous caller, which they must, because a diner scanning a
+  // table tent has no account.
+  //
+  // "unsafe": {
+  //   "bindings": [
+  //     {
+  //       "name": "API_RATE_LIMITER",
+  //       "type": "ratelimit",
+  //       "namespace_id": "1001",
+  //       "simple": { "limit": 60, "period": 60 }
+  //     }
+  //   ]
+  // },
+
   // Nightly backup. Runs worker/routes/nightly-backup.js.
   //
   // 09:00 UTC — after close in America/Los_Angeles, so a day's sessions are

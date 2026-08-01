@@ -22,6 +22,7 @@ import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { proxyToBase44 } from './routes/base44-proxy.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
+import { rateLimit } from './lib/rate-limit.js';
 
 const BASE44_PREFIX = '/api/apps/';
 
@@ -175,6 +176,14 @@ export default {
     // and function calls arrive same-origin under /api/apps/<appId>/...
     if (path.startsWith(BASE44_PREFIX)) {
       return proxyToBase44(request, env, path.slice(BASE44_PREFIX.length));
+    }
+
+    // Per-IP limit on the unauthenticated endpoints. Returns null and lets the
+    // request through when the binding is absent or the check itself fails —
+    // see worker/lib/rate-limit.js.
+    if (path.startsWith('/api/')) {
+      const limited = await rateLimit(request, env, path);
+      if (limited) return limited;
     }
 
     // The Base44 functions, running here. Base44 blocks backend functions on
