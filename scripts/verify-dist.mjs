@@ -58,6 +58,17 @@ async function referencedMedia() {
   return [...refs].sort();
 }
 
+/**
+ * --assets-only: check that referenced images and video exist, skip the
+ * prerender snapshot checks.
+ *
+ * For CI, which runs `npm run build` because prerendering needs a real browser
+ * and a ~150 MB download on every push is not worth it. The full gate still
+ * runs on every actual deploy through wrangler's build.command, so nothing is
+ * weakened — this just lets CI check the half it can.
+ */
+const ASSETS_ONLY = process.argv.includes('--assets-only');
+
 const problems = [];
 let hint = null;
 
@@ -69,7 +80,7 @@ if (!(await exists(join(DIST, 'index.html')))) {
   problems.push(`prerendering failed and left dist/ incomplete:\n    ${why}`);
   hint = 'npx playwright install chromium && npm run build:static';
 } else {
-  for (const [route, file] of Object.entries(PRERENDERED)) {
+  for (const [route, file] of ASSETS_ONLY ? [] : Object.entries(PRERENDERED)) {
     const path = join(DIST, file);
     if (!(await exists(path))) {
       problems.push(`${route} has no snapshot (expected dist${file})`);
@@ -122,4 +133,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`dist/ verified — ${Object.keys(PRERENDERED).length} prerendered routes present`);
+console.log(
+  ASSETS_ONLY
+    ? 'dist/ verified — every referenced image and video exists (snapshots not checked)'
+    : `dist/ verified — ${Object.keys(PRERENDERED).length} prerendered routes present`,
+);

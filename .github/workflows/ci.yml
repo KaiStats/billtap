@@ -1,0 +1,59 @@
+name: CI
+
+# Runs the checks that already exist but nothing was running automatically.
+#
+# There are 27 tests in this repo, including five covering the concurrent-claim
+# race in joinSession — two diners claiming at the same table, where the loser
+# used to have their claim silently erased. Nothing ran them on push, so a
+# change that broke the money maths would have shipped and been discovered by a
+# restaurant.
+#
+# Deliberately not a deploy gate. Base44's platform commits to main on its own,
+# and a workflow cannot gate a change that has already taken effect in
+# production. This catches regressions in code review, which is what it is good
+# for — do not mistake it for a security control.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` rather than `install`: it honours the lockfile exactly, so CI
+      # tests the dependency tree that actually ships.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # The build has caught real breakage that lint and tests do not: a bad
+      # import, a syntax error in a page that no test imports.
+      - name: Build
+        run: npm run build
+
+      # Every /img/ and /video/ URL the build references must exist. This is the
+      # check that catches the class of bug where landing-assets.js advertised a
+      # 2560px hero variant that was never generated — invisible on an ordinary
+      # display, and the hero art silently vanished on Retina screens.
+      #
+      # Prerendering needs a real browser, which is a slow download, so CI skips
+      # it and verify-dist is told to expect that. The full gate still runs on
+      # every actual deploy via wrangler's build.command.
+      - name: Verify referenced assets exist
+        run: node scripts/verify-dist.mjs --assets-only

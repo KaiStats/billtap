@@ -70,6 +70,22 @@
   //   ]
   // },
 
+  // Logs and errors, searchable in the Cloudflare dashboard.
+  //
+  // Without this the only way to see a failure was to be running `wrangler
+  // tail` at the exact moment it happened. That is how the app spent an unknown
+  // stretch of time unable to perform a single core operation — every
+  // functions.invoke answering "Functions are blocked" — while the prerendered
+  // marketing pages carried on rendering perfectly and nothing reported a
+  // problem.
+  //
+  // The console.error calls in worker/routes/functions.js name the function
+  // that failed, so this makes "fn/createSession failed: ..." searchable after
+  // the fact rather than only in the moment.
+  "observability": {
+    "enabled": true
+  },
+
   // Nightly backup. Runs worker/routes/nightly-backup.js.
   //
   // 09:00 UTC — after close in America/Los_Angeles, so a day's sessions are
