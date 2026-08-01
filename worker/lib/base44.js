@@ -135,10 +135,16 @@ function entityApi(env, authHeaders) {
       return Array.isArray(rows) ? rows : [];
     },
 
-    async list(order, limit) {
+    /**
+     * `offset` exists for the nightly backup. Without it a caller can only ever
+     * see the first page, which is how the old backup silently captured the
+     * most recent 200 rows of each entity and looked plausible doing it.
+     */
+    async list(order, limit, offset) {
       const qs = new URLSearchParams();
       if (order) qs.set('sort', order);
       if (limit) qs.set('limit', String(limit));
+      if (offset) qs.set('offset', String(offset));
       const rows = await call({ path: `/entities/${name}?${qs}` });
       return Array.isArray(rows) ? rows : [];
     },

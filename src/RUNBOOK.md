@@ -123,11 +123,27 @@ lost, recovery depends entirely on Base44 support and whatever retention they
 keep. Escalate to them immediately (step 3) rather than delaying that call to
 hunt for a local snapshot.
 
-**To make this section real**, `nightlyBackup` needs three things: durable
-upload wired up (Cloudflare R2 is already in the stack, so a bucket plus
-`BACKUP_S3_*` secrets), pagination past the 200-record cap, and the remaining
-six entities — `Restaurant`, `GuestRating`, `GuestContact`, `RestaurantLead`,
-`Waitlist`, `User`. Until all three are done, leave this warning where it is.
+**The code is now written and waiting on one command.** The job moved to
+`worker/routes/nightly-backup.js`, on a Cloudflare cron at 09:00 UTC — it had to
+leave Base44, which blocks backend functions on this plan, so a nightly job
+there would never have run. It covers all seven entities, pages past the
+200-record cap, writes to R2, and reads the object back to confirm it landed.
+
+It does nothing until a bucket exists:
+
+```bash
+npx wrangler r2 bucket create billtap-backups
+```
+
+then uncomment the `r2_buckets` block in `wrangler.jsonc` and deploy. Until
+then the cron fires, throws `BACKUP_BUCKET is not bound`, and the invocation is
+marked failed — on purpose. The failure being designed against is a backup that
+reports success and stores nothing, so an unconfigured one has to be loud.
+
+**Delete this whole warning once the bucket is live and you have confirmed an
+object for today's date exists**, and replace it with the restore procedure —
+fetch the JSON from R2, then re-import per entity as service role. Do not write
+that procedure before you have restored from it once.
 
 ### Data Loss Triage Matrix
 | Scope | Likely Cause | Owner |

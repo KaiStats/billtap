@@ -21,6 +21,7 @@ import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { proxyToBase44 } from './routes/base44-proxy.js';
+import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 
 const BASE44_PREFIX = '/api/apps/';
 
@@ -155,6 +156,17 @@ const LEGACY_REDIRECTS = {
 };
 
 export default {
+  /**
+   * Cron entry point. wrangler.jsonc's triggers.crons decides when.
+   *
+   * The backup lives here rather than in base44/functions because Base44 blocks
+   * backend functions on this app's plan — a nightly job there would never run,
+   * which is part of why the previous one had not.
+   */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(nightlyBackup(env));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
