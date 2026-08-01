@@ -2,7 +2,7 @@ import { useState } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
-import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap } from "lucide-react";
+import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap, Pencil, Check, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,20 @@ const RESTAURANT_SUGGESTIONS = [
 
 const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+/** One line of the receipt: what it was on the left, what it cost on the right. */
+function MoneyRow({ label, amount, muted }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5">
+      <span className={`text-[15px] leading-snug ${muted ? "text-muted-foreground" : "text-foreground"}`}>
+        {label}
+      </span>
+      <span className="font-semibold text-[15px] text-foreground tabular-nums shrink-0">
+        ${amount.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
 export default function NewReceipt() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -40,6 +54,17 @@ export default function NewReceipt() {
   const [titleSuggestions, setTitleSuggestions] = useState([]);
   const [showQuickEven, setShowQuickEven] = useState(false);
   const [quickTotal, setQuickTotal] = useState("");
+  /**
+   * The review screen opens read-only.
+   *
+   * It used to open with every item as two text inputs — an eight-item receipt
+   * meant nineteen editable fields, which reads as an instruction to check all
+   * nineteen. Almost nobody needs to: the scan is usually right. Showing the
+   * receipt as a receipt makes the default action "does this look like what I
+   * ate? yes" instead of "audit this form". Editing is one tap away, and opens
+   * by itself below when the parse is known to be shaky.
+   */
+  const [editing, setEditing] = useState(false);
 
   const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -126,6 +151,9 @@ Return a JSON with:
       setTip(result.tip || 0);
       setImageUrl(file_url);
       if (validation?.data) setParseValidation(validation.data);
+      // Only pre-open the editor when we already know the numbers are suspect.
+      // Anything else and the diner is being asked to fix what is not broken.
+      setEditing(validation?.data?.confidence === 'low' || (result.items || []).length === 0);
       setStep(2);
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'receipt_scanned', { items_count: (result.items || []).length });
@@ -257,10 +285,12 @@ Return a JSON with:
         </div>
         <div className="relative z-10 max-w-2xl mx-auto">
           <h1 className="text-2xl font-black text-white tracking-tight">New Split</h1>
-          <p className="text-white/60 text-sm mt-1">Scan a receipt to get started</p>
+          <p className="text-white/60 text-sm mt-1">
+            {step === 1 ? "Take a photo of the receipt" : "Check it looks right, then share the code"}
+          </p>
           {/* Step indicator */}
           <div className="flex gap-4 mt-4">
-            {["📸 Photo", "✏️ Review"].map((s, i) => (
+            {["Take a photo", "Check it"].map((s, i) => (
               <div key={s} className={`flex items-center gap-2 text-sm font-semibold ${step === i + 1 ? "text-white" : step > i + 1 ? "text-emerald-400" : "text-white/30"}`}>
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${step === i + 1 ? "bg-white text-purple-700" : step > i + 1 ? "bg-emerald-500 text-white" : "bg-white/10 text-white/30"}`}>{i + 1}</div>
                 {s}
@@ -385,104 +415,139 @@ Return a JSON with:
         )}
 
         {step === 2 && (
-          <div
-            className="rounded-2xl p-6 space-y-4"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-          >
+          <div className="space-y-4">
+
+            {/* Only speak up when there is something wrong. A banner on a clean
+                parse trains people to ignore the banner on a bad one. */}
             {parseValidation?.confidence === 'low' && (
-              <div className="bg-danger-muted border border-destructive/30 rounded-xl p-3 text-danger-muted-foreground text-sm flex items-start gap-2">
+              <div className="bg-danger-muted border border-destructive/30 rounded-2xl p-4 text-danger-muted-foreground text-sm flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
                 <div>
-                  <p className="font-bold">⚠️ We had trouble reading this receipt clearly</p>
-                  <p className="mt-1 text-xs">Please review each item carefully before continuing.</p>
-                  {parseValidation.issues?.sumMismatch && <p className="mt-1 text-xs">• Total mismatch: items add up to ${parseValidation.issues.calculatedTotal}, but receipt shows ${parseValidation.issues.expectedTotal}</p>}
+                  <p className="font-bold">This receipt was hard to read</p>
+                  <p className="mt-1">Please check the prices below before you share the code.</p>
+                  {parseValidation.issues?.sumMismatch && (
+                    <p className="mt-1 text-xs">
+                      The items add up to ${parseValidation.issues.calculatedTotal}, but the receipt says ${parseValidation.issues.expectedTotal}.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
             {parseValidation?.confidence === 'medium' && (
-              <div className="bg-warning-muted border border-warning/30 rounded-xl p-3 text-warning-muted-foreground text-sm flex items-start gap-2">
+              <div className="bg-warning-muted border border-warning/30 rounded-2xl p-4 text-warning-muted-foreground text-sm flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
-                <div><p className="font-bold">⚠️ Please double-check the items below</p></div>
+                <p className="font-bold">Give the prices a quick look before sharing.</p>
               </div>
             )}
-            <div className="bg-success-muted border border-success/20 rounded-xl p-3 text-success-muted-foreground text-sm font-medium flex items-center gap-2">
-              ✅ Found {items.length} items — fix anything that looks wrong
-            </div>
 
-            <div className="relative">
-              <Label htmlFor="bill-title" className="text-sm text-muted-foreground">Bill title</Label>
-              <Input id="bill-title" value={title} onChange={e => handleTitleChange(e.target.value)} className="mt-1 rounded-xl" autoComplete="off" />
-              {titleSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: '#1a1535', border: '1px solid rgba(255,255,255,0.12)' }}>
-                  {titleSuggestions.map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => { setTitle(s); setTitleSuggestions([]); }}
-                      className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm text-muted-foreground">Line Items</Label>
-                <Button size="sm" variant="outline" onClick={addItem} className="rounded-lg text-xs h-8">
-                  <Plus className="w-3 h-3 mr-1" aria-hidden="true" /> Add
-                </Button>
+            {/* The receipt, shown as a receipt */}
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              <div className="px-5 pt-5 pb-1">
+                {editing ? (
+                  <div className="relative">
+                    <Label htmlFor="bill-title" className="text-sm text-muted-foreground">Where were you?</Label>
+                    <Input id="bill-title" value={title} onChange={e => handleTitleChange(e.target.value)} className="mt-1 rounded-xl" autoComplete="off" />
+                    {titleSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: '#1a1535', border: '1px solid rgba(255,255,255,0.12)' }}>
+                        {titleSuggestions.map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => { setTitle(s); setTitleSuggestions([]); }}
+                            className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-black text-foreground truncate">{title || "Receipt"}</h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {items.length === 1 ? "1 item" : `${items.length} items`}
+                    </p>
+                  </>
+                )}
               </div>
-              {items.map((item, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Item name" aria-label={`Item ${i + 1} name`} className="flex-1 rounded-xl text-sm" />
-                  <Input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)} placeholder="Price" aria-label={`Item ${i + 1} price`} className="w-24 rounded-xl text-sm" />
-                  <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || `item ${i + 1}`}`} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors rounded-lg">
-                    <X className="w-4 h-4" aria-hidden="true" />
-                  </button>
+
+              <div className="px-5 py-3">
+                {editing ? (
+                  <div className="space-y-2">
+                    {items.map((item, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Item name" aria-label={`Item ${i + 1} name`} className="flex-1 min-w-0 rounded-xl text-sm" />
+                        {/* w-24 clipped the cents — "19.95" rendered as "19.9", which is
+                            the one thing on this screen that must never be misread. The
+                            box is narrower than it looks: the root font-size is fluid, so
+                            6rem is 84px here, and index.css gives every number input 16px
+                            of side padding via input[type="number"] — an attribute
+                            selector, which outranks a px-* utility. Hence extra width
+                            rather than less padding. */}
+                        <Input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(i, "price", parseFloat(e.target.value) || 0)} placeholder="Price" aria-label={`Item ${i + 1} price`} className="w-28 shrink-0 rounded-xl text-sm text-right tabular-nums" />
+                        <button onClick={() => removeItem(i)} aria-label={`Remove ${item.name || `item ${i + 1}`}`} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors rounded-lg">
+                          <X className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                    <Button variant="outline" onClick={addItem} className="w-full rounded-xl h-11">
+                      <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" /> Add an item
+                    </Button>
+                    <div className="pt-2">
+                      <Label htmlFor="tax-input" className="text-sm text-muted-foreground">Tax</Label>
+                      <Input id="tax-input" type="number" inputMode="decimal" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
+                    </div>
+                  </div>
+                ) : items.length > 0 ? (
+                  <ul className="divide-y divide-white/[0.06]">
+                    {items.map((item, i) => (
+                      <li key={i}>
+                        <MoneyRow
+                          label={(item.quantity || 1) > 1 ? `${item.quantity}× ${item.name}` : item.name}
+                          amount={item.price * (item.quantity || 1)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No items yet — tap <span className="font-semibold text-foreground">Change something</span> below to add them.
+                  </p>
+                )}
+              </div>
+
+              {/* The money, always visible — this is the part people actually read */}
+              <div className="px-5 py-4 border-t border-white/10" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                {/* A "$0.00" line is noise. Only show what was actually charged. */}
+                {!editing && tax > 0 && <MoneyRow label="Tax" amount={tax} muted />}
+                {tip > 0 && <MoneyRow label="Tip" amount={tip} muted />}
+                <div className="flex items-baseline justify-between gap-4 pt-3 mt-2 border-t border-white/10">
+                  <span className="font-bold text-foreground">Total</span>
+                  <span className="font-black text-3xl text-brand tabular-nums">${total.toFixed(2)}</span>
                 </div>
-              ))}
+              </div>
             </div>
 
-            <div>
-              <Label htmlFor="tax-input" className="text-sm text-muted-foreground">Tax</Label>
-              <Input id="tax-input" type="number" inputMode="decimal" value={tax} onChange={e => setTax(parseFloat(e.target.value) || 0)} className="mt-1 rounded-xl" />
-            </div>
+            <button
+              onClick={() => setEditing(v => !v)}
+              className="w-full min-h-[48px] rounded-2xl flex items-center justify-center gap-2 font-semibold text-sm transition-all active:scale-[0.99] bg-white/[0.04] border border-white/10 text-foreground hover:bg-white/[0.08]"
+            >
+              {editing
+                ? <><Check className="w-4 h-4" aria-hidden="true" /> Looks good, I&apos;m done</>
+                : <><Pencil className="w-4 h-4" aria-hidden="true" /> Change something</>}
+            </button>
 
-            <div>
-              <Label className="mb-2 block text-sm text-muted-foreground">Tip</Label>
+            <div className="pt-1">
+              <h3 className="font-bold text-foreground mb-2">Add a tip?</h3>
               <TipSelector subtotal={subtotal} tip={tip} onChange={setTip} />
             </div>
 
-            {/* Split Mode Selector */}
-            <div className="pt-2">
+            <div className="pt-1">
               <SplitModeSelector value={splitMode} onChange={setSplitMode} />
-            </div>
-
-            {/* Custom Split Info */}
-            {splitMode === "custom" && (
-              <div className="pt-4 border-t border-white/10">
-                <div className="rounded-xl p-4 bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm">
-                  <p className="font-bold mb-2">📊 Custom Split Setup</p>
-                  <p className="text-xs opacity-80">
-                    Generate the QR code first. After guests join by scanning, you can configure custom percentages, 
-                    fixed amounts, or shares from the Session Host screen.
-                  </p>
-                </div>
-              </div>
-            )}
-
-
-
-            {/* Total */}
-            <div
-              className="rounded-xl p-4 flex items-center justify-between"
-              style={{ background: 'rgba(102,126,234,0.08)', border: '1px solid rgba(102,126,234,0.2)' }}
-            >
-              <span className="text-muted-foreground font-medium">Total</span>
-              <span className="font-black text-2xl text-brand">${total.toFixed(2)}</span>
             </div>
 
             <button
@@ -491,8 +556,13 @@ Return a JSON with:
               className="w-full h-14 text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
               style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
             >
-              {saving ? <><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Creating session…</> : "🔗 Generate QR Code →"}
+              {saving
+                ? <><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Making your code…</>
+                : <><QrCode className="w-5 h-5" aria-hidden="true" /> Show the QR code</>}
             </button>
+            <p className="text-center text-xs text-muted-foreground">
+              Everyone at the table scans it — no app, no sign-up.
+            </p>
           </div>
         )}
       </div>

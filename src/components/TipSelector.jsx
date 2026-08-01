@@ -2,14 +2,22 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 
 const PRESETS = [
-  { label: "No Tip", value: 0 },
+  { label: "None", value: 0 },
   { label: "15%", value: 0.15 },
   { label: "18%", value: 0.18 },
   { label: "20%", value: 0.20 },
   { label: "25%", value: 0.25 },
 ];
 
-export default function TipSelector({ subtotal, tip, onChange, participantCount }) {
+/**
+ * Five buttons and a link.
+ *
+ * This used to end with a panel restating the tip in dollars and as a
+ * percentage of the subtotal — directly above the receipt's own Tip line,
+ * which says the same thing. The chosen button is already highlighted, so the
+ * panel was a third copy of an answer the diner had just given.
+ */
+export default function TipSelector({ subtotal, tip, onChange }) {
   const [showCustom, setShowCustom] = useState(false);
   const [customVal, setCustomVal] = useState("");
 
@@ -29,19 +37,18 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
     onChange(parseFloat(val) || 0);
   };
 
-  const tipPct = subtotal > 0 ? (tip / subtotal) * 100 : 0;
-
   return (
-    <fieldset className="space-y-3">
-      <legend className="sr-only">Tip Selection</legend>
-      <div className="grid grid-cols-5 gap-2" role="group" aria-labelledby="tip-group">
+    <fieldset className="space-y-2">
+      <legend className="sr-only">Tip amount</legend>
+      <div className="grid grid-cols-5 gap-1.5">
         {PRESETS.map(({ label, value }) => (
           <button
             key={value}
+            type="button"
             onClick={() => handlePreset(value)}
-            aria-label={`Tip ${label}`}
+            aria-label={label === "None" ? "No tip" : `Tip ${label}`}
             aria-pressed={selectedPreset === value}
-            className={`min-h-[44px] rounded-xl border-2 font-bold text-sm transition-all ${
+            className={`min-h-[48px] rounded-xl border-2 font-bold text-sm transition-all ${
               selectedPreset === value
                 ? "bg-brand border-brand text-brand-foreground"
                 : "bg-surface-raised border-border text-foreground hover:border-brand/40"
@@ -52,18 +59,15 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
         ))}
       </div>
 
-      <div id="tip-group" className="sr-only">Tip percentage or amount</div>
-
       <button
+        type="button"
         onClick={() => { setShowCustom(true); setCustomVal(tip > 0 ? tip.toFixed(2) : ""); }}
         aria-pressed={showCustom}
-        className={`w-full min-h-[44px] rounded-xl border-2 font-semibold text-sm transition-all ${
-          showCustom
-            ? "bg-brand-muted border-brand text-brand-muted-foreground"
-            : "bg-surface-raised border-border text-muted-foreground hover:border-brand/40"
+        className={`text-sm underline underline-offset-2 min-h-[44px] ${
+          showCustom ? "text-brand font-semibold" : "text-muted-foreground hover:text-foreground"
         }`}
       >
-        Custom Amount
+        Type a different amount
       </button>
 
       {showCustom && (
@@ -77,22 +81,6 @@ export default function TipSelector({ subtotal, tip, onChange, participantCount 
           className="rounded-xl text-center font-bold text-lg"
           autoFocus
         />
-      )}
-
-      {tip > 0 && (
-        <div className="bg-surface rounded-xl p-3 text-center space-y-0.5">
-          <div>
-            <span className="font-black text-lg text-foreground">${tip.toFixed(2)}</span>
-            {subtotal > 0 && (
-              <span className="text-muted-foreground text-sm ml-2">({tipPct.toFixed(1)}% of ${subtotal.toFixed(2)})</span>
-            )}
-          </div>
-          {participantCount > 1 && (
-            <div className="text-muted-foreground text-xs">
-              Your share: <span className="font-semibold text-foreground">${(tip / participantCount).toFixed(2)}</span>
-            </div>
-          )}
-        </div>
       )}
     </fieldset>
   );
