@@ -38,6 +38,10 @@ const LIMITED = new Set([
   '/api/fn/submitGuestRating',
   '/api/fn/verifyQRToken',
   '/api/fn/getSplitStatus',
+  // Every call spends money at the model provider, so this is worth a limit —
+  // but a table is one NAT, so it is keyed per participant below rather than
+  // per address.
+  '/api/scan-receipt',
 ]);
 
 /**
@@ -93,6 +97,7 @@ const PER_PARTICIPANT = new Set([
   '/api/fn/markMePaid',
   '/api/fn/verifyQRToken',
   '/api/fn/getSplitStatus',
+  '/api/scan-receipt',
 ]);
 
 /**

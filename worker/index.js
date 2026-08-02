@@ -20,6 +20,7 @@ import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
+import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
 import { proxyToBase44 } from './routes/base44-proxy.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { rateLimit } from './lib/rate-limit.js';
@@ -37,6 +38,9 @@ const POST_ROUTES = {
   '/api/create-checkout': createCheckout,
   '/api/verify-checkout': verifyCheckout,
   '/api/monthly-report': monthlyReport,
+  // The receipt parse, straight to the model. See routes/scan-receipt.js for
+  // why it no longer goes through Base44.
+  '/api/scan-receipt': scanReceipt,
 };
 
 const json = (data, status) =>

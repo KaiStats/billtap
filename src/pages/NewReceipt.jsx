@@ -112,20 +112,82 @@ export default function NewReceipt() {
    * before they have asked for anything is noise, and the retry usually works.
    */
   const beginUpload = (file) => {
-    const attempt = {
-      file,
-      compression: null,
-      promise: (async () => {
-        const upload = await compressImage(file);
-        attempt.compression = upload.__compression || null;
-        const { file_url } = await base44.integrations.Core.UploadFile({ file: upload });
-        return file_url;
-      })(),
-    };
-    // Nothing awaits this yet, and an unhandled rejection would surface as a
+    const attempt = { file, compression: null };
+
+    // Compression is the only thing the scan waits on. Everything downstream
+    // of it forks.
+    attempt.compressed = (async () => {
+      const upload = await compressImage(file);
+      attempt.compression = upload.__compression || null;
+      return upload;
+    })();
+
+    // Storing the image runs alongside and nothing blocks on it until a split
+    // is actually created — by which point it finished minutes ago. It used to
+    // be the first half of the critical path, and the model call could not
+    // start until it returned a URL.
+    attempt.stored = attempt.compressed.then((upload) =>
+      base44.integrations.Core.UploadFile({ file: upload }).then((r) => r.file_url),
+    );
+
+    // Nothing awaits these yet, and an unhandled rejection would surface as a
     // console error on a screen where nothing has gone wrong.
-    attempt.promise.catch(() => {});
+    attempt.compressed.catch(() => {});
+    attempt.stored.catch(() => {});
     uploadRef.current = attempt;
+  };
+
+  /**
+   * Read the receipt.
+   *
+   * Straight to /api/scan-receipt, which sends the image inline to the model
+   * from the Worker — one hop, and Base44 is not in it. Falls back to Base44's
+   * InvokeLLM when that route reports it has no key, so this ships before the
+   * key exists and a provider outage degrades to the old path rather than to a
+   * broken scan.
+   */
+  const readReceipt = async (upload) => {
+    try {
+      const res = await fetch("/api/scan-receipt", {
+        method: "POST",
+        headers: { "Content-Type": upload.type || "image/jpeg" },
+        body: upload,
+      });
+      if (res.ok) return { result: await res.json(), via: "direct" };
+
+      const detail = await res.json().catch(() => ({}));
+      if (detail.code !== "not_configured") {
+        // A real failure of the fast path. Fall back rather than fail, and say
+        // so in the timings so the fallback rate is visible.
+        console.warn("scan-receipt failed, falling back to Base44:", detail.code);
+      }
+    } catch (err) {
+      console.warn("scan-receipt unreachable, falling back to Base44:", err?.message);
+    }
+
+    const file_url = await uploadRef.current.stored;
+    const result = await base44.integrations.Core.InvokeLLM({
+      model: "gemini_3_flash",
+      prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
+Return a JSON with:
+- title: short restaurant/store name if visible, else "Receipt"
+- items: array of {name: string, price: number, quantity: number}
+- tax: number (0 if not found)
+- tip: number (0 if not found)
+- total: number`,
+      file_urls: [file_url],
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" } } } },
+          tax: { type: "number" },
+          tip: { type: "number" },
+          total: { type: "number" }
+        }
+      }
+    });
+    return { result, via: "base44" };
   };
 
   const handleFileChange = (e) => {
@@ -143,49 +205,33 @@ export default function NewReceipt() {
     try {
       setUploading(true);
 
-      // Usually already finished — it started when the photo was picked. If the
-      // background attempt was for a different file, or failed, do it now.
+      // Started when the photo was picked, so this has usually finished. If the
+      // background attempt belongs to a different file, redo it.
       let attempt = uploadRef.current;
       if (!attempt || attempt.file !== imageFile) {
         beginUpload(imageFile);
         attempt = uploadRef.current;
       }
 
-      let file_url;
+      let upload;
       try {
-        file_url = await attempt.promise;
+        upload = await attempt.compressed;
       } catch {
-        // One retry, in the foreground, where a failure is worth reporting.
+        // Compression failing is not fatal — it falls back to the original file
+        // — so reaching here means something stranger. Try once more.
         beginUpload(imageFile);
-        file_url = await uploadRef.current.promise;
         attempt = uploadRef.current;
+        upload = await attempt.compressed;
       }
 
-      timer.mark('upload');
+      timer.mark('compress');
       setUploading(false);
       setParsing(true);
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        model: "gemini_3_flash",
-        prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
-Return a JSON with:
-- title: short restaurant/store name if visible, else "Receipt"
-- items: array of {name: string, price: number, quantity: number}
-- tax: number (0 if not found)
-- tip: number (0 if not found)
-- total: number`,
-        file_urls: [file_url],
-        response_json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" } } } },
-            tax: { type: "number" },
-            tip: { type: "number" },
-            total: { type: "number" }
-          }
-        }
-      });
+      // Nothing waits for storage any more. The old path could not start the
+      // model until the image had been uploaded and a URL came back; the image
+      // now goes to the model inline, and storing it runs alongside.
+      const { result, via } = await readReceipt(upload);
 
       timer.mark('model');
 
@@ -212,7 +258,6 @@ Return a JSON with:
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
-      setImageUrl(file_url);
       if (validation) setParseValidation(validation);
       // Only pre-open the editor when we already know the numbers are suspect.
       // Anything else and the diner is being asked to fix what is not broken.
@@ -221,6 +266,7 @@ Return a JSON with:
       timer.finish({
         items: (result.items || []).length,
         confidence: validation?.confidence || 'unknown',
+        via,
         compression: attempt.compression,
       });
       if (typeof window.gtag === 'function') {
@@ -264,9 +310,16 @@ Return a JSON with:
     setSaving(true);
     try {
       const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
+      // Resolved here rather than during the scan. The upload started when the
+      // photo was picked and has had the whole review screen to finish; if it
+      // failed, the split is created without an image, which is a missing
+      // thumbnail rather than a lost bill.
+      const storedImage = await (uploadRef.current?.stored ?? Promise.resolve(null))
+        .catch(() => null);
+
       const res = await base44.functions.invoke("createSession", {
         title,
-        image_url: imageUrl,
+        image_url: storedImage,
         items,
         tax,
         tip,

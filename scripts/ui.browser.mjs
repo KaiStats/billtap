@@ -108,7 +108,7 @@ after(async () => {
  * A phone-sized page with every network call stubbed and console errors
  * collected, so a test can assert the screen came up clean.
  */
-async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0 } = {}) {
+async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0, scanDelayMs = 0, directScan = true } = {}) {
   const context = await browser.newContext({
     viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
   });
@@ -122,6 +122,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   const settingsCalls = [];
   const qrCalls = [];
   const uploadCalls = [];
+  const scanCalls = [];
   const statusCalls = [];
   // Every poll of any kind. The host screen reads through getSessionAsHost and
   // a diner through getSplitStatus, so a test that counts only one of them is
@@ -135,6 +136,14 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
     const url = route.request().url();
     const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
 
+    if (url.includes('/api/scan-receipt')) {
+      scanCalls.push(Date.now());
+      if (!directScan) {
+        return route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"not_configured"}' });
+      }
+      if (scanDelayMs) await new Promise((r) => setTimeout(r, scanDelayMs));
+      return send(scan);
+    }
     if (url.includes('UploadFile')) {
       uploadCalls.push(Date.now());
       // A distinct URL per upload, so a test can tell WHICH photo was used —
@@ -213,7 +222,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   });
 
   return {
-    context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls,
+    context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls, scanCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -1557,5 +1566,65 @@ test('a clean receipt is not accused of being hard to read', async () => {
     const text = await page.locator('body').innerText();
     assert.ok(!/hard to read/i.test(text));
     assert.equal(await page.locator('input:visible').count(), 0, 'the editor stays shut');
+  } finally { await context.close(); }
+});
+
+// ── Reading the receipt without Base44 ──────────────────────────────────────
+
+test('the scan goes straight to our own endpoint, not through Base44', async () => {
+  const { context, page, scanCalls } = await phone();
+  try {
+    await toReview(page);
+    assert.equal(scanCalls.length, 1);
+  } finally { await context.close(); }
+});
+
+test('the model no longer waits for the image to finish uploading', async () => {
+  // The change that matters. With storage crawling at 4 seconds, the scan used
+  // to sit behind it waiting for a URL; now the image goes to the model inline
+  // and storage runs alongside.
+  const { context, page } = await phone({ uploadDelayMs: 4000 });
+  try {
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: PNG_1PX });
+
+    const started = Date.now();
+    await page.getByRole('button', { name: /Parse Receipt with AI/i }).click();
+    await page.getByRole('heading', { name: 'Olive Garden' }).waitFor({ timeout: 20000 });
+    const elapsed = Date.now() - started;
+
+    assert.ok(elapsed < 3000, `waited ${elapsed}ms behind a 4s upload that nothing needed`);
+  } finally { await context.close(); }
+});
+
+test('a split still carries its receipt image, just not on the critical path', async () => {
+  const { context, page, created } = await phone({ uploadDelayMs: 1200, hostSession: HOST_SESSION });
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: /Show the QR code/i }).click();
+    await page.waitForURL(/session-host/, { timeout: 15000 });
+    assert.match(created[0].image_url, /receipt-1\.jpg$/);
+  } finally { await context.close(); }
+});
+
+test('when the direct route has no key, the scan falls back and still works', async () => {
+  // Deployable before the key exists, and a provider outage degrades to the old
+  // path rather than to a broken scan.
+  const { context, page, scanCalls } = await phone({ directScan: false });
+  try {
+    await toReview(page);
+    assert.equal(scanCalls.length, 1, 'it tried');
+    assert.match(await page.locator('body').innerText(), /Chicken Alfredo/, 'and the diner never knew');
+  } finally { await context.close(); }
+});
+
+test('a split created after a fallback still carries its image', async () => {
+  const { context, page, created } = await phone({ directScan: false, hostSession: HOST_SESSION });
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: /Show the QR code/i }).click();
+    await page.waitForURL(/session-host/, { timeout: 15000 });
+    assert.match(created[0].image_url, /receipt-1\.jpg$/);
   } finally { await context.close(); }
 });
