@@ -42,6 +42,18 @@ create table if not exists restaurants (
   name                    text not null,
   slug                    text not null unique,
   owner_id                uuid references auth.users(id) on delete set null,
+  -- The Base44 user id this row belonged to before the migration.
+  --
+  -- owner_id is a Supabase auth uuid and Base44's ids are not uuids, so they
+  -- cannot be carried across — and the accounts do not exist in auth.users
+  -- until operators sign up on the new project anyway. Every insert carrying a
+  -- Base44 owner id would fail the foreign key.
+  --
+  -- So the data migration parks the old id here and leaves owner_id null. When
+  -- auth moves (stage 3), match on email and set owner_id from this. Until
+  -- then a migrated restaurant has no Supabase owner, which is correct: nobody
+  -- has an account yet.
+  legacy_owner_id         text,
   google_review_url       text,
   alert_email             text,
   alert_phone             text,
@@ -61,6 +73,8 @@ create table if not exists restaurants (
 
 create index if not exists restaurants_slug_idx on restaurants (slug);
 create index if not exists restaurants_owner_idx on restaurants (owner_id);
+-- Used once, by the stage 3 backfill that rebuilds owner_id from these.
+create index if not exists restaurants_legacy_owner_idx on restaurants (legacy_owner_id);
 
 -- ── Sessions: one split bill ────────────────────────────────────────────────
 
@@ -91,6 +105,8 @@ create table if not exists sessions (
   expires_at          bigint,
   restaurant_id       text references restaurants(id) on delete set null,
   created_by_id       uuid references auth.users(id) on delete set null,
+  -- See legacy_owner_id on restaurants. Same reason, same plan.
+  legacy_created_by_id text,
   created_date        timestamptz not null default now(),
   updated_date        timestamptz not null default now()
 );
@@ -177,6 +193,7 @@ create table if not exists receipts (
   image_url    text,
   parsed       jsonb,
   created_by_id uuid references auth.users(id) on delete set null,
+  legacy_created_by_id text,
   created_date timestamptz not null default now(),
   updated_date timestamptz not null default now()
 );

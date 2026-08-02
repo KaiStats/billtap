@@ -10,7 +10,8 @@ Stage 2 is **built and untested against a real project**, because it needs
 credentials this environment does not have:
 
 - `supabase/migrations/0001_initial_schema.sql` — the schema, with RLS on
-- `worker/lib/db.js` — the data layer, 24 tests
+- `worker/lib/db.js` — the data layer, 29 tests
+- `scripts/migrate-to-supabase.test.mjs` — 19 tests on the migration itself
 - `scripts/migrate-to-supabase.mjs` — the copy, idempotent and non-destructive
 
 Stage 3, auth, is **not started**. Deliberately — see below.
@@ -83,16 +84,76 @@ The service role key bypasses RLS entirely. It belongs in the Worker and
 
 ### 3. Copy the data
 
-```
-node scripts/migrate-to-supabase.mjs --dry-run
-node scripts/migrate-to-supabase.mjs
-```
-
 Idempotent, so run it as often as you like. It deletes nothing from Base44. It
 preserves ids, which matters more than it sounds: session ids are in
 `/claim?id=` links open on people's phones right now, and QR tokens are
 HMAC-signed over the session id, so a changed id silently invalidates a printed
 table tent.
+
+```
+export BASE44_APP_ID=...            # no app_ prefix; the script strips it anyway
+export BASE44_MASTER_KEY=...
+export SUPABASE_URL=https://<project>.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=...
+
+node scripts/migrate-to-supabase.mjs --dry-run
+```
+
+**Stop and read the dry run.** It prints a row count per table and, more
+importantly, any Base44 field with no column here. Those are dropped. If
+something on that list matters, add the column before continuing rather than
+discovering it missing next week.
+
+Then:
+
+```
+node scripts/migrate-to-supabase.mjs
+```
+
+It exits non-zero and says `DO NOT CUT OVER` if any table received fewer rows
+than it read. Believe it.
+
+**Check it landed**, in the Supabase SQL editor:
+
+```sql
+select 'restaurants' t, count(*) from restaurants
+union all select 'sessions', count(*) from sessions
+union all select 'guest_ratings', count(*) from guest_ratings
+union all select 'guest_contacts', count(*) from guest_contacts
+union all select 'restaurant_leads', count(*) from restaurant_leads
+union all select 'waitlist', count(*) from waitlist;
+
+-- The thing most worth eyeballing: a split's claim state and its host key
+-- survived intact. Without host_key_hash nobody can confirm a payment again.
+select id, title, status, host_key_hash is not null as has_host_key,
+       jsonb_array_length(items) as items,
+       jsonb_array_length(participants) as people
+from sessions order by created_date desc limit 10;
+```
+
+#### User ids do not come across, and that is deliberate
+
+`owner_id` and `created_by_id` are Supabase auth uuids. Base44's user ids are
+not uuids, and those accounts do not exist in `auth.users` until operators sign
+up on the new project — so a row carrying one would fail the foreign key and
+take its whole batch of a hundred rows with it.
+
+The old value is parked in `legacy_owner_id` / `legacy_created_by_id`. After
+auth moves, rebuild the link:
+
+```sql
+-- Run once, after operators have accounts. Match on the address you already
+-- send their alerts to.
+update restaurants r
+set owner_id = u.id
+from auth.users u
+where r.owner_id is null
+  and r.legacy_owner_id is not null
+  and lower(u.email) = lower(r.alert_email);
+```
+
+A migrated restaurant having no Supabase owner in the meantime is correct:
+nobody has an account yet.
 
 ### 4. Switch the Worker
 
@@ -104,7 +165,7 @@ In `worker/routes/functions.js`, `worker/routes/nightly-backup.js` and
 + import { serviceRole, asCaller, currentUser } from '../lib/db.js';
 ```
 
-Then `npm test`. All 277 pass or something is wrong with `db.js`, not with the
+Then `npm test`. All 325 pass or something is wrong with `db.js`, not with the
 functions — that is the entire point of matching the interface.
 
 Deploy to staging first and walk the flow by hand: scan, share, claim, pay,
