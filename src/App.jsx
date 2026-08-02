@@ -25,6 +25,8 @@ const TableEntry  = lazy(() => import('@/pages/TableEntry'));
 const RestaurantDashboard = lazy(() => import('@/pages/RestaurantDashboard'));
 const Login       = lazy(() => import('@/pages/Login'));
 const Register    = lazy(() => import('@/pages/Register'));
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword  = lazy(() => import('@/pages/ResetPassword'));
 const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
 const Privacy     = lazy(() => import('@/pages/Privacy'));
 const Terms       = lazy(() => import('@/pages/Terms'));
@@ -202,6 +204,16 @@ const AuthenticatedApp = () => {
             {/* Auth routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            {/*
+              Login.jsx has linked to /forgot-password since it was written and
+              the route never existed, so forgetting a password ended at a 404.
+              /reset-password is where the emailed link lands — it must be a
+              real route at the edge as well, or the Worker answers that deep
+              link with a 404 before React ever loads. See SPA_ROUTES in
+              worker/index.js.
+            */}
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Legacy capitalized redirects */}
             <Route path="/About" element={<Navigate to="/about" replace />} />

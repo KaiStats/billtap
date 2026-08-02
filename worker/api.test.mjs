@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 
 import { HANDLERS, onRequestPost } from './routes/functions.js';
 import { appId, base44Origin, serviceRole, asCaller, currentUser } from './lib/base44.js';
-import { LIMITED, PER_PARTICIPANT, limitKey } from './lib/rate-limit.js';
+import { LIMITED, PER_PARTICIPANT, limitKey, isLimited } from './lib/rate-limit.js';
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
@@ -1298,5 +1298,85 @@ test('a malformed participant header falls back to the address', async () => {
 test('every table endpoint is actually rate limited', async () => {
   for (const path of PER_PARTICIPANT) {
     assert.ok(LIMITED.has(path), `${path} is keyed per participant but never checked`);
+  }
+});
+
+// ── Account recovery ────────────────────────────────────────────────────────
+
+test('the reset link in the email is a route the edge will serve', async () => {
+  // Base44 composes that link and it lands as a deep link, so the Worker sees
+  // it before React exists. A path missing from SPA_ROUTES gets the shell with
+  // a 404 status — the app boots, and the first thing someone recovering an
+  // account reads is a page reporting itself as not found.
+  const worker = (await import('./index.js')).default;
+  const assets = {
+    fetch: async () => new Response('<html>shell</html>', {
+      status: 200, headers: { 'content-type': 'text/html' },
+    }),
+  };
+
+  for (const path of ['/forgot-password', '/reset-password']) {
+    const res = await worker.fetch(new Request(`https://billtap.app${path}`), { ASSETS: assets });
+    assert.equal(res.status, 200, `${path} must not 404 at the edge`);
+  }
+  const withToken = await worker.fetch(
+    new Request('https://billtap.app/reset-password?token=abc123'), { ASSETS: assets },
+  );
+  assert.equal(withToken.status, 200, 'the token in the query must not change the answer');
+});
+
+test('the endpoint that sends reset emails is rate limited', async () => {
+  // It emails whatever address it is handed, from this app's domain. Unmetered,
+  // it is a way to bomb an inbox and burn the sending reputation with it.
+  const path = '/api/apps/69a5abc/auth/reset-password-request';
+  assert.equal(isLimited(path), true);
+  assert.equal(limitKey(new Request('https://billtap.app' + path, {
+    headers: { 'CF-Connecting-IP': '203.0.113.7', 'X-BillTap-Participant': ALICE },
+  }), path), '203.0.113.7', 'and keyed to the address, not to a header anyone can rotate');
+});
+
+test('the password endpoints are rate limited too', async () => {
+  for (const suffix of ['login', 'register', 'reset-password', 'resend-otp']) {
+    assert.equal(isLimited(`/api/apps/69a5abc/auth/${suffix}`), true, suffix);
+  }
+});
+
+test('rate limiting is not skipped by the Base44 proxy', async () => {
+  // The check used to sit below the proxy branch, which returns for every
+  // /api/apps/** path, so none of the auth endpoints were ever checked.
+  const worker = (await import('./index.js')).default;
+  let proxied = false;
+  const env = {
+    ASSETS: { fetch: async () => new Response('', { status: 200 }) },
+    API_RATE_LIMITER: { limit: async () => ({ success: false }) },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { proxied = true; return new Response('{}', { status: 200 }); };
+  try {
+    const res = await worker.fetch(
+      new Request('https://billtap.app/api/apps/69a5abc/auth/reset-password-request', { method: 'POST', body: '{}' }),
+      env,
+    );
+    assert.equal(res.status, 429);
+    assert.equal(proxied, false, 'a throttled request must never reach Base44');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('ordinary entity reads still pass through the proxy untouched', async () => {
+  const worker = (await import('./index.js')).default;
+  let reached = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { reached = String(url); return new Response('[]', { status: 200 }); };
+  try {
+    const res = await worker.fetch(
+      new Request('https://billtap.app/api/apps/69a5abc/entities/Session'),
+      { ASSETS: { fetch: async () => new Response('', { status: 404 }) }, API_RATE_LIMITER: { limit: async () => ({ success: false }) } },
+    );
+    assert.equal(res.status, 200, 'reading a bill is not something to throttle');
+    assert.match(reached, /entities\/Session/);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

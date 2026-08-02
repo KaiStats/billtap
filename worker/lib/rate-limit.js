@@ -41,6 +41,31 @@ const LIMITED = new Set([
 ]);
 
 /**
+ * Base44's own auth endpoints, reached through the /api/apps/** proxy.
+ *
+ * These were not limited at all, and not by decision — worker/index.js hands
+ * anything under /api/apps/ straight to the proxy and returns, so the check
+ * below never ran for them. That left the two most worth protecting wide open:
+ * reset-password-request sends an email to any address handed to it, which is a
+ * way to bomb an inbox using this app's domain and its reputation, and
+ * /auth/login is an unmetered guess-the-password endpoint.
+ *
+ * Matched by pattern because the app id sits in the middle of the path.
+ */
+const LIMITED_PATTERNS = [
+  /^\/api\/apps\/[^/]+\/auth\/reset-password-request\/?$/,
+  /^\/api\/apps\/[^/]+\/auth\/reset-password\/?$/,
+  /^\/api\/apps\/[^/]+\/auth\/login\/?$/,
+  /^\/api\/apps\/[^/]+\/auth\/register\/?$/,
+  /^\/api\/apps\/[^/]+\/auth\/resend-otp\/?$/,
+];
+
+/** Whether this path is subject to a limit at all. */
+export function isLimited(path) {
+  return LIMITED.has(path) || LIMITED_PATTERNS.some((re) => re.test(path));
+}
+
+/**
  * Endpoints a whole table hammers at once, on one wifi connection.
  *
  * Keying these by IP punishes the exact scene the product is sold for. Six
@@ -102,7 +127,7 @@ function limitKey(request, path) {
  * to check the limit is not a reason to refuse a paying restaurant's diner.
  */
 export async function rateLimit(request, env, path) {
-  if (!LIMITED.has(path)) return null;
+  if (!isLimited(path)) return null;
 
   const limiter = env.API_RATE_LIMITER;
   if (!limiter) return null;
@@ -129,4 +154,4 @@ export async function rateLimit(request, env, path) {
   );
 }
 
-export { LIMITED, PER_PARTICIPANT, limitKey };
+export { LIMITED, LIMITED_PATTERNS, PER_PARTICIPANT, limitKey };

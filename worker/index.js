@@ -67,6 +67,12 @@ const SPA_ROUTES = new Set([
   '/icon-generator',
   '/login',
   '/register',
+  // The reset link in Base44's email is a deep link straight to this path. If
+  // it is not listed here the Worker serves the SPA shell with a 404 status —
+  // the app would still boot, but the first thing anyone recovering an account
+  // sees is a page reporting itself as not found.
+  '/forgot-password',
+  '/reset-password',
   '/home',
   '/new-receipt',
   '/dashboard',
@@ -172,18 +178,24 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Rate limiting runs first, before anything can short-circuit past it.
+    //
+    // It used to sit below the proxy branch, which returns for every
+    // /api/apps/** path — so Base44's own auth endpoints, forwarded through
+    // that proxy, were never checked. reset-password-request sends an email to
+    // whatever address it is given and /auth/login is a password oracle; both
+    // were unmetered. Returns null and lets the request through when the
+    // binding is absent or the check itself throws, so this can only ever cost
+    // an attacker, never a diner. See worker/lib/rate-limit.js.
+    if (path.startsWith('/api/')) {
+      const limited = await rateLimit(request, env, path);
+      if (limited) return limited;
+    }
+
     // Base44 data layer. The SDK is built with serverUrl: '', so entity, auth
     // and function calls arrive same-origin under /api/apps/<appId>/...
     if (path.startsWith(BASE44_PREFIX)) {
       return proxyToBase44(request, env, path.slice(BASE44_PREFIX.length));
-    }
-
-    // Per-IP limit on the unauthenticated endpoints. Returns null and lets the
-    // request through when the binding is absent or the check itself fails —
-    // see worker/lib/rate-limit.js.
-    if (path.startsWith('/api/')) {
-      const limited = await rateLimit(request, env, path);
-      if (limited) return limited;
     }
 
     // The Base44 functions, running here. Base44 blocks backend functions on

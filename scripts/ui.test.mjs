@@ -1227,3 +1227,156 @@ test('a phone with no history is invited to split its first bill', async () => {
     assert.ok(!page.url().includes('/login'));
   } finally { await context.close(); }
 });
+
+// ── Forgetting a password ───────────────────────────────────────────────────
+//
+// Login.jsx has linked to /forgot-password since it was written and the page
+// never existed, so the whole recovery path ended at a 404.
+
+async function authPage(path) {
+  const context = await browser.newContext({
+    viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
+  });
+  const errors = [];
+  const page = await context.newPage();
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const authCalls = [];
+  await page.route('**/api/**', async (route) => {
+    const url = route.request().url();
+    if (url.includes('/auth/')) {
+      authCalls.push({ url, body: route.request().postDataJSON?.() });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    }
+    return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
+  });
+  await page.goto(`${base}${path}`, { waitUntil: 'domcontentloaded' });
+  return { context, page, errors, authCalls };
+}
+
+test('the "Forgot password?" link goes somewhere', async () => {
+  const { context, page } = await authPage('/login');
+  try {
+    await page.getByRole('link', { name: /Forgot password/i }).click();
+    await page.waitForURL(/forgot-password/, { timeout: 10000 });
+    await page.getByRole('heading', { name: /Forgot your password/i }).waitFor({ timeout: 10000 });
+    const text = await page.locator('body').innerText();
+    assert.ok(!/not found/i.test(text), 'this link used to land on a 404');
+  } finally { await context.close(); }
+});
+
+test('asking for a reset link sends the request and says so', async () => {
+  const { context, page, authCalls } = await authPage('/forgot-password');
+  try {
+    await page.getByLabel('Email').fill('  Kai@Example.COM  ');
+    await page.getByRole('button', { name: /Send reset link/i }).click();
+    await page.getByRole('heading', { name: /Check your email/i }).waitFor({ timeout: 10000 });
+
+    const call = authCalls.find((c) => c.url.includes('reset-password-request'));
+    assert.ok(call, 'the request must actually go out');
+    assert.equal(call.body.email, 'kai@example.com', 'trimmed and lowercased');
+  } finally { await context.close(); }
+});
+
+test('the confirmation never reveals whether that email has an account', async () => {
+  // Otherwise the box is a tool for finding out who has an account here.
+  const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
+  const page = await context.newPage();
+  try {
+    await page.route('**/api/**', (r) =>
+      r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"user not found"}' }));
+    await page.goto(`${base}/forgot-password`, { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('Email').fill('nobody@example.com');
+    await page.getByRole('button', { name: /Send reset link/i }).click();
+
+    await page.getByRole('heading', { name: /Check your email/i }).waitFor({ timeout: 10000 });
+    const text = await page.locator('body').innerText();
+    assert.ok(!/not found|no account|doesn't exist|does not exist/i.test(text));
+  } finally { await context.close(); }
+});
+
+test('the reset page reads the token however the email spells it', async () => {
+  // Base44 composes that link, so the parameter name is not ours to pick.
+  for (const query of ['?token=abc', '?reset_token=abc', '?resetToken=abc', '?t=abc', '#token=abc']) {
+    const { context, page } = await authPage(`/reset-password${query}`);
+    try {
+      await page.getByRole('heading', { name: /Set a new password/i }).waitFor({ timeout: 10000 });
+    } finally { await context.close(); }
+  }
+});
+
+test('a reset link with no token says so instead of showing a dead form', async () => {
+  const { context, page } = await authPage('/reset-password');
+  try {
+    await page.getByRole('heading', { name: /link is incomplete/i }).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByLabel('New password').count(), 0, 'no form that cannot work');
+    await assert.doesNotReject(page.getByRole('link', { name: /Send a new link/i }).waitFor({ timeout: 5000 }));
+  } finally { await context.close(); }
+});
+
+test('a mistyped confirmation is caught before the one-time token is spent', async () => {
+  const { context, page, authCalls } = await authPage('/reset-password?token=abc');
+  try {
+    await page.getByLabel('New password').fill('correct-horse');
+    await page.getByLabel('Confirm password').fill('correct-hose');
+    await page.getByRole('button', { name: /Save new password/i }).click();
+
+    await page.getByRole('alert').waitFor({ timeout: 5000 });
+    assert.match(await page.getByRole('alert').innerText(), /do not match/i);
+    assert.equal(authCalls.filter((c) => c.url.includes('/auth/reset-password')).length, 0,
+      'burning the token on a typo means going back through the email');
+  } finally { await context.close(); }
+});
+
+test('a too-short password is refused before the request', async () => {
+  const { context, page, authCalls } = await authPage('/reset-password?token=abc');
+  try {
+    await page.getByLabel('New password').fill('short');
+    await page.getByLabel('Confirm password').fill('short');
+    await page.getByRole('button', { name: /Save new password/i }).click();
+    await page.getByRole('alert').waitFor({ timeout: 5000 });
+    assert.equal(authCalls.length, 0);
+  } finally { await context.close(); }
+});
+
+test('a good new password is saved and the token travels with it', async () => {
+  const { context, page, authCalls } = await authPage('/reset-password?token=tok_123');
+  try {
+    await page.getByLabel('New password').fill('correct-horse-battery');
+    await page.getByLabel('Confirm password').fill('correct-horse-battery');
+    await page.getByRole('button', { name: /Save new password/i }).click();
+
+    await page.getByRole('heading', { name: /Password changed/i }).waitFor({ timeout: 10000 });
+    const call = authCalls.find((c) => c.url.includes('/auth/reset-password'));
+    assert.equal(call.body.reset_token, 'tok_123');
+    assert.equal(call.body.new_password, 'correct-horse-battery');
+  } finally { await context.close(); }
+});
+
+test('an expired link is explained rather than failing silently', async () => {
+  const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
+  const page = await context.newPage();
+  try {
+    await page.route('**/api/**', (r) =>
+      r.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid token"}' }));
+    await page.goto(`${base}/reset-password?token=stale`, { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('New password').fill('correct-horse-battery');
+    await page.getByLabel('Confirm password').fill('correct-horse-battery');
+    await page.getByRole('button', { name: /Save new password/i }).click();
+
+    await page.getByRole('alert').waitFor({ timeout: 10000 });
+    assert.match(await page.getByRole('alert').innerText(), /expired|already been used/i);
+  } finally { await context.close(); }
+});
+
+test('the recovery pages fit a phone and log nothing', async () => {
+  for (const path of ['/forgot-password', '/reset-password?token=abc']) {
+    const { context, page, errors } = await authPage(path);
+    try {
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(overflow <= 1, `${path} overflowed by ${overflow}px`);
+      assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+    } finally { await context.close(); }
+  }
+});
