@@ -105,6 +105,66 @@ async function main() {
       console.log(`  ${entity.padEnd(16)} ---  request failed: ${err.message}`);
     }
   }
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  //
+  // Everything above can come back 200 and empty for two unrelated reasons: a
+  // credential Base44 does not recognise, or a URL that answers 200 and empty
+  // to absolutely anything. Those need different fixes, so guessing between
+  // them is how the wrong one gets made.
+  //
+  // Each line below is a question with only one interesting answer.
+
+  console.log('\nControls — a 200 here means the reply above was never about your data:\n');
+
+  const controls = [
+    {
+      // If an app id that cannot exist answers the same as yours, the endpoint
+      // is not looking anything up and the path is wrong.
+      label: 'app id that cannot exist',
+      url: `${origin}/api/apps/000000000000000000000000/entities/Restaurant?limit=3`,
+      headers: { Authorization: `Bearer ${key}` },
+      want: 'want 404 or 403 — a 200 means the app id is not being checked',
+    },
+    {
+      // Same question from the other side: an entity nobody ever defined.
+      label: 'entity that was never defined',
+      url: `${origin}/api/apps/${appId}/entities/ThisEntityDoesNotExist?limit=3`,
+      headers: { Authorization: `Bearer ${key}` },
+      want: 'want 404 — a 200 means entity names are not being checked either',
+    },
+    {
+      // The direct question: does Base44 know this credential at all? An
+      // identity back means the key is good and the lists really are empty. A
+      // 401 means the key is not being accepted and every zero above is noise.
+      label: 'who does this key say I am',
+      url: `${origin}/api/apps/${appId}/entities/User/me`,
+      headers: { Authorization: `Bearer ${key}` },
+      want: 'want an identity — a 401 means the key is not recognised',
+    },
+    {
+      // The remaining credential form worth trying: as a query parameter rather
+      // than a header. Worth knowing that this puts the key in a URL, where it
+      // can land in an access log at the other end — acceptable for one
+      // diagnostic run against a key that is being rotated anyway, and not
+      // something to adopt as the way the migration authenticates.
+      label: 'key as a query parameter',
+      url: `${origin}/api/apps/${appId}/entities/Restaurant?limit=3&api_key=${encodeURIComponent(key)}`,
+      headers: {},
+      want: 'rows here would name the form the migration should use',
+    },
+  ];
+
+  for (const control of controls) {
+    try {
+      const res = await fetch(control.url, { headers: control.headers });
+      const text = await res.text();
+      console.log(`  ${control.label.padEnd(28)} ${String(res.status).padEnd(4)} ${describe(text)}`);
+      console.log(`  ${''.padEnd(28)}      ${control.want}`);
+    } catch (err) {
+      console.log(`  ${control.label.padEnd(28)} ---  request failed: ${err.message}`);
+    }
+  }
   console.log('');
 }
 
