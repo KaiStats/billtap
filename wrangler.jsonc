@@ -94,30 +94,42 @@
   // missing Playwright browser, and vite had already written a valid dist/
   // without snapshots. A follow-up `wrangler deploy` shipped it, and the only
   // symptom in production was the wrong <title>.
-  // Per-IP rate limiting on the unauthenticated /api endpoints.
+  // Rate limiting on the unauthenticated /api endpoints.
   //
-  // COMMENTED OUT so a deploy cannot fail on a binding that may not be enabled
-  // for this account. Uncomment to activate — worker/lib/rate-limit.js already
-  // reads it and no-ops when it is absent, so nothing else changes.
+  // LIVE. It was committed commented out so that a deploy could not fail on a
+  // binding an account might not have; it is on now because it was wanted on,
+  // and because the keying it depends on has since been fixed.
   //
-  // 60 requests per minute per IP. A whole table splitting one check is a
-  // handful of calls; 60 is comfortably above real use and far below abuse.
+  // That fix matters more than the limit itself. Every endpoint used to be
+  // keyed on CF-Connecting-IP, and six people at a table are ONE address — a
+  // restaurant's wifi is one NAT, and on a busy night it is every table in the
+  // room. Claiming items, tapping paid and polling for who else has settled
+  // runs to hundreds of calls a minute from that single address, all of it
+  // legitimate. Switched on as it was, the first thing this would have done in
+  // production is 429 a paying customer's diners mid-meal.
   //
-  // Covers createSession, joinSession, markMePaid, submitGuestRating,
-  // verifyQRToken, rating-alert and restaurant-lead — every endpoint that
-  // accepts an anonymous caller, which they must, because a diner scanning a
-  // table tent has no account.
+  // worker/lib/rate-limit.js now keys the table endpoints — joinSession,
+  // markMePaid, verifyQRToken, getSplitStatus and scan-receipt — per
+  // participant, and leaves the endpoints that spend money on the address:
+  // rating-alert sends an SMS against an account with no spend cap,
+  // restaurant-lead sends email, createSession writes rows.
   //
-  // "unsafe": {
-  //   "bindings": [
-  //     {
-  //       "name": "API_RATE_LIMITER",
-  //       "type": "ratelimit",
-  //       "namespace_id": "1001",
-  //       "simple": { "limit": 60, "period": 60 }
-  //     }
-  //   ]
-  // },
+  // 60 per minute per key. It still no-ops if the binding is absent, so
+  // commenting this back out is a safe way to switch it off in a hurry.
+  //
+  // If a deploy fails here with an unknown binding type, this account does not
+  // have the ratelimit binding: comment the block out again and nothing else
+  // changes.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "API_RATE_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "1001",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ]
+  },
 
   // Logs and errors, searchable in the Cloudflare dashboard.
   //
