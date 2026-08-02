@@ -226,6 +226,44 @@ export async function migrate({ config, only = null, dryRun = false, fetchImpl =
 }
 
 /**
+ * Everything about this run that means "do not cut over", in plain sentences.
+ *
+ * Separate from the printing because the judgement is the part worth testing.
+ * The first live run against real data printed "Every row accounted for" after
+ * reading nothing at all, and no test caught it — because the only rule was
+ * "written must equal read", and zero equals zero.
+ *
+ * @returns {string[]} empty when the run can be believed
+ */
+export function problems(summary, { only = null, dryRun = false } = {}) {
+  const found = [];
+
+  // Reading nothing from every entity is not an empty database. It is a read
+  // that failed without saying so: readAll throws on a non-2xx, so a rejected
+  // credential would already have stopped the run. What is left is a credential
+  // Base44 accepts without recognising as the app, a response envelope this
+  // code does not unwrap, or entity names that do not exist under those names.
+  //
+  // Not applied to --only, where one genuinely empty entity is ordinary.
+  if (!only && summary.length && summary.every((s) => s.read === 0)) {
+    found.push(
+      'Zero rows read from every entity. Treat that as a broken read, not an ' +
+      'empty database — run: node scripts/base44-probe.mjs',
+    );
+  }
+
+  // A dry run writes nothing, so a short write is not a finding there.
+  if (!dryRun) {
+    const short = summary.filter((s) => s.written !== s.read);
+    if (short.length) {
+      found.push(`Short: ${short.map((s) => `${s.table} ${s.written}/${s.read}`).join(', ')}`);
+    }
+  }
+
+  return found;
+}
+
+/**
  * The role a Supabase key carries, read out of the JWT it already is.
  *
  * Both keys a project hands you are JWTs and they look identical at a glance —
@@ -316,13 +354,14 @@ async function main() {
     console.log('  Check that none of those matter before cutting over.');
   }
 
+  const failures = problems(summary, { only, dryRun });
+  if (failures.length) {
+    for (const line of failures) console.error(`\n  ${line}`);
+    console.error('\n  DO NOT CUT OVER.\n');
+    process.exit(1);
+  }
+
   if (!dryRun) {
-    const short = summary.filter((s) => s.written !== s.read);
-    if (short.length) {
-      console.error(`\n  Short: ${short.map((s) => `${s.table} ${s.written}/${s.read}`).join(', ')}`);
-      console.error('  DO NOT CUT OVER.\n');
-      process.exit(1);
-    }
     console.log('\n  Every row accounted for.');
     console.log('  Nothing has been deleted from Base44. The cutover is a configuration');
     console.log('  change in the Worker — see docs/SUPABASE-MIGRATION.md.\n');

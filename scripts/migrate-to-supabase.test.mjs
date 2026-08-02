@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrate, readAll, writeAll, shape, keyRole, ENTITIES } from './migrate-to-supabase.mjs';
+import { migrate, readAll, writeAll, shape, keyRole, problems, ENTITIES } from './migrate-to-supabase.mjs';
 
 const CONFIG = {
   appId: 'app1',
@@ -268,4 +268,50 @@ test('a key that is not a JWT reads as unknown rather than as wrong', () => {
   assert.equal(keyRole(''), null);
   assert.equal(keyRole(undefined), null);
   assert.equal(keyRole('not.a.jwt'), null);
+});
+
+// ── Believing the run ───────────────────────────────────────────────────────
+
+test('reading nothing from everything is a failure, not an empty database', () => {
+  // This is the one that got through. The first live run against an app with
+  // real restaurants in it read zero rows from all seven entities and printed
+  // "Every row accounted for", because the only rule was written === read and
+  // zero equals zero. A migration that cannot tell success from silence is
+  // worse than one that fails.
+  const summary = ENTITIES.map((e) => ({ table: e.table, read: 0, written: 0, dropped: [] }));
+  const found = problems(summary, {});
+  assert.equal(found.length, 1);
+  assert.match(found[0], /Zero rows read/);
+});
+
+test('a dry run that reads nothing is caught too', () => {
+  // The dry run is where this is meant to be found — before anything is
+  // written and before anyone believes the counts.
+  const summary = ENTITIES.map((e) => ({ table: e.table, read: 0, written: 0, dropped: [] }));
+  assert.equal(problems(summary, { dryRun: true }).length, 1);
+});
+
+test('one empty entity among populated ones is fine', () => {
+  const summary = [
+    { table: 'restaurants', read: 3, written: 3, dropped: [] },
+    { table: 'waitlist', read: 0, written: 0, dropped: [] },
+  ];
+  assert.deepEqual(problems(summary, {}), []);
+});
+
+test('--only on a genuinely empty entity is not treated as a broken read', () => {
+  const summary = [{ table: 'waitlist', read: 0, written: 0, dropped: [] }];
+  assert.deepEqual(problems(summary, { only: 'Waitlist' }), []);
+});
+
+test('a short write still says do not cut over', () => {
+  const summary = [{ table: 'sessions', read: 120, written: 100, dropped: [] }];
+  const found = problems(summary, {});
+  assert.equal(found.length, 1);
+  assert.match(found[0], /sessions 100\/120/);
+});
+
+test('a dry run is not reported as short, since it writes nothing', () => {
+  const summary = [{ table: 'sessions', read: 120, written: 0, dropped: [] }];
+  assert.deepEqual(problems(summary, { dryRun: true }), []);
 });
