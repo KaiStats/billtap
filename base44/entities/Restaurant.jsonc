@@ -32,6 +32,22 @@
       "default": 3,
       "description": "Ratings at or below this fire a private alert instead of routing to Google"
     },
+    "billing_address": {
+      "type": "object",
+      "description": "Where this customer is located, for sales tax nexus. Captured by Stripe Checkout and mirrored here by verify-checkout, because the nexus question is asked of the customer list and reconciling it against Stripe every time is how it stops getting asked.",
+      "properties": {
+        "line1": { "type": "string" },
+        "line2": { "type": "string" },
+        "city": { "type": "string" },
+        "state": {
+          "type": "string",
+          "description": "Two-letter US state code. THE field for nexus: economic nexus is measured per state, and without it no exposure map can be built at all."
+        },
+        "postal_code": { "type": "string" },
+        "country": { "type": "string", "default": "US" }
+      }
+    },
+
     "plan": {
       "type": "string",
       "default": "trial",

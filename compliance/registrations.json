@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "Where BillTap is registered to collect and remit sales tax, and how often",
+    "each state says to file.",
+    "",
+    "THIS IS THE INPUT TO THE COMPLIANCE CALENDAR, and it starts empty on",
+    "purpose. A calendar of filing deadlines for all fifty states would be",
+    "fiction: you file where you are REGISTERED, not where you have nexus, and",
+    "the frequency is not yours to choose — each state assigns it when you",
+    "register, based on expected volume, and revises it as volume changes.",
+    "",
+    "Crossing an economic nexus threshold creates an obligation to register. It",
+    "does not create a filing deadline. Until a state appears in this file there",
+    "is nothing to file there — which is not the same as nothing being owed, and",
+    "the gap between those two is where the penalties live.",
+    "",
+    "Add a state only once you hold a permit for it. Copy the frequency and the",
+    "period basis from the registration letter, not from memory.",
+    "",
+    "  frequency  monthly | quarterly | semiannual | annual",
+    "  due_day    day of the month the return is due after a period closes.",
+    "             The 20th is the most common across states; several use the",
+    "             last day, the 15th, the 23rd or the 25th. Take it from the",
+    "             letter — a wrong due_day produces a calendar that is",
+    "             confidently late.",
+    "  first_period_end  ISO date of the first period you must file for.",
+    "  prepayment  some states require a prepayment mid-period above a volume.",
+    "              Note it here; this tool does not model it."
+  ],
+
+  "business": {
+    "legal_name": "",
+    "fiscal_year_end": "12-31",
+    "accounting_basis": "accrual"
+  },
+
+  "registered": []
+}

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test worker/*.test.mjs src/*.test.mjs",
+    "test": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
@@ -15,7 +15,7 @@
     "build:ci": "node scripts/check-env.mjs && vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy",
-    "test:ui": "node --test --test-concurrency=2 scripts/ui.test.mjs",
+    "test:ui": "node --test --test-concurrency=2 scripts/ui.browser.mjs",
     "check:env": "node scripts/check-env.mjs"
   },
   "dependencies": {

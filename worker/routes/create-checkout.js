@@ -43,7 +43,27 @@ export async function onRequestPost({ request, env }) {
     success_url: `${origin}/restaurant-dashboard?checkout={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/restaurant-dashboard?checkout=cancelled`,
     'subscription_data[metadata][restaurant_id]': restaurantId,
-allow_promotion_codes: 'true',
+    allow_promotion_codes: 'true',
+
+    // Collect the billing address.
+    //
+    // Not cosmetic. Economic nexus is measured per state, and until this line
+    // existed the state was captured nowhere — not on the Restaurant row, not
+    // on the lead, and not in Stripe, because Checkout only asks for what the
+    // card network requires. The customer list could not be broken down by
+    // state at all, so the question "where do we have nexus" had no answer that
+    // could be computed from anything.
+    //
+    // Retroactive only from here. Every subscription created before this ships
+    // has no address on it, and Stripe cannot invent one — see
+    // scripts/nexus-report.mjs, which reports those separately rather than
+    // treating an unknown state as no exposure.
+    billing_address_collection: 'required',
+
+    // Keep the address on the Customer, not only on this one Checkout Session,
+    // or it is gone the moment the session expires.
+    'customer_update[address]': 'auto',
+    'customer_update[name]': 'auto',
   });
   if (EMAIL_RE.test(email)) params.set('customer_email', email);
 

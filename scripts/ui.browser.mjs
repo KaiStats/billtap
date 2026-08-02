@@ -12,8 +12,9 @@
  *
  *     npm run build && npm run test:ui
  *
- * Kept out of `npm test` on purpose — it needs Chromium, and CI has none. The
- * fast suites stay fast and browser-free.
+ * Named .browser.mjs rather than .test.mjs so the `npm test` glob cannot pick
+ * it up: it needs Chromium and a built dist/, and CI has neither in the fast
+ * lane. Run it with `npm run test:ui`.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';

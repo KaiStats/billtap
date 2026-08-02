@@ -98,6 +98,12 @@ export default function RestaurantDashboard() {
             plan: "active",
             stripe_subscription_id: data.subscription_id || "",
             current_period_end: data.current_period_end || null,
+            // Where this customer is, for sales tax nexus. Economic nexus is
+            // measured per state, and the state was recorded nowhere in this
+            // system — so the customer list could not be broken down by state
+            // at all. Only written when Stripe actually returned one, so a
+            // partial read never blanks an address already on file.
+            ...(data.billing_address?.state ? { billing_address: data.billing_address } : {}),
           });
           setBilling(null);
           await load();

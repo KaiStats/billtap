@@ -1,0 +1,116 @@
+{
+  "$comment": [
+    "Economic nexus thresholds and SaaS taxability, per state.",
+    "",
+    "READ THIS BEFORE RELYING ON ANY ROW BELOW.",
+    "",
+    "This file is a working data set maintained by hand. It is NOT tax advice and",
+    "it is NOT authoritative. Every row carries a `status`:",
+    "",
+    "  verified   — checked against a cited source on `verified_on`.",
+    "  unverified — structure only. scripts/nexus-report.mjs refuses to score",
+    "               these and lists them separately, so an empty row can never",
+    "               be silently read as 'no exposure'.",
+    "",
+    "Two things make this data go stale fast, and both have moved recently:",
+    "transaction-count tests are being repealed one state at a time (Alaska 2025,",
+    "Utah 2025, Illinois 2026, North Carolina), and SaaS taxability is decided",
+    "state by state with no federal standard.",
+    "",
+    "For a business actually approaching a threshold, the right answer is a",
+    "service that tracks this for you — Stripe Tax is already one integration away",
+    "given checkout runs on Stripe, and Avalara and TaxJar do the same job. Hand",
+    "maintenance of 46 taxing jurisdictions is not a good use of a solo founder's",
+    "week, and being wrong is expensive in a way that being late is not.",
+    "",
+    "WHY THE TRANSACTION TEST MATTERS MORE THAN THE DOLLAR TEST HERE:",
+    "at $149/month a customer bills 12 times a year and produces $1,788. The",
+    "$100,000 test therefore needs roughly 56 customers in one state. A 200",
+    "transaction test needs roughly 17. In the states that still have one, the",
+    "count is reached about three times sooner than the revenue — which is the",
+    "opposite of most people's intuition and the reason this file exists.",
+    "",
+    "Whether each monthly invoice counts as its own transaction is not uniformly",
+    "settled and is flagged per state as `recurring_counts_per_invoice`. Where it",
+    "is null, nobody here has confirmed it. Ask a professional before treating a",
+    "null as a no."
+  ],
+
+  "verified_on": "2026-08-02",
+  "sources": [
+    "https://taxcloud.com/blog/sales-tax-nexus-by-state/",
+    "https://taxcloud.com/blog/sales-tax-changes-2026/",
+    "https://www.numeral.com/blog/economic-nexus",
+    "https://taxcloud.com/blog/saas-sales-tax-by-state/",
+    "https://www.taxjar.com/sales-tax/saas-sales-tax"
+  ],
+
+  "general_rules": {
+    "$comment": "Verified. Use these to sanity-check any individual row.",
+    "common_revenue_threshold_usd": 100000,
+    "states_at_common_threshold": 41,
+    "higher_thresholds": {
+      "250000": ["AL", "MS"],
+      "500000": ["CA", "NY", "TX"]
+    },
+    "states_retaining_a_transaction_test": 16,
+    "recently_repealed_transaction_test": {
+      "AK": "2025-01-01",
+      "UT": "2025-07-01",
+      "IL": "2026-01-01",
+      "NC": "repealed"
+    },
+    "no_statewide_sales_tax": ["AK", "DE", "MT", "NH", "OR"],
+    "saas_taxing_jurisdictions_approx": 25,
+    "saas_taxable_examples": ["TX", "NY", "PA", "WA", "OH", "MA", "SC", "HI"],
+    "saas_b2b_generally_exempt_examples": ["CA", "FL", "GA"],
+    "notes": [
+      "TX taxes 80% of a SaaS charge, treating it as a data processing service.",
+      "AK has no statewide tax but local jurisdictions levy one through the ARSSTC.",
+      "CO and IL contain home-rule localities that set their own rules.",
+      "IA and OH distinguish business from consumer purchasers.",
+      "NY's test is conjunctive: $500,000 AND 100 transactions, both required."
+    ]
+  },
+
+  "states": {
+    "$comment": "Seeded from the verified general rules above. A state is only marked verified where the specific combination below was confirmed, not merely inferred from the aggregate counts.",
+
+    "AL": { "status": "verified",   "revenue_usd": 250000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null },
+    "MS": { "status": "verified",   "revenue_usd": 250000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null },
+    "CA": { "status": "verified",   "revenue_usd": 500000, "transactions": null, "test": "revenue_only",  "saas_taxable": false, "recurring_counts_per_invoice": null, "note": "B2B SaaS generally exempt with no download or tangible media." },
+    "NY": { "status": "verified",   "revenue_usd": 500000, "transactions": 100,  "test": "revenue_and_transactions", "saas_taxable": true, "recurring_counts_per_invoice": null, "note": "Conjunctive — both tests must be met." },
+    "TX": { "status": "verified",   "revenue_usd": 500000, "transactions": null, "test": "revenue_only",  "saas_taxable": true,  "recurring_counts_per_invoice": null, "note": "80% of the charge is taxable as data processing." },
+    "AK": { "status": "verified",   "revenue_usd": 100000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "No statewide tax; local ARSSTC jurisdictions. 200-transaction test repealed 2025-01-01." },
+    "UT": { "status": "verified",   "revenue_usd": 100000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Transaction test repealed 2025-07-01." },
+    "IL": { "status": "verified",   "revenue_usd": 100000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Transaction test repealed 2026-01-01. Home-rule localities differ." },
+    "NC": { "status": "verified",   "revenue_usd": 100000, "transactions": null, "test": "revenue_only",  "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Transaction test repealed." },
+    "DE": { "status": "verified",   "revenue_usd": null,   "transactions": null, "test": "no_sales_tax",  "saas_taxable": false, "recurring_counts_per_invoice": null },
+    "MT": { "status": "verified",   "revenue_usd": null,   "transactions": null, "test": "no_sales_tax",  "saas_taxable": false, "recurring_counts_per_invoice": null },
+    "NH": { "status": "verified",   "revenue_usd": null,   "transactions": null, "test": "no_sales_tax",  "saas_taxable": false, "recurring_counts_per_invoice": null },
+    "OR": { "status": "verified",   "revenue_usd": null,   "transactions": null, "test": "no_sales_tax",  "saas_taxable": false, "recurring_counts_per_invoice": null },
+
+    "PA": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null },
+    "WA": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null },
+    "OH": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null, "note": "Business vs consumer purchaser distinction." },
+    "MA": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null },
+    "SC": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null },
+    "HI": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": true,  "recurring_counts_per_invoice": null, "note": "General excise tax rather than a sales tax." },
+    "FL": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": false, "recurring_counts_per_invoice": null },
+    "GA": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": false, "recurring_counts_per_invoice": null },
+    "CT": { "status": "unverified", "revenue_usd": 100000, "transactions": 200,  "test": null, "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Believed conjunctive and at a distinct rate for SaaS. Confirm both." },
+    "IA": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Business vs consumer purchaser distinction." },
+    "CO": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "Home-rule localities set their own rules." },
+    "NE": { "status": "unverified", "revenue_usd": 100000, "transactions": null, "test": null, "saas_taxable": null,  "recurring_counts_per_invoice": null, "note": "SaaS generally untaxed, but security-function software is a taxable service." },
+
+    "AZ": { "status": "unverified" }, "AR": { "status": "unverified" }, "DC": { "status": "unverified" },
+    "ID": { "status": "unverified" }, "IN": { "status": "unverified" }, "KS": { "status": "unverified" },
+    "KY": { "status": "unverified" }, "LA": { "status": "unverified" }, "ME": { "status": "unverified" },
+    "MD": { "status": "unverified" }, "MI": { "status": "unverified" }, "MN": { "status": "unverified" },
+    "MO": { "status": "unverified" }, "NV": { "status": "unverified" }, "NJ": { "status": "unverified" },
+    "NM": { "status": "unverified" }, "ND": { "status": "unverified" }, "OK": { "status": "unverified" },
+    "RI": { "status": "unverified" }, "SD": { "status": "unverified" }, "TN": { "status": "unverified" },
+    "VT": { "status": "unverified" }, "VA": { "status": "unverified" }, "WV": { "status": "unverified" },
+    "WI": { "status": "unverified" }, "WY": { "status": "unverified" }
+  }
+}
