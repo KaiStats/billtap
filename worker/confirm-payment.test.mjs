@@ -22,6 +22,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { errorResponse } from './lib/errors.js';
 import { HANDLERS } from './routes/functions.js';
 
 const MASTER = 'test-master-key';
@@ -95,8 +96,26 @@ async function withStub(opts, fn) {
 
 const body = (res) => res.json();
 
-const confirm = (env, request, b) => HANDLERS.confirmPayment({ env, request, body: b });
+/**
+ * Calls a handler the way onRequestPost does.
+ *
+ * An authorization failure is a thrown AppError now rather than a returned
+ * Response, so that the status, the machine-readable code, the request id and
+ * the audit row are produced in one place instead of thirteen. The dispatcher
+ * turns that throw into what the caller receives; this does the same, so every
+ * assertion below stays about what a client actually gets back.
+ */
+const asResponse = async (promise) => {
+  try {
+    return await promise;
+  } catch (error) {
+    return errorResponse(error, { id: 'test00', route: 'test' });
+  }
+};
+
+const confirm = (env, request, b) => asResponse(HANDLERS.confirmPayment({ env, request, body: b }));
 const join = (env, b) => HANDLERS.joinSession({ env, body: b });
+const hostView = (env, request, b) => asResponse(HANDLERS.getSessionAsHost({ env, request, body: b }));
 
 /**
  * Creates a real split through createSession so the host key is minted the way
@@ -489,7 +508,7 @@ test('the host key opens the split for reading, which Base44 rules never would',
     const { session, hostKey } = await newSplit({ env });
     await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
 
-    const res = await HANDLERS.getSessionAsHost({ env, request: req(), body: { session_id: session.id, host_key: hostKey } });
+    const res = await hostView(env, req(), { session_id: session.id, host_key: hostKey });
     assert.equal(res.status, 200);
     const out = await body(res);
     assert.equal(out.session.participants.length, 1);
@@ -500,7 +519,7 @@ test('the host key opens the split for reading, which Base44 rules never would',
 test('the host read never returns the hash that grants host rights', async () => {
   await withStub(RESTAURANT, async ({ env }) => {
     const { session, hostKey } = await newSplit({ env });
-    const res = await HANDLERS.getSessionAsHost({ env, request: req(), body: { session_id: session.id, host_key: hostKey } });
+    const res = await hostView(env, req(), { session_id: session.id, host_key: hostKey });
     const out = await body(res);
     assert.equal(out.session.host_key_hash, undefined);
     assert.ok(!JSON.stringify(out).includes('host_key'));
@@ -510,15 +529,15 @@ test('the host read never returns the hash that grants host rights', async () =>
 test('without the key the host read is refused, not merely empty', async () => {
   await withStub(RESTAURANT, async ({ env }) => {
     const { session } = await newSplit({ env });
-    const res = await HANDLERS.getSessionAsHost({ env, request: req(), body: { session_id: session.id } });
+    const res = await hostView(env, req(), { session_id: session.id });
     assert.equal(res.status, 403);
   });
 });
 
 test('the host read validates its input and reports a missing split honestly', async () => {
   await withStub(RESTAURANT, async ({ env }) => {
-    assert.equal((await HANDLERS.getSessionAsHost({ env, request: req(), body: {} })).status, 400);
-    assert.equal((await HANDLERS.getSessionAsHost({ env, request: req(), body: { session_id: 'gone' } })).status, 404);
+    assert.equal((await hostView(env, req(), {})).status, 400);
+    assert.equal((await hostView(env, req(), { session_id: 'gone' })).status, 404);
   });
 });
 
@@ -557,7 +576,7 @@ test('a diner sees their own settlement record once the host confirms it', async
 // so all three were governed by a rule that a table-tent split can never
 // satisfy — and the payment handle is the one the whole table depends on.
 
-const settings = (env, request, b) => HANDLERS.updateSplitSettings({ env, request, body: b });
+const settings = (env, request, b) => asResponse(HANDLERS.updateSplitSettings({ env, request, body: b }));
 
 test('the host key lets a guest host say where the money should go', async () => {
   await withStub(RESTAURANT, async ({ env, store }) => {
@@ -688,9 +707,9 @@ test('updateSplitSettings validates its inputs', async () => {
 test('a guest host can mint the QR code their table needs to scan', async () => {
   await withStub(RESTAURANT, async ({ env }) => {
     const { session, hostKey } = await newSplit({ env });
-    const res = await HANDLERS.generateQRSignature({
+    const res = await asResponse(HANDLERS.generateQRSignature({
       env, request: req(), body: { session_id: session.id, host_key: hostKey },
-    });
+    }));
     assert.equal(res.status, 200);
     const { qr_token } = await body(res);
 
@@ -702,9 +721,9 @@ test('a guest host can mint the QR code their table needs to scan', async () => 
 test('a wrong host key mints nothing', async () => {
   await withStub(RESTAURANT, async ({ env }) => {
     const { session } = await newSplit({ env });
-    const res = await HANDLERS.generateQRSignature({
+    const res = await asResponse(HANDLERS.generateQRSignature({
       env, request: req(), body: { session_id: session.id, host_key: 'guessed' },
-    });
+    }));
     assert.equal(res.status, 403);
   });
 });

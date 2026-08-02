@@ -14,6 +14,7 @@ import { compressImage } from "@/lib/compressImage";
 import { rememberHostKey } from "@/lib/hostKey";
 import { rememberSplit } from "@/lib/splitHistory";
 import { startScanTimer } from "@/lib/scanTiming";
+import ErrorNotice from "@/components/ErrorNotice";
 import { validateReceiptParse, parseConfidence } from "../../shared/receipt-math";
 
 const RESTAURANT_SUGGESTIONS = [
@@ -53,6 +54,14 @@ export default function NewReceipt() {
   const [tip, setTip] = useState(0);
   const [splitMode, setSplitMode] = useState("itemized");
   const [saving, setSaving] = useState(false);
+  /**
+   * The last failure, shown in the page rather than in a modal.
+   *
+   * alert() froze the page on a phone at a table, said "please try again" for
+   * failures where trying again could not help, and left nothing to report. See
+   * src/components/ErrorNotice.jsx.
+   */
+  const [failure, setFailure] = useState(null);
   const [dismissedDesktopWarning, setDismissedDesktopWarning] = useState(false);
   const [parseValidation, setParseValidation] = useState(null);
   const [titleSuggestions, setTitleSuggestions] = useState([]);
@@ -90,12 +99,13 @@ export default function NewReceipt() {
 
   const validateAndSetFile = (file) => {
     if (!file) return;
+    setFailure(null);
     if (!ALLOWED_IMAGE_TYPES.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|heic|heif)$/i)) {
-      alert("Please upload a JPEG, PNG, or WebP image.");
+      setFailure({ status: 400, data: { error: "That file is not an image we can read.", code: "bad_file_type" } });
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      alert("Image must be under 10MB.");
+      setFailure({ status: 400, data: { error: "That image is over 10MB. Try taking the photo again.", code: "file_too_large" } });
       return;
     }
     setImageFile(file);
@@ -201,6 +211,7 @@ Return a JSON with:
 
   const handleParseReceipt = async () => {
     if (!imageFile) return;
+    setFailure(null);
     const timer = startScanTimer();
     try {
       setUploading(true);
@@ -275,7 +286,7 @@ Return a JSON with:
     } catch (err) {
       console.error("Failed to parse receipt:", err);
       Sentry.captureException(err, { tags: { feature: 'receipt_scan' } });
-      alert("Failed to process receipt. Please try again.");
+      setFailure(err);
     } finally {
       setUploading(false);
       setParsing(false);
@@ -307,6 +318,7 @@ Return a JSON with:
   };
 
   const handleCreateSession = async () => {
+    setFailure(null);
     setSaving(true);
     try {
       const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
@@ -328,7 +340,9 @@ Return a JSON with:
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
       });
       if (res.data?.error) {
-        alert(res.data.error);
+        // The server's own sentence — it has the amounts and the names, and a
+        // generic message here would throw that away.
+        setFailure({ data: res.data, status: 400 });
         setSaving(false);
         return;
       }
@@ -353,7 +367,7 @@ Return a JSON with:
     } catch (err) {
       console.error("Failed to create session:", err);
       Sentry.captureException(err, { tags: { feature: 'join_session' } });
-      alert("Failed to create session. Please try again.");
+      setFailure(err);
       setSaving(false);
     }
   };
@@ -369,6 +383,7 @@ Return a JSON with:
   };
 
   const handleQuickEvenCreate = async () => {
+    setFailure(null);
     const amt = parseFloat(quickTotal);
     if (!amt || amt <= 0) return;
     setSaving(true);
@@ -383,7 +398,7 @@ Return a JSON with:
         total_amount: amt,
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
       });
-      if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
+      if (res.data?.error) { setFailure({ data: res.data, status: 400 }); setSaving(false); return; }
       rememberHostKey(res.data.session.id, res.data.host_key);
       rememberSplit({
         id: res.data.session.id, title: res.data.session.title,
@@ -393,7 +408,7 @@ Return a JSON with:
       await afterCreate(res.data.session.id);
     } catch (err) {
       Sentry.captureException(err);
-      alert("Failed to create session.");
+      setFailure(err);
       setSaving(false);
     }
   };
@@ -435,6 +450,21 @@ Return a JSON with:
       </div>
 
       <div className="max-w-2xl mx-auto px-5 py-5 space-y-4">
+
+        {/*
+          One place for failures, above both steps. Whichever action failed, the
+          message appears where the person is already looking rather than in a
+          dialog that stops the page.
+
+          The retry is the scan and only the scan: it is the step that fails for
+          reasons a second attempt genuinely fixes — a slow network, a busy
+          model. Re-submitting a rejected form would produce the same rejection.
+        */}
+        <ErrorNotice
+          error={failure}
+          onRetry={step === 1 && imageFile ? handleParseReceipt : null}
+          onDismiss={() => setFailure(null)}
+        />
 
         {/* Scanning animation overlay */}
         {(uploading || parsing) && imageUrl && (

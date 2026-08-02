@@ -14,8 +14,9 @@
  * Bindings: STRIPE_SECRET_KEY (required)
  */
 import { json, clean } from '../lib/email.js';
+import { audit, ACTIONS } from '../lib/audit.js';
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, ctx, requestId = null }) {
   let body;
   try {
     body = await request.json();
@@ -60,6 +61,20 @@ export async function onRequestPost({ request, env }) {
     // any of this app's business.
     const customer = data.customer && typeof data.customer === 'object' ? data.customer : null;
     const address = customer?.address || data.customer_details?.address || null;
+
+    // A subscription changing state is a sensitive action by the same test as
+    // the rest: if it went wrong, somebody's account of what happened would be
+    // contested — "we were charged", "our plan changed and nobody told us".
+    // The restaurant id and whether Stripe considered it paid are the whole
+    // content of that dispute.
+    await audit(env, ctx, {
+      action: paid ? ACTIONS.BILLING_ACTIVATED : ACTIONS.BILLING_CHECKOUT,
+      request,
+      requestId,
+      restaurantId: data.client_reference_id || null,
+      outcome: paid ? 'ok' : 'failed',
+      detail: { status: data.status || null, plan: 'pro' },
+    });
 
     return json({
       ok: true,

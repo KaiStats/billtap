@@ -20,6 +20,19 @@
 import { json } from '../lib/email.js';
 import { serviceRole, asCaller, currentUser, appId } from '../lib/base44.js';
 import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
+import { AppError, errorResponse, requestId } from '../lib/errors.js';
+import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
+
+/**
+ * The audit hook when nobody supplied one.
+ *
+ * onRequestPost always passes a real one, so in production this is unreachable.
+ * It exists because the rule in worker/lib/audit.js — recording an action must
+ * never be able to break it — has to hold at this boundary too. A handler
+ * called directly, by a test or by a future path, does its work and skips the
+ * row rather than throwing on a missing dependency.
+ */
+const NO_AUDIT = async () => {};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -227,7 +240,7 @@ const HANDLERS = {
    * not produce the QR code their table needs to scan. They had made a split
    * nobody could join.
    */
-  async generateQRSignature({ env, request, body }) {
+  async generateQRSignature({ env, request, body, audit = NO_AUDIT }) {
     const { session_id, host_key } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
@@ -237,7 +250,15 @@ const HANDLERS = {
       const rows = await serviceRole(env).entity('Session').filter({ id: session_id });
       if (!rows[0]) return json({ error: 'Session not found' }, 404);
       if (!(await isHost(env, request, rows[0], host_key))) {
-        return json({ error: 'Not the host of this split' }, 403);
+        await audit({
+          action: ACTIONS.HOST_KEY_REJECTED,
+          sessionId: session_id,
+          restaurantId: rows[0].restaurant_id,
+          actorHostKey: host_key,
+          outcome: 'denied',
+          detail: { reason: 'qr_signature' },
+        });
+        throw new AppError('not_host', 'Not the host of this split.', 403);
       }
     } else {
       const user = await currentUser(env, request);
@@ -251,6 +272,17 @@ const HANDLERS = {
 
     const expiry = Date.now() + 30 * 60 * 1000;
     const sig = await hmac(qrSecret(env), `${session_id}.${expiry}`);
+
+    // A QR token is what lets a stranger at a table open this bill. Issuing one
+    // is a grant of access, so it is recorded as one — otherwise "how did they
+    // get into our split" has no answer at all.
+    await audit({
+      action: ACTIONS.HOST_KEY_ISSUED,
+      sessionId: session_id,
+      actorHostKey: host_key,
+      detail: { reason: 'qr_token' },
+    });
+
     return json({ qr_token: `${session_id}.${expiry}.${sig}`, expires_at: expiry });
   },
 
@@ -265,7 +297,7 @@ const HANDLERS = {
    * details: without them the claim screen has no Venmo handle to send anyone
    * to, so nobody at that table could pay at all.
    */
-  async updateSplitSettings({ env, request, body }) {
+  async updateSplitSettings({ env, request, body, audit = NO_AUDIT }) {
     const { session_id, host_key, host_payment_info, status, custom_amounts } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
@@ -276,7 +308,15 @@ const HANDLERS = {
     const session = sessions[0];
     if (!session) return json({ error: 'Session not found' }, 404);
     if (!(await isHost(env, request, session, host_key))) {
-      return json({ error: 'Only the host can change this split' }, 403);
+      await audit({
+        action: ACTIONS.HOST_KEY_REJECTED,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorHostKey: host_key,
+        outcome: 'denied',
+        detail: { reason: 'update_settings' },
+      });
+      throw new AppError('not_host', 'Only the host can change this split.', 403);
     }
 
     const patch = {};
@@ -351,6 +391,25 @@ const HANDLERS = {
     if (!Object.keys(patch).length) return json({ error: 'Nothing to change' }, 400);
 
     const updated = await svc.entity('Session').update(session_id, patch);
+
+    // "Someone changed my split after we agreed it" is a dispute between two
+    // people at one table, and this row is the only witness to it. The previous
+    // mode is kept alongside the new one, because what changed matters more
+    // than what it is now.
+    await audit({
+      action: ACTIONS.SPLIT_SETTINGS_CHANGED,
+      sessionId: session_id,
+      restaurantId: session.restaurant_id,
+      actorHostKey: host_key,
+      detail: {
+        split_mode: updated.split_mode,
+        previous_split_mode: session.split_mode,
+        status: updated.status,
+        previous_status: session.status,
+        participant_count: (updated.participants || []).length,
+      },
+    });
+
     return json({ session: publicSession(updated) });
   },
 
@@ -376,7 +435,7 @@ const HANDLERS = {
   },
 
   /** The guest's rating, and then their email and comment. */
-  async submitGuestRating({ env, body }) {
+  async submitGuestRating({ env, body, audit = NO_AUDIT }) {
     const svc = serviceRole(env);
     const action = body?.action;
 
@@ -456,6 +515,13 @@ const HANDLERS = {
           });
         }
       }
+      // A guest handing over their email address, and it being kept. Recorded
+      // because "why are you emailing me" deserves an answer with a date on it.
+      await audit({
+        action: ACTIONS.RATING_SUBMITTED,
+        restaurantId: rating.restaurant_id,
+        detail: { reason: 'contact_opt_in' },
+      });
       return json({ ok: true });
     }
 
@@ -468,7 +534,7 @@ const HANDLERS = {
    * Auth is conditional: a restaurant_slug means a diner scanned a table tent,
    * and requiring a login there would defeat the entire product.
    */
-  async createSession({ env, request, body }) {
+  async createSession({ env, request, body, audit = NO_AUDIT }) {
     const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = body;
     const user = await currentUser(env, request);
 
@@ -552,6 +618,22 @@ const HANDLERS = {
       ...(restaurantId ? { restaurant_id: restaurantId } : {}),
     });
 
+    // The start of the trail for this bill. Every later row about this split —
+    // who claimed what, who was confirmed paid — hangs off this session id, and
+    // without a row saying when and by whom it began, the rest has no anchor.
+    await audit({
+      action: ACTIONS.SPLIT_CREATED,
+      sessionId: session.id,
+      restaurantId: restaurantId,
+      actorUserId: user?.id || null,
+      actorHostKey: hostKey,
+      detail: {
+        amount: Math.round(total * 100) / 100,
+        item_count: list.length,
+        split_mode: mode,
+      },
+    });
+
     return json({ session: publicSession(session), host_key: hostKey });
   },
 
@@ -564,7 +646,7 @@ const HANDLERS = {
    * returned nothing, so the screen that lists who has paid was empty for
    * exactly the person it exists for.
    */
-  async getSessionAsHost({ env, request, body }) {
+  async getSessionAsHost({ env, request, body, audit = NO_AUDIT }) {
     const { session_id, host_key } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
@@ -576,8 +658,26 @@ const HANDLERS = {
     if (!session) return json({ error: 'Session not found' }, 404);
 
     if (!(await isHost(env, request, session, host_key))) {
-      return json({ error: 'Not the host of this split' }, 403);
+      await audit({
+        action: ACTIONS.HOST_KEY_REJECTED,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorHostKey: host_key,
+        outcome: 'denied',
+        detail: { reason: 'host_view' },
+      });
+      throw new AppError('not_host', 'Not the host of this split.', 403);
     }
+
+    // "Who could see my table's bill?" This is the read that answers it — every
+    // name and every amount at that table, in one response.
+    await audit({
+      action: ACTIONS.SPLIT_HOST_ACCESS,
+      sessionId: session_id,
+      restaurantId: session.restaurant_id,
+      actorHostKey: host_key,
+      detail: { participant_count: (session.participants || []).length, status: session.status },
+    });
 
     return json({ session: publicSession(session) });
   },
@@ -597,7 +697,7 @@ const HANDLERS = {
    * caller names one participant and the server patches that row against stored
    * data.
    */
-  async confirmPayment({ env, request, body }) {
+  async confirmPayment({ env, request, body, audit = NO_AUDIT }) {
     const { session_id, participant_id, host_key, action = 'confirm' } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
@@ -615,7 +715,19 @@ const HANDLERS = {
     if (!session) return json({ error: 'Session not found' }, 404);
 
     if (!(await isHost(env, request, session, host_key))) {
-      return json({ error: 'Only the host can confirm a payment' }, 403);
+      // Recorded, and recorded as denied. A rejected host key is the signature
+      // of someone trying to mark themselves paid on a bill they do not own,
+      // and it is the one failure here that is worth being able to count.
+      await audit({
+        action: ACTIONS.HOST_KEY_REJECTED,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorHostKey: host_key,
+        actorParticipantId: participant_id,
+        outcome: 'denied',
+        detail: { reason: 'confirm_payment' },
+      });
+      throw new AppError('not_host', 'Only the host can confirm a payment.', 403);
     }
 
     const participants = session.participants || [];
@@ -674,6 +786,24 @@ const HANDLERS = {
     );
 
     if (!updated) return json({ error: 'Session not found' }, 404);
+
+    // The row that settles the argument. The amount is the point: "the host
+    // confirmed $23.40 for p_17… at 8:42pm" is the entire content of a payment
+    // dispute, and without the number this row cannot end one.
+    const settled = (updated.participants || []).find((p) => p.participant_id === participant_id);
+    await audit({
+      action: action === 'confirm' ? ACTIONS.PAYMENT_CONFIRMED : ACTIONS.PAYMENT_UNCONFIRMED,
+      sessionId: session_id,
+      restaurantId: updated.restaurant_id,
+      actorHostKey: host_key,
+      actorParticipantId: participant_id,
+      detail: {
+        amount: action === 'confirm' ? settled?.paid_amount : (target.paid_amount ?? null),
+        status: updated.status,
+        verified_by: host_key ? 'host_key' : 'session',
+      },
+    });
+
     return json({ session: publicSession(updated) });
   },
 
@@ -690,7 +820,7 @@ const HANDLERS = {
    * applied, against the stored session rather than the one the browser
    * remembers.
    */
-  async joinSession({ env, body }) {
+  async joinSession({ env, body, audit = NO_AUDIT }) {
     const { session_id, participant_id, name, items } = body;
     if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
     if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
@@ -803,11 +933,26 @@ const HANDLERS = {
       ...(splitMode === 'itemized' ? { items: nextItems } : {}),
     });
 
+    // Who claimed what, and what they were told they owe. The other half of a
+    // "that was not my order" dispute — payment.self_reported says a diner sent
+    // money, this says what the app had asked them for at that moment.
+    await audit({
+      action: ACTIONS.SPLIT_CLAIMED,
+      sessionId: session_id,
+      restaurantId: updated.restaurant_id,
+      actorParticipantId: participant_id,
+      detail: {
+        amount: (updated.participants || []).find((p) => p.participant_id === participant_id)?.amount_owed ?? null,
+        split_mode: splitMode,
+        participant_count: (updated.participants || []).length,
+      },
+    });
+
     return json({ session: scopeForParticipant(updated, participant_id) });
   },
 
   /** Marks the caller — and only the caller — as having sent payment. */
-  async markMePaid({ env, body }) {
+  async markMePaid({ env, body, audit = NO_AUDIT }) {
     const { session_id, participant_id } = body;
     if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
     if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
@@ -862,11 +1007,25 @@ const HANDLERS = {
     );
 
     if (!updated) return json({ error: 'Session not found' }, 404);
+
+    // The other side of a payment dispute. This row says a diner asserted they
+    // sent money at 8:31pm; the payment.confirmed row says the host agreed it
+    // arrived at 8:42pm. Which is why the actor is recorded as a claim — nobody
+    // verified anything here, and a trail that implied otherwise would be worse
+    // than none.
+    await audit({
+      action: ACTIONS.PAYMENT_SELF_REPORTED,
+      sessionId: session_id,
+      restaurantId: updated.restaurant_id,
+      actorParticipantId: participant_id,
+      detail: { amount: Number(me.amount_owed) || 0, status: 'pending_verification' },
+    });
+
     return json({ session: scopeForParticipant(updated, participant_id) });
   },
 
   /** The operator's own ratings and contacts. Ownership from their identity. */
-  async getRestaurantDashboardData({ env, request }) {
+  async getRestaurantDashboardData({ env, request, audit = NO_AUDIT }) {
     const user = await currentUser(env, request);
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
@@ -879,17 +1038,38 @@ const HANDLERS = {
       svc.entity('GuestRating').filter({ restaurant_id: restaurant.id }),
       svc.entity('GuestContact').filter({ restaurant_id: restaurant.id }),
     ]);
+
+    // Every guest email this restaurant holds, in one response. That is the
+    // largest disclosure of other people's data the app performs, and "did
+    // anyone export our guest list" needs an answer that is not a shrug.
+    await audit({
+      action: ACTIONS.GUESTS_EXPORTED,
+      restaurantId: restaurant.id,
+      actorUserId: user.id,
+      detail: { row_count: contacts.length },
+    });
+
     return json({ restaurant_id: restaurant.id, ratings, contacts });
   },
 };
 
-export async function onRequestPost({ request, env, name }) {
+export async function onRequestPost({ request, env, ctx, name }) {
+  // Minted before anything can fail, so even a rejected body carries one. The
+  // caller is shown this and the log line and the audit row both carry it, so
+  // "it said error, request 4f2a91" is one query rather than a conversation.
+  const id = requestId();
+  const route = `fn/${name}`;
+
   const handler = HANDLERS[name];
-  if (!handler) return json({ error: `Unknown function: ${name}` }, 404);
+  if (!handler) {
+    return errorResponse(new AppError('unknown_function', `Unknown function: ${name}`, 404), { id, route });
+  }
 
   if (!appId(env)) {
-    console.error(`fn/${name}: BASE44_APP_ID is not configured`);
-    return json({ error: 'Service misconfigured' }, 500);
+    return errorResponse(
+      new AppError('misconfigured', 'Service misconfigured', 500, { detail: 'BASE44_APP_ID is not set' }),
+      { id, route },
+    );
   }
 
   let body = {};
@@ -897,16 +1077,29 @@ export async function onRequestPost({ request, env, name }) {
     const raw = await request.text();
     if (raw) body = JSON.parse(raw);
   } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+    return errorResponse(new AppError('invalid_json', 'Invalid JSON', 400), { id, route });
   }
 
+  /**
+   * Recording an action, bound to this request.
+   *
+   * Handed to handlers rather than imported by them so the request id and the
+   * request itself cannot be forgotten at a call site — the two fields that
+   * make a row traceable are the two most easily left out.
+   */
+  const record = (entry) => recordAudit(env, ctx, { ...entry, request, requestId: id });
+
   try {
-    return await handler({ request, env, body });
+    const response = await handler({ request, env, body, audit: record, requestId: id });
+    // On every response, not just failures. A support conversation usually
+    // starts with something that succeeded and should not have.
+    const headers = new Headers(response.headers);
+    headers.set('X-Request-Id', id);
+    return new Response(response.body, { status: response.status, headers });
   } catch (error) {
-    // Surface the function name: these all answer on one route, so an
-    // unlabelled stack trace says nothing about which one failed.
-    console.error(`fn/${name} failed:`, error?.message);
-    return json({ error: 'Internal server error' }, 500);
+    // The function name is in `route`, because these all answer on one path and
+    // an unlabelled stack says nothing about which of the thirteen failed.
+    return errorResponse(error, { id, route });
   }
 }
 

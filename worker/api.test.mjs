@@ -197,8 +197,15 @@ test('a thrown handler returns a generic 500 and leaks no internals', async () =
     const res = await onRequestPost({ request, env, name: 'getPublicRestaurant' });
     assert.equal(res.status, 500);
     const out = await body(res);
-    assert.equal(out.error, 'Internal server error');
-    assert.ok(!JSON.stringify(out).includes('supersecret'));
+    // The message answers the question a diner actually has at this moment,
+    // which is not "what broke" — it is "did I just pay twice".
+    assert.match(out.error, /Nothing was charged or changed/);
+    assert.equal(out.code, 'internal');
+    assert.ok(!JSON.stringify(out).includes('supersecret'), 'an upstream message must never reach the caller');
+    // Traceable. Without this the caller has a sentence and we have a log line
+    // and there is no way to put the two together.
+    assert.match(out.request_id, /^[0-9a-f]{6}$/);
+    assert.equal(res.headers.get('X-Request-Id'), out.request_id);
   });
 });
 

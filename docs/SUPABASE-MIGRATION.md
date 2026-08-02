@@ -68,8 +68,13 @@ serve if a non-production deployment carries production's credentials, and that
 guard is worth keeping honest.
 
 ```
-supabase db push          # or paste 0001_initial_schema.sql into the SQL editor
+supabase db push          # or paste each file in supabase/migrations/ into the SQL editor
 ```
+
+Two files, in order: `0001_initial_schema.sql` then `0002_audit_log.sql`. The
+second is the append-only trail written by `worker/lib/audit.js`; until it
+exists, sensitive actions are recorded to the Worker logs only, which is a
+short-retention fallback rather than the record.
 
 ### 2. Secrets
 
@@ -231,3 +236,43 @@ Base44 is gone.
 - `npm test` fails after the import swap. The interface is not faithful; fix
   `db.js` rather than the functions.
 - Staging cannot complete a full scan → share → claim → pay → confirm by hand.
+
+---
+
+## The audit trail
+
+`supabase/migrations/0002_audit_log.sql` creates `audit_log`, written by
+`worker/lib/audit.js`. Two things about it are worth knowing before you touch
+it.
+
+**It is append-only and that is enforced twice** — update and delete are revoked
+from every role including `service_role`, and a trigger refuses them as well. So
+`update audit_log set …` will fail, from psql, from the dashboard, from
+anywhere. That is deliberate: a trail that can be rewritten is not evidence.
+Corrections are new rows.
+
+**It does not contain the host key.** Only a twelve-character fingerprint, which
+is enough to say two rows came from the same host and useless for confirming a
+payment. Same for IP addresses. `detail` is an allow-list, so a field nobody
+approved is dropped rather than stored — see `safeDetail` in `worker/lib/audit.js`.
+
+The questions it is indexed to answer:
+
+```sql
+-- "The host says I never paid, and I did."
+select at, action, actor_participant_claim, outcome, detail
+from audit_log where session_id = 'SESSION_ID' order by at;
+
+-- "Someone tried to get into our split."
+select at, session_id, source_ip_fp, detail
+from audit_log where action = 'host_key.rejected' and at > now() - interval '7 days'
+order by at desc;
+
+-- "Did anyone export our guest list?"
+select at, actor_user_id, detail->>'row_count' as rows
+from audit_log where action = 'guests.exported' and restaurant_id = 'RESTAURANT_ID'
+order by at desc;
+
+-- Someone quoted a request id from an error message.
+select at, action, outcome, detail from audit_log where request_id = 'REQUEST_ID';
+```

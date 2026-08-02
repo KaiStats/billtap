@@ -25,6 +25,7 @@ import { proxyToBase44 } from './routes/base44-proxy.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { rateLimit } from './lib/rate-limit.js';
 import { assertEnvironmentIsolated } from './lib/environment.js';
+import { errorResponse, requestId } from './lib/errors.js';
 
 const BASE44_PREFIX = '/api/apps/';
 
@@ -181,7 +182,15 @@ export default {
     ctx.waitUntil(nightlyBackup(env));
   },
 
-  async fetch(request, env) {
+  /**
+   * `ctx` is here for waitUntil, which the audit trail needs.
+   *
+   * worker/lib/audit.js must never make the caller wait on a bookkeeping write
+   * and must never fail an action by failing to record it — see the header
+   * there. Without a ctx to hand it, every audited action would either block on
+   * the insert or drop it.
+   */
+  async fetch(request, env, ctx) {
     // Before anything else: is this deployment allowed to touch the database it
     // has been handed? A non-production environment carrying production's app
     // id stops here rather than serving, because the alternative is a developer
@@ -229,13 +238,25 @@ export default {
       const name = path.slice(FN_PREFIX.length);
       // No slashes: the name indexes a handler table, not a filesystem.
       if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(name)) return json({ error: 'Not found' }, 404);
-      return invokeFunction({ request, env, name });
+      return invokeFunction({ request, env, ctx, name });
     }
 
     const handler = POST_ROUTES[path];
     if (handler) {
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-      return handler({ request, env });
+      // These handlers predate the error layer and each has its own catch. The
+      // wrapper is here for what they do not catch — a throw during parsing, an
+      // exhausted subrequest budget — which previously surfaced as Cloudflare's
+      // own 1101 page: no message, no id, nothing to search for.
+      const id = requestId();
+      try {
+        const response = await handler({ request, env, ctx, requestId: id });
+        const headers = new Headers(response.headers);
+        headers.set('X-Request-Id', id);
+        return new Response(response.body, { status: response.status, headers });
+      } catch (error) {
+        return errorResponse(error, { id, route: path });
+      }
     }
 
     // An unmatched /api/* path must 404 as JSON. Falling through to the assets

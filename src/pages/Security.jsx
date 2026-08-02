@@ -140,6 +140,65 @@ const Security = () => (
         </ul>
       </Section>
 
+      <Section title="What gets recorded">
+        <p>
+          Actions that move money or expose people are written to an append-only log. The test for
+          what belongs there is narrow: if it went wrong, would two people disagree about what
+          happened? Everything else is left out, because a record of everything is a log, not a
+          trail.
+        </p>
+        <ul className="space-y-2">
+          <Fact>
+            <strong>Payments.</strong> A diner saying they sent money, and the host confirming it
+            arrived, are separate entries with separate amounts and times. That distinction is the
+            entire content of a payment dispute.
+          </Fact>
+          <Fact>
+            <strong>Changes to a split</strong> after people have started claiming, including what
+            the setting was before.
+          </Fact>
+          <Fact>
+            <strong>Host access.</strong> Reading a whole table&apos;s bill, and every rejected
+            attempt to do so with a wrong host key.
+          </Fact>
+          <Fact>
+            <strong>Guest data leaving.</strong> Every time a restaurant&apos;s guest contact list
+            is read, with the number of rows.
+          </Fact>
+          <Fact>
+            <strong>Secrets are not in it.</strong> The host key is stored only as a truncated
+            one-way fingerprint — enough to tell two hosts apart, useless for confirming a payment.
+            Addresses are fingerprinted the same way. Fields are allow-listed rather than redacted,
+            so a field nobody approved is dropped instead of stored.
+          </Fact>
+          <Fact>
+            <strong>It cannot be edited.</strong> Update and delete are revoked on the table for
+            every role, including the one our own server uses, and a database trigger refuses them
+            as well. Corrections are new rows. An audit trail that can be rewritten is a document,
+            not evidence.
+          </Fact>
+          <Fact>
+            <strong>It cannot break a payment.</strong> Writing the record happens after the
+            response and its failure is swallowed. A trail that can fail the action it observes
+            would do so at the busiest table on the busiest night.
+          </Fact>
+        </ul>
+      </Section>
+
+      <Section title="When something goes wrong">
+        <p>
+          Every failure carries a short request id, shown on screen and written into our logs and
+          the audit trail. Quoting it in a support email takes us straight to the exact request.
+        </p>
+        <ul className="space-y-2">
+          <Fact>
+            Messages about something you can fix say what is wrong. Messages about a fault on our
+            side say only that, plus the id — an internal error message can name a database column
+            or another customer&apos;s data, so it is replaced rather than trimmed.
+          </Fact>
+        </ul>
+      </Section>
+
       <Section title="The application and its infrastructure">
         <ul className="space-y-2">
           <Fact>
@@ -271,9 +330,9 @@ const Security = () => (
             our own, so we do not claim one.
           </Gap>
           <Gap>
-            <strong>We do not yet have a customer-facing audit log.</strong> Payment confirmations
-            record who was confirmed, for how much and when. A full trail of every sensitive action
-            is being built.
+            <strong>The audit trail is not customer-facing yet.</strong> Sensitive actions are
+            recorded (see above), but there is no screen where an operator can read their own trail.
+            Answering a question from it today means us running a query.
           </Gap>
         </ul>
         <p className="text-sm text-slate-500">
