@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrate, readAll, writeAll, shape, ENTITIES } from './migrate-to-supabase.mjs';
+import { migrate, readAll, writeAll, shape, keyRole, ENTITIES } from './migrate-to-supabase.mjs';
 
 const CONFIG = {
   appId: 'app1',
@@ -244,4 +244,28 @@ test('the service key never travels to Base44, nor the master key to Supabase', 
       assert.ok(!JSON.stringify(call).includes('master'), 'Base44 key leaked to Supabase');
     }
   }
+});
+
+// ── Which key got pasted ────────────────────────────────────────────────────
+
+const jwt = (claims) =>
+  `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`;
+
+test('the anon key and the service role key are told apart', () => {
+  // They are the same length, the same prefix, and sit next to each other on
+  // the same dashboard page. The claim inside is the only difference, and it
+  // is the difference between every row copying and every row being refused.
+  assert.equal(keyRole(jwt({ iss: 'supabase', role: 'anon' })), 'anon');
+  assert.equal(keyRole(jwt({ iss: 'supabase', role: 'service_role' })), 'service_role');
+});
+
+test('a key that is not a JWT reads as unknown rather than as wrong', () => {
+  // Supabase's newer publishable/secret keys are not JWTs. Refusing everything
+  // unrecognisable would block a project on the new key format for no reason,
+  // so an unreadable key is passed through and left to fail honestly at the
+  // first write if it is in fact wrong.
+  assert.equal(keyRole('sb_secret_abc123'), null);
+  assert.equal(keyRole(''), null);
+  assert.equal(keyRole(undefined), null);
+  assert.equal(keyRole('not.a.jwt'), null);
 });

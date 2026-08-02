@@ -225,6 +225,36 @@ export async function migrate({ config, only = null, dryRun = false, fetchImpl =
   return summary;
 }
 
+/**
+ * The role a Supabase key carries, read out of the JWT it already is.
+ *
+ * Both keys a project hands you are JWTs and they look identical at a glance —
+ * same prefix, same length, same page of the dashboard. The only difference
+ * that matters is one claim, and copying the wrong one is the single easiest
+ * mistake to make here.
+ *
+ * It matters because the schema enables row level security on every table with
+ * almost no policies. The anon key is therefore refused by every write, and
+ * PostgREST reports that as a 401 mentioning nothing about which key you sent —
+ * so the failure reads as a broken script rather than a wrong paste.
+ *
+ * No signature check: this is not authenticating anything, it is reading a
+ * label off a credential the operator already holds, to tell them they grabbed
+ * the wrong one.
+ *
+ * @returns {string|null} the role claim, or null if this is not a readable JWT
+ */
+export function keyRole(key) {
+  const payload = String(key || '').split('.')[1];
+  if (!payload) return null;
+  try {
+    const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return JSON.parse(json).role ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Command line ────────────────────────────────────────────────────────────
 
 function readConfig(envSource = process.env) {
@@ -236,12 +266,24 @@ function readConfig(envSource = process.env) {
     }
     return value;
   };
+  const supabaseKey = need('SUPABASE_SERVICE_ROLE_KEY');
+  const role = keyRole(supabaseKey);
+  if (role && role !== 'service_role') {
+    console.error(`\nSUPABASE_SERVICE_ROLE_KEY is a "${role}" key, not a service_role key.`);
+    console.error('Every write would be refused by row level security, and PostgREST would');
+    console.error('report that as a 401 that says nothing about the key.');
+    console.error('\nSupabase dashboard → Project Settings → API keys → service_role. It is');
+    console.error('hidden behind a Reveal button, which is why the anon key is the one that');
+    console.error('gets copied.\n');
+    process.exit(1);
+  }
+
   return {
     appId: need('BASE44_APP_ID').replace(/^app_/, ''),
     masterKey: need('BASE44_MASTER_KEY'),
     base44Origin: (envSource.BASE44_API_ORIGIN || 'https://base44.app').replace(/\/+$/, ''),
     supabaseUrl: need('SUPABASE_URL').replace(/\/+$/, ''),
-    supabaseKey: need('SUPABASE_SERVICE_ROLE_KEY'),
+    supabaseKey,
   };
 }
 

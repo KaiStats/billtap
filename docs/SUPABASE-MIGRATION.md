@@ -93,11 +93,19 @@ table tent.
 ```
 export BASE44_APP_ID=...            # no app_ prefix; the script strips it anyway
 export BASE44_MASTER_KEY=...
-export SUPABASE_URL=https://<project>.supabase.co
+export SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 export SUPABASE_SERVICE_ROLE_KEY=...
 
 node scripts/migrate-to-supabase.mjs --dry-run
 ```
+
+**It must be the `service_role` key, not the anon key.** They sit next to each
+other in Project Settings → API keys, they are the same length with the same
+prefix, and the anon one is not hidden behind a Reveal button — so it is the one
+that gets copied. Because RLS here is default-deny, the anon key means *every*
+write is refused, and PostgREST reports that as a 401 that says nothing about
+which key you sent. The script decodes the key's `role` claim and refuses up
+front rather than letting you find out that way.
 
 **Stop and read the dry run.** It prints a row count per table and, more
 importantly, any Base44 field with no column here. Those are dropped. If
