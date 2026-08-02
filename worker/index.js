@@ -65,6 +65,7 @@ const SPA_ROUTES = new Set([
   '/restaurants',
   '/privacy',
   '/terms',
+  '/security',
   '/icon-generator',
   '/login',
   '/register',
@@ -106,6 +107,7 @@ export const PRERENDERED = {
   '/changelog': '/changelog.html',
   '/privacy': '/privacy.html',
   '/terms': '/terms.html',
+  '/security': '/security.html',
 };
 
 /**

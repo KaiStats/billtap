@@ -1381,3 +1381,51 @@ test('the recovery pages fit a phone and log nothing', async () => {
     } finally { await context.close(); }
   }
 });
+
+// ── The security page ───────────────────────────────────────────────────────
+
+test('the security page renders and is reachable from the footer', async () => {
+  const { context, page, errors } = await phone();
+  try {
+    await page.goto(`${base}/security`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Security', level: 1 }).waitFor({ timeout: 10000 });
+    const text = await page.locator('#root').innerText();
+    assert.match(text, /never see a card number/i);
+    assert.match(text, /security@billtap\.app/);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `overflowed by ${overflow}px`);
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('the gaps are on the page, not buried in a comment', async () => {
+  // The section that makes the rest of the page worth reading. If it is ever
+  // quietly dropped for looking bad next to a competitor, this fails.
+  const { context, page } = await phone();
+  try {
+    await page.goto(`${base}/security`, { waitUntil: 'networkidle' });
+    const text = await page.locator('#root').innerText();
+    assert.match(text, /have not had a third-party penetration test/i);
+    assert.match(text, /hold no security certification/i);
+    assert.match(text, /Encryption at rest is our providers/i);
+  } finally { await context.close(); }
+});
+
+test('a researcher can find the reporting route without reading prose', async () => {
+  const { context, page } = await phone();
+  try {
+    await page.goto(`${base}/security`, { waitUntil: 'networkidle' });
+    const mailto = page.getByRole('link', { name: /security@billtap\.app/ });
+    assert.equal(await mailto.getAttribute('href'), 'mailto:security@billtap.app');
+    const wellKnown = page.getByRole('link', { name: /security\.txt/ });
+    assert.equal(await wellKnown.getAttribute('href'), '/.well-known/security.txt');
+  } finally { await context.close(); }
+});
+
+test('the security page is in the prerendered HTML, not only after React boots', async () => {
+  // Vendor questionnaires and crawlers do not run JavaScript.
+  const res = await fetch(`${base}/security.html`);
+  const html = await res.text();
+  assert.match(html, /never see a card number/i);
+  assert.match(html, /penetration test/i);
+});

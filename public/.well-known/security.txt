@@ -1,0 +1,16 @@
+# BillTap — security contact, per RFC 9116.
+#
+# Served from /.well-known/security.txt so that a researcher, an automated
+# scanner or a vendor questionnaire finds the right inbox without guessing.
+# Before this existed the only route was a general contact form, which is how
+# reports get lost or posted publicly instead.
+#
+# Expires must stay in the future or the file is treated as stale. Bump it when
+# you review the security page.
+
+Contact: mailto:security@billtap.app
+Contact: https://billtap.app/security
+Expires: 2027-08-02T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://billtap.app/.well-known/security.txt
+Policy: https://billtap.app/security

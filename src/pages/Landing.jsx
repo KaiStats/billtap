@@ -813,6 +813,7 @@ export default function Landing() {
               <ul className="space-y-3">
                 <li><Link to="/terms" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Terms</Link></li>
                 <li><Link to="/privacy" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Privacy</Link></li>
+                <li><Link to="/security" className="text-sm transition-colors hover:text-green-400" style={{ color: "#8b90a8" }}>Security</Link></li>
               </ul>
             </div>
           </div>

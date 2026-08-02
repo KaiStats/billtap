@@ -1388,3 +1388,67 @@ test('ordinary entity reads still pass through the proxy untouched', async () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+// ── The security page and its contact file ──────────────────────────────────
+
+test('the security page is a real route, not a soft 404', async () => {
+  const worker = (await import('./index.js')).default;
+  const assets = { fetch: async () => new Response('<html>shell</html>', { status: 200, headers: { 'content-type': 'text/html' } }) };
+  const res = await worker.fetch(new Request('https://billtap.app/security'), { ...WORKER_ENV, ASSETS: assets });
+  assert.equal(res.status, 200);
+});
+
+test('the security page is prerendered, so a crawler sees the claims', async () => {
+  // The page exists to be read by people evaluating a vendor, and increasingly
+  // by their automated questionnaires. An empty <div id="root"> is worth nothing
+  // to either.
+  const { PRERENDERED } = await import('./index.js');
+  assert.equal(PRERENDERED['/security'], '/security.html');
+});
+
+test('security.txt is reachable at the path RFC 9116 specifies', async () => {
+  // A researcher, a scanner or a vendor questionnaire looks here and nowhere
+  // else. Served from public/, so the assets binding answers it directly.
+  const { readFile } = await import('node:fs/promises');
+  const txt = await readFile(new URL('../public/.well-known/security.txt', import.meta.url), 'utf8');
+  assert.match(txt, /^Contact: mailto:security@billtap\.app$/m);
+  assert.match(txt, /^Policy: https:\/\/billtap\.app\/security$/m);
+  assert.match(txt, /^Canonical: https:\/\/billtap\.app\/\.well-known\/security\.txt$/m);
+});
+
+test('the security.txt expiry has not passed', async () => {
+  // RFC 9116 requires Expires, and a stale file is treated as no file — the
+  // failure mode is silent, so it needs a test rather than a diary entry.
+  const { readFile } = await import('node:fs/promises');
+  const txt = await readFile(new URL('../public/.well-known/security.txt', import.meta.url), 'utf8');
+  const expires = txt.match(/^Expires: (.+)$/m)?.[1];
+  assert.ok(expires, 'Expires is required');
+  assert.ok(new Date(expires) > new Date(), `security.txt expired on ${expires}`);
+});
+
+test('the security page claims nothing the gaps section contradicts', async () => {
+  // The guard against this page drifting into marketing. Every phrase below is
+  // something we do not have; if one appears as a claim, either it became true
+  // and this test should be updated deliberately, or somebody wrote it because
+  // it sounded good.
+  const { readFile } = await import('node:fs/promises');
+  const page = await readFile(new URL('../src/pages/Security.jsx', import.meta.url), 'utf8');
+
+  const forbidden = [
+    /\bSOC ?2 (?:certified|compliant)\b/i,
+    /\bISO ?27001 (?:certified|compliant)\b/i,
+    /\bPCI[- ]DSS (?:certified|compliant)\b/i,
+    /\bHIPAA compliant\b/i,
+    /\bmilitary[- ]grade\b/i,
+    /\bunhackable\b/i,
+    /\b100% secure\b/i,
+    /\bbank[- ]grade security\b/i,
+  ];
+  for (const pattern of forbidden) {
+    assert.ok(!pattern.test(page), `security page makes an unearned claim: ${pattern}`);
+  }
+
+  // And the gaps section must still be there.
+  assert.match(page, /have not had a third-party penetration test/i);
+  assert.match(page, /hold no security certification/i);
+});
