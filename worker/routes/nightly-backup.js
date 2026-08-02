@@ -26,7 +26,8 @@
  * Bind a bucket in wrangler.jsonc as BACKUP_BUCKET to turn it on.
  */
 
-import { serviceRole, appId } from '../lib/base44.js';
+import { serviceRole, backendName } from '../lib/data.js';
+import { appId } from '../lib/base44.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 /** Everything worth restoring. Session and Receipt were the original two. */
@@ -75,8 +76,16 @@ export async function runBackup(env) {
       'BACKUP_BUCKET is not bound. There is no backup until it is — see wrangler.jsonc.',
     );
   }
-  if (!appId(env) || !env.BASE44_MASTER_KEY) {
-    throw new Error('BASE44_APP_ID and BASE44_MASTER_KEY are required to read the data');
+  // Whichever database is live is the one worth backing up. Checking Base44's
+  // credentials after the cutover would throw every night against a deployment
+  // that has no Base44 credentials and does not need any — a backup job failing
+  // for a reason that is not about backups.
+  if (backendName(env) === 'base44') {
+    if (!appId(env) || !env.BASE44_MASTER_KEY) {
+      throw new Error('BASE44_APP_ID and BASE44_MASTER_KEY are required to read the data');
+    }
+  } else if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to read the data');
   }
 
   const svc = serviceRole(env);

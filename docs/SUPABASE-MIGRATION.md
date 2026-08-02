@@ -170,16 +170,22 @@ nobody has an account yet.
 
 ### 4. Switch the Worker
 
-In `worker/routes/functions.js`, `worker/routes/nightly-backup.js` and
-`worker/routes/rating-alert.js`:
+One binding, no deploy:
 
-```js
-- import { serviceRole, asCaller, currentUser } from '../lib/base44.js';
-+ import { serviceRole, asCaller, currentUser } from '../lib/db.js';
+```
+npx wrangler secret put DATA_BACKEND --env production
+# supabase
 ```
 
-Then `npm test`. All 325 pass or something is wrong with `db.js`, not with the
-functions — that is the entire point of matching the interface.
+The rollback is the same command with `base44`, and it is under a minute. That
+matters more than it sounds: this used to be an import swap in three files, so
+switching was a build and a deploy and rolling back was another one — five to
+ten minutes, from a laptop, while a restaurant's diners cannot split their bill.
+
+Unset means Base44, so a forgotten or misspelled binding keeps serving the
+database that holds the data rather than pointing a live app at an empty one. A
+value that is neither name throws on the first request instead of quietly
+meaning "carry on with the old database" — see `worker/lib/data.js`.
 
 Deploy to staging first and walk the flow by hand: scan, share, claim, pay,
 confirm. Then production.

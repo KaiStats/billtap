@@ -18,7 +18,7 @@
  * preserved.
  */
 import { json } from '../lib/email.js';
-import { serviceRole, asCaller, currentUser, appId } from '../lib/base44.js';
+import { serviceRole, asCaller, currentUser, dataMisconfiguration } from '../lib/data.js';
 import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
 import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
@@ -1065,9 +1065,22 @@ export async function onRequestPost({ request, env, ctx, name }) {
     return errorResponse(new AppError('unknown_function', `Unknown function: ${name}`, 404), { id, route });
   }
 
-  if (!appId(env)) {
+  // Which database this Worker talks to is a binding, not an import — see
+  // worker/lib/data.js. An unrecognised value throws here rather than falling
+  // back, so a typo in the cutover surfaces on the first request instead of
+  // quietly leaving the app on the old database.
+  let missing;
+  try {
+    missing = dataMisconfiguration(env);
+  } catch (error) {
     return errorResponse(
-      new AppError('misconfigured', 'Service misconfigured', 500, { detail: 'BASE44_APP_ID is not set' }),
+      new AppError('misconfigured', 'Service misconfigured', 500, { detail: error.message }),
+      { id, route },
+    );
+  }
+  if (missing) {
+    return errorResponse(
+      new AppError('misconfigured', 'Service misconfigured', 500, { detail: missing }),
       { id, route },
     );
   }
