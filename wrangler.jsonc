@@ -16,6 +16,55 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
 
+  // ── Which BillTap is this, and whose data may it touch ────────────────────
+  //
+  // There used to be no answer. One BASE44_APP_ID and one master key meant
+  // `wrangler dev` on a laptop read and wrote the same Base44 app as
+  // billtap.app: trying a change against a receipt created live Session rows
+  // next to real restaurants' real bills, and the nightly backup snapshotted
+  // them. src/main.jsx made it explicit by hard-coding Sentry's environment to
+  // "production", so an exception thrown on a laptop landed in the production
+  // error feed looking exactly like a diner's.
+  //
+  // The top level of this file is production, because that is what a bare
+  // `wrangler deploy` uses and a surprise there is the expensive kind. Other
+  // environments are declared under "env" below and inherit nothing dangerous:
+  // no routes, no crons.
+  //
+  // PRODUCTION_APP_ID is committed deliberately. App ids are not secrets — the
+  // frontend bundle has always shipped one in plain text — and recording it is
+  // what lets worker/lib/environment.js refuse to serve when a non-production
+  // deployment is pointed at the production database. Master keys are secrets
+  // and stay in `wrangler secret put`, per environment.
+  //
+  // BASE44_APP_ID is set per environment as a secret or a var; there is no
+  // default anywhere, because the only sensible default would be production's.
+  "vars": {
+    "ENVIRONMENT": "production"
+  },
+
+  "env": {
+    // `wrangler deploy --env staging` / `wrangler dev --env staging`.
+    //
+    // No routes, so it publishes to a workers.dev subdomain and cannot answer
+    // for billtap.app. No crons, so it never runs the nightly backup — see
+    // worker/routes/nightly-backup.js, which refuses outside production anyway.
+    "staging": {
+      "vars": {
+        "ENVIRONMENT": "staging"
+      },
+      "observability": { "enabled": true }
+    },
+
+    // Local work: `wrangler dev --env development`.
+    "development": {
+      "vars": {
+        "ENVIRONMENT": "development"
+      },
+      "observability": { "enabled": true }
+    }
+  },
+
   // Declared here so a deploy stops offering to delete them.
   //
   // These three were created in the dashboard and lived only there. Because

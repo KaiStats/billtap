@@ -27,6 +27,7 @@
  */
 
 import { serviceRole, appId } from '../lib/base44.js';
+import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 /** Everything worth restoring. Session and Receipt were the original two. */
 const ENTITIES = [
@@ -131,6 +132,19 @@ export async function runBackup(env) {
  * than quietly succeeding.
  */
 export async function scheduled(env) {
+  // Production only.
+  //
+  // The cron is declared at the top level of wrangler.jsonc, so every
+  // environment that inherits it would fire this on its own schedule. A staging
+  // deployment doing so either snapshots staging data into the production
+  // bucket or snapshots production data from a deployment nobody is watching,
+  // and both of those are worse than no backup because the object shows up with
+  // a plausible size and a recent timestamp.
+  if (!mayRunScheduledWork(env)) {
+    console.log(`nightly-backup: skipped in the ${environmentName(env)} environment`);
+    return;
+  }
+
   try {
     const result = await runBackup(env);
     console.log(`nightly-backup: wrote ${result.key} (${result.bytes} bytes) — ${JSON.stringify(result.entities)}`);

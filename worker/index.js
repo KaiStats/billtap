@@ -23,6 +23,7 @@ import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { proxyToBase44 } from './routes/base44-proxy.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { rateLimit } from './lib/rate-limit.js';
+import { assertEnvironmentIsolated } from './lib/environment.js';
 
 const BASE44_PREFIX = '/api/apps/';
 
@@ -175,6 +176,21 @@ export default {
   },
 
   async fetch(request, env) {
+    // Before anything else: is this deployment allowed to touch the database it
+    // has been handed? A non-production environment carrying production's app
+    // id stops here rather than serving, because the alternative is a developer
+    // writing rows into a live restaurant's bills and finding out later.
+    //
+    // Checked per request rather than at module load: a Worker that throws
+    // while loading returns a 1101 with no message and nothing useful in the
+    // logs, and the whole value of this check is the sentence it prints.
+    try {
+      assertEnvironmentIsolated(env);
+    } catch (error) {
+      console.error(`environment misconfigured: ${error?.message}`);
+      return json({ error: 'Service misconfigured', detail: error?.message }, 500);
+    }
+
     const url = new URL(request.url);
     const path = url.pathname;
 

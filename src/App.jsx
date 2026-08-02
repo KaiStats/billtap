@@ -14,6 +14,7 @@ import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
 import MutationErrorToast from '@/components/MutationErrorToast';
 import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import EnvironmentBadge from '@/components/EnvironmentBadge';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { handleDeepLink } from '@/lib/deepLinking';
@@ -241,6 +242,9 @@ const AuthenticatedApp = () => {
       </Suspense>
       <BottomNav />
       <PWAInstallPrompt />
+      {/* Renders nothing in production. Everywhere else it is the only thing on
+          screen that distinguishes a test bill from a real restaurant's. */}
+      <EnvironmentBadge />
     </div>
   );
 };

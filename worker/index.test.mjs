@@ -79,6 +79,12 @@ function makeEnv({ prerendered = true } = {}) {
     '/terms.html',
   ]);
   return {
+    // A named environment with its own app id. The Worker refuses to serve
+    // without one now — see worker/lib/environment.js — because the only
+    // sensible default for an unset BASE44_APP_ID would have been production's.
+    ENVIRONMENT: 'development',
+    BASE44_APP_ID: 'test_app_dev',
+    PRODUCTION_APP_ID: 'test_app_prod',
     ASSETS: {
       fetch: (request) => {
         const path = new URL(request.url).pathname;

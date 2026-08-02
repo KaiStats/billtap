@@ -121,6 +121,13 @@ const CARA = 'p_1700000000002_ccc';
 
 const HOST = { id: 'user_1', email: 'host@example.com' };
 
+/** Enough of an environment for the Worker's isolation check to pass. */
+const WORKER_ENV = {
+  ENVIRONMENT: 'development',
+  BASE44_APP_ID: 'test_app_dev',
+  PRODUCTION_APP_ID: 'test_app_prod',
+};
+
 /** Two items, $20 + $10, no tax or tip. */
 const simpleSession = () => ({
   id: 's1',
@@ -1316,11 +1323,11 @@ test('the reset link in the email is a route the edge will serve', async () => {
   };
 
   for (const path of ['/forgot-password', '/reset-password']) {
-    const res = await worker.fetch(new Request(`https://billtap.app${path}`), { ASSETS: assets });
+    const res = await worker.fetch(new Request(`https://billtap.app${path}`), { ...WORKER_ENV, ASSETS: assets });
     assert.equal(res.status, 200, `${path} must not 404 at the edge`);
   }
   const withToken = await worker.fetch(
-    new Request('https://billtap.app/reset-password?token=abc123'), { ASSETS: assets },
+    new Request('https://billtap.app/reset-password?token=abc123'), { ...WORKER_ENV, ASSETS: assets },
   );
   assert.equal(withToken.status, 200, 'the token in the query must not change the answer');
 });
@@ -1347,6 +1354,7 @@ test('rate limiting is not skipped by the Base44 proxy', async () => {
   const worker = (await import('./index.js')).default;
   let proxied = false;
   const env = {
+    ...WORKER_ENV,
     ASSETS: { fetch: async () => new Response('', { status: 200 }) },
     API_RATE_LIMITER: { limit: async () => ({ success: false }) },
   };
@@ -1372,7 +1380,7 @@ test('ordinary entity reads still pass through the proxy untouched', async () =>
   try {
     const res = await worker.fetch(
       new Request('https://billtap.app/api/apps/69a5abc/entities/Session'),
-      { ASSETS: { fetch: async () => new Response('', { status: 404 }) }, API_RATE_LIMITER: { limit: async () => ({ success: false }) } },
+      { ...WORKER_ENV, ASSETS: { fetch: async () => new Response('', { status: 404 }) }, API_RATE_LIMITER: { limit: async () => ({ success: false }) } },
     );
     assert.equal(res.status, 200, 'reading a bill is not something to throttle');
     assert.match(reached, /entities\/Session/);

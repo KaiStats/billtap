@@ -5,6 +5,8 @@
  * Cloudflare Pages, so this file is importable without becoming an endpoint.
  */
 
+import { mayContactRealPeople, environmentName } from './environment.js';
+
 export const JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
@@ -39,7 +41,24 @@ export const esc = (s) =>
  * caller has already persisted the thing that matters and must not fail the
  * user's request over a notification.
  */
+/**
+ * Outside production this logs instead of sending.
+ *
+ * A staging deploy running the same code sends a real email to a real
+ * restaurant owner about a lead that a developer invented. Returning a distinct
+ * reason rather than pretending to succeed means a test that asserts delivery
+ * still fails honestly. See worker/lib/environment.js.
+ */
+function suppressed(env, kind, to) {
+  if (mayContactRealPeople(env)) return null;
+  console.log(`${kind}: suppressed in ${environmentName(env)} — would have gone to ${to}`);
+  return { ok: false, reason: 'suppressed_outside_production' };
+}
+
 export async function sendEmail(env, { to, subject, html, text, replyTo }) {
+  const held = suppressed(env, 'email', to);
+  if (held) return held;
+
   const postmarkToken = env.POSTMARK_SERVER_TOKEN;
   const resendKey = env.RESEND_API_KEY;
 
@@ -110,6 +129,11 @@ export async function sendEmail(env, { to, subject, html, text, replyTo }) {
  * credentials, simply gets email only. Like sendEmail, it never throws.
  */
 export async function sendSms(env, { to, body }) {
+  // Twilio has no spend cap on this account, and a text sent to a real owner at
+  // two in the morning about an invented one-star review has no undo.
+  const held = suppressed(env, 'sms', to);
+  if (held) return held;
+
   const sid = env.TWILIO_ACCOUNT_SID;
   const token = env.TWILIO_AUTH_TOKEN;
   const from = env.TWILIO_FROM_NUMBER;

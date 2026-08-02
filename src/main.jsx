@@ -5,10 +5,15 @@ import App from '@/App.jsx'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import '@/index.css'
 import { registerServiceWorker } from '@/lib/registerServiceWorker'
+import { ENVIRONMENT, APP_ID } from '@/lib/environment'
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
-  environment: "production",
+  // Was hard-coded to "production". Every exception thrown on a laptop, in CI
+  // or on a staging deploy arrived in the production feed looking exactly like
+  // a diner's, which makes the feed useless for the thing it exists for:
+  // knowing whether the live site is broken right now.
+  environment: ENVIRONMENT,
   tracesSampleRate: 1.0,
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
@@ -88,6 +93,9 @@ Sentry.setContext("device", {
   viewport_height: window.innerHeight,
   connection: navigator.connection?.effectiveType || 'unknown',
 });
+// Which database produced this error. Two environments' stack traces look
+// identical; the app id is the thing that tells them apart.
+Sentry.setTag('base44_app_id', APP_ID || 'unset');
 Sentry.setTag('is_mobile', /Mobi|Android/i.test(navigator.userAgent));
 Sentry.setTag(
   'browser',

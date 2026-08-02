@@ -1,6 +1,8 @@
 #env
 .env
 .env.*
+# ...except the template, which is the only documentation of what to set.
+!.env.example
 
 # Logs
 logs

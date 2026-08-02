@@ -11,11 +11,12 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "build:static": "vite build && node scripts/prerender.mjs",
-    "build:ci": "vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
+    "build:static": "node scripts/check-env.mjs && vite build && node scripts/prerender.mjs",
+    "build:ci": "node scripts/check-env.mjs && vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy",
-    "test:ui": "node --test --test-concurrency=2 scripts/ui.test.mjs"
+    "test:ui": "node --test --test-concurrency=2 scripts/ui.test.mjs",
+    "check:env": "node scripts/check-env.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.41",
