@@ -174,26 +174,23 @@ Return a JSON with:
   const addItem = () => setItems(prev => [...prev, { id: `item-${Date.now()}`, name: "", price: 0, quantity: 1, claimed_by: [] }]);
 
   /**
-   * Where to send someone once their split exists.
+   * Straight to the host screen. Whoever just made the split is the host, and
+   * the button they pressed said "Show the QR code".
    *
-   * /session-host is inside <ProtectedRoute> and additionally redirects to /
-   * when unauthenticated, so a guest who came from a table tent — the one
-   * person this page was deliberately opened up for — was bounced to /login and
-   * then off the flow entirely. They have no account and are not going to make
-   * one while their table waits.
+   * This used to ask Base44 whether the caller was signed in and send a guest
+   * to /claim instead, because /session-host would have bounced them to /login.
+   * That was a workaround for the auth gate rather than a decision: it dropped
+   * the guest on the diner's screen, which has no QR, so the button promised a
+   * code and delivered a page without one. The people they needed to invite had
+   * no way in. Now the host key proves who they are, the gate is gone, and both
+   * kinds of host go to the same place.
    *
-   * /claim?id= is the same session without the host-only controls, which is
-   * everything a guest needs: their own items, their share, and the pay button.
-   * The signed-in host still gets the full host view.
+   * It also removes a round-trip from the moment they are least patient — the
+   * auth check sat between the tap and the QR appearing, and for a guest its
+   * only possible answer was no.
    */
-  const afterCreate = async (sessionId) => {
-    let authed = false;
-    try {
-      authed = await base44.auth.isAuthenticated();
-    } catch {
-      /* Treat an unanswerable auth check as "guest" — /claim works for both. */
-    }
-    navigate(authed ? `/session-host?id=${sessionId}` : `/claim?id=${sessionId}`);
+  const afterCreate = (sessionId) => {
+    navigate(`/session-host?id=${sessionId}`);
   };
 
   const handleCreateSession = async () => {

@@ -549,3 +549,162 @@ test('a diner sees their own settlement record once the host confirms it', async
     assert.equal(me.paid_amount, 20);
   });
 });
+
+// ── The host's own settings ─────────────────────────────────────────────────
+//
+// Where the money should be sent, whether claiming has opened, and the amounts
+// in a custom split. All three were raw Session.update calls from the browser,
+// so all three were governed by a rule that a table-tent split can never
+// satisfy — and the payment handle is the one the whole table depends on.
+
+const settings = (env, request, b) => HANDLERS.updateSplitSettings({ env, request, body: b });
+
+test('the host key lets a guest host say where the money should go', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+    const res = await settings(env, req(), {
+      session_id: session.id, host_key: hostKey,
+      host_payment_info: { method: 'venmo', handle: '  @kai  ' },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(store.Session[0].host_payment_info, { method: 'venmo', handle: '@kai' });
+  });
+});
+
+test('a diner cannot redirect the table payments to their own handle', async () => {
+  // The whole reason this moved server-side: without the guard, anyone holding
+  // the claim link could point everyone's Venmo at themselves.
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session } = await newSplit({ env });
+    await settings(env, req(), {
+      session_id: session.id, host_key: 'guessed',
+      host_payment_info: { method: 'venmo', handle: '@thief' },
+    });
+    const res = await settings(env, req(), {
+      session_id: session.id,
+      host_payment_info: { method: 'venmo', handle: '@thief' },
+    });
+    assert.equal(res.status, 403);
+    assert.equal(store.Session[0].host_payment_info, undefined);
+  });
+});
+
+test('a payment handle has to be a real method and a real handle', async () => {
+  await withStub(RESTAURANT, async ({ env }) => {
+    const { session, hostKey } = await newSplit({ env });
+    const bad = (info) => settings(env, req(), { session_id: session.id, host_key: hostKey, host_payment_info: info });
+    assert.equal((await bad({ method: 'bitcoin', handle: 'x' })).status, 400);
+    assert.equal((await bad({ method: 'venmo', handle: '   ' })).status, 400);
+    assert.equal((await bad({ method: 'venmo' })).status, 400);
+  });
+});
+
+test('the host can open claiming, and cannot declare the split finished', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+    await settings(env, req(), { session_id: session.id, host_key: hostKey, status: 'claiming' });
+    assert.equal(store.Session[0].status, 'claiming');
+
+    const res = await settings(env, req(), { session_id: session.id, host_key: hostKey, status: 'completed' });
+    assert.equal(res.status, 400, "completing is confirmPayment's job, and only when every diner is settled");
+    assert.equal(store.Session[0].status, 'claiming');
+  });
+});
+
+test('custom amounts are applied to the stored participants, not sent as an array', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [] });
+    await join(env, { session_id: session.id, participant_id: BOB, name: 'Bob', items: [] });
+
+    const res = await settings(env, req(), {
+      session_id: session.id, host_key: hostKey,
+      custom_amounts: { [ALICE]: 20, [BOB]: 10 },
+    });
+    assert.equal(res.status, 200);
+    const [alice, bob] = store.Session[0].participants;
+    assert.equal(alice.amount_owed, 20);
+    assert.equal(bob.amount_owed, 10);
+    assert.equal(store.Session[0].split_mode, 'custom');
+    assert.equal(alice.payment_status, 'unpaid', 'setting amounts does not touch anyone payment state');
+  });
+});
+
+test('custom amounts that do not add up to the bill are refused', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'A', items: [] });
+    await join(env, { session_id: session.id, participant_id: BOB, name: 'B', items: [] });
+
+    const res = await settings(env, req(), {
+      session_id: session.id, host_key: hostKey,
+      custom_amounts: { [ALICE]: 5, [BOB]: 5 },     // the bill is $30
+    });
+    assert.equal(res.status, 400);
+    assert.match((await body(res)).error, /\$10\.00.*\$30\.00/);
+    assert.equal(store.Session[0].participants[0].amount_owed, 0, 'nothing was stored');
+  });
+});
+
+test('a custom split cannot restate what a settled diner already paid', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await join(env, { session_id: session.id, participant_id: BOB, name: 'Bob', items: [{ id: 'i2', claimed_by: [BOB] }] });
+    await confirm(env, req(), { session_id: session.id, participant_id: ALICE, host_key: hostKey });
+
+    // Alice is settled at $20. Trying to move her is refused by name, rather
+    // than surfacing as arithmetic the host cannot make sense of.
+    const refused = await settings(env, req(), {
+      session_id: session.id, host_key: hostKey,
+      custom_amounts: { [ALICE]: 5, [BOB]: 25 },
+    });
+    assert.equal(refused.status, 409);
+    assert.match((await body(refused)).error, /Alice already paid/);
+    assert.equal(store.Session[0].participants[0].amount_owed, 20, 'frozen');
+
+    // Leaving her where she is, the rest of the bill is the host's to move.
+    const ok = await settings(env, req(), {
+      session_id: session.id, host_key: hostKey,
+      custom_amounts: { [ALICE]: 20, [BOB]: 10 },
+    });
+    assert.equal(ok.status, 200);
+    const [alice, bob] = store.Session[0].participants;
+    assert.equal(alice.amount_owed, 20);
+    assert.equal(bob.amount_owed, 10);
+  });
+});
+
+test('updateSplitSettings validates its inputs', async () => {
+  await withStub(RESTAURANT, async ({ env }) => {
+    const { session, hostKey } = await newSplit({ env });
+    assert.equal((await settings(env, req(), { host_key: hostKey })).status, 400);
+    assert.equal((await settings(env, req(), { session_id: 'gone', host_key: hostKey })).status, 404);
+    assert.equal((await settings(env, req(), { session_id: session.id, host_key: hostKey })).status, 400, 'nothing to change');
+    assert.equal((await settings(env, req(), { session_id: session.id, host_key: hostKey, custom_amounts: 'nope' })).status, 400);
+  });
+});
+
+test('a guest host can mint the QR code their table needs to scan', async () => {
+  await withStub(RESTAURANT, async ({ env }) => {
+    const { session, hostKey } = await newSplit({ env });
+    const res = await HANDLERS.generateQRSignature({
+      env, request: req(), body: { session_id: session.id, host_key: hostKey },
+    });
+    assert.equal(res.status, 200);
+    const { qr_token } = await body(res);
+
+    const check = await HANDLERS.verifyQRToken({ env, body: { qr_token } });
+    assert.deepEqual(await body(check), { valid: true, session_id: session.id });
+  });
+});
+
+test('a wrong host key mints nothing', async () => {
+  await withStub(RESTAURANT, async ({ env }) => {
+    const { session } = await newSplit({ env });
+    const res = await HANDLERS.generateQRSignature({
+      env, request: req(), body: { session_id: session.id, host_key: 'guessed' },
+    });
+    assert.equal(res.status, 403);
+  });
+});

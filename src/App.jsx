@@ -88,7 +88,8 @@ const AUTH_GATED_ROUTES = new Set([
   // Not /new-receipt: a guest arriving from a table tent has no account, and
   // gating it would make them wait on an auth round-trip only to be bounced.
   '/dashboard',
-  '/session-host',
+  // Neither /session-host nor /receipt-detail: both are host screens for a
+  // split that may have been created by someone with no account at all.
   // Not /receipt-detail: the host of a table-tent split has no account, and
   // that is the screen where payments get confirmed. See the route itself for
   // why opening it is safe.
@@ -176,6 +177,15 @@ const AuthenticatedApp = () => {
               ordinary entity read, which Base44's rules answer with nothing.
             */}
             <Route path="/receipt-detail" element={<AnimatedPage direction={direction}><ReceiptDetail /></AnimatedPage>} />
+            {/*
+              Open for the same reason. This is where the QR code lives, and the
+              host of a table-tent split has no account — so gating it left them
+              holding a split that nobody could be invited to join, and no way
+              to enter the payment handle the whole table was meant to send
+              money to. generateQRSignature and updateSplitSettings both demand
+              the host key and answer 403 without it.
+            */}
+            <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
 
@@ -200,7 +210,6 @@ const AuthenticatedApp = () => {
             <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
               <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
-              <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
               <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
             </Route>

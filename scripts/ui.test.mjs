@@ -118,6 +118,8 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
 
   const created = [];
   const confirmCalls = [];
+  const settingsCalls = [];
+  const qrCalls = [];
   // The split the host screen reads back. Mutated by confirmPayment below so
   // the page behaves like the real thing across a confirm.
   let hostState = hostSession ? structuredClone(hostSession) : null;
@@ -136,6 +138,23 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
       created.push(payload);
       if (onCreate) onCreate(payload);
       return send({ session: { id: 'sess_test_1', ...payload }, host_key: 'hk_test_secret_value' });
+    }
+    if (url.includes('/fn/generateQRSignature')) {
+      const payload = route.request().postDataJSON();
+      qrCalls.push(payload);
+      if (!payload.host_key) {
+        return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"Unauthorized"}' });
+      }
+      return send({ qr_token: 'sess_test_1.9999999999999.sig', expires_at: 9999999999999 });
+    }
+    if (url.includes('/fn/updateSplitSettings')) {
+      const payload = route.request().postDataJSON();
+      settingsCalls.push(payload);
+      if (!payload.host_key) {
+        return route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"Only the host can change this split"}' });
+      }
+      hostState = { ...hostState, ...(payload.host_payment_info ? { host_payment_info: payload.host_payment_info } : {}), ...(payload.status ? { status: payload.status } : {}) };
+      return send({ session: hostState });
     }
     if (url.includes('/fn/getSessionAsHost')) {
       const { host_key } = route.request().postDataJSON();
@@ -169,7 +188,7 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
     return send({});
   });
 
-  return { context, page, errors, created, confirmCalls, host: () => hostState };
+  return { context, page, errors, created, confirmCalls, settingsCalls, qrCalls, host: () => hostState };
 }
 
 /** A split mid-service: one diner says they sent it, one has not moved. */
@@ -532,7 +551,7 @@ test('creating the split sends the server what is on the screen', async () => {
     await toReview(page);
     await page.getByRole('button', { name: 'Tip 20%' }).click();
     await page.getByRole('button', { name: /Show the QR code/i }).click();
-    await page.waitForURL(/claim\?id=sess_test_1/, { timeout: 10000 });
+    await page.waitForURL(/session-host\?id=sess_test_1/, { timeout: 10000 });
 
     const sent = created[0];
     assert.equal(sent.title, 'Olive Garden');
@@ -544,12 +563,16 @@ test('creating the split sends the server what is on the screen', async () => {
   } finally { await context.close(); }
 });
 
-test('a guest is taken to the claim screen, not bounced to a login', async () => {
-  const { context, page } = await phone();
+test('a guest is taken to the host screen, not bounced to a login', async () => {
+  // The destination changed with the host key: whoever just made the split is
+  // the host, and the button they pressed said "Show the QR code". It used to
+  // ask Base44 whether they were signed in and drop a guest on the diner's
+  // screen, which has no QR on it.
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
   try {
     await toReview(page);
     await page.getByRole('button', { name: /Show the QR code/i }).click();
-    await page.waitForURL(/\/claim\?id=/, { timeout: 10000 });
+    await page.waitForURL(/\/session-host\?id=/, { timeout: 10000 });
     assert.ok(!page.url().includes('/login'), 'a diner with no account must never see a login wall');
   } finally { await context.close(); }
 });
@@ -646,6 +669,83 @@ test('the review screen renders without a single console error', async () => {
   } finally { await context.close(); }
 });
 
+// ── A guest host, from photograph to QR code ────────────────────────────────
+//
+// The journey the product is sold on, walked by someone with no account: scan
+// the receipt at a restaurant table, get a code the table can scan. Every step
+// of this used to end at a login wall or on a screen with no QR on it.
+
+async function toHostScreen(page) {
+  await toReview(page);
+  await page.getByRole('button', { name: /Show the QR code/i }).click();
+  await page.waitForURL(/\/session-host\?id=/, { timeout: 15000 });
+  // The screen returns a spinner until the split loads; everything below it
+  // only exists once it has.
+  await page.getByRole('button', { name: /Claim My Items|View Progress/i }).waitFor({ timeout: 15000 });
+}
+
+test('a guest with no account reaches the QR screen after scanning', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await toHostScreen(page);
+    assert.ok(!page.url().includes('/login'), 'no account, no login wall');
+  } finally { await context.close(); }
+});
+
+test('the button that says "Show the QR code" actually shows a QR code', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await toHostScreen(page);
+    await page.waitForTimeout(1500);
+    const qr = await page.evaluate(() => {
+      const square = [...document.querySelectorAll('svg')].find((s) => {
+        const r = s.getBoundingClientRect();
+        return r.width > 120 && Math.abs(r.width - r.height) < 4;
+      });
+      return square ? square.getBoundingClientRect().width : 0;
+    });
+    assert.ok(qr > 120, `expected a scannable QR, measured ${qr}px`);
+  } finally { await context.close(); }
+});
+
+test('the QR is minted with the host key rather than an account', async () => {
+  const { context, page, qrCalls } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await toHostScreen(page);
+    await page.waitForTimeout(800);
+    assert.ok(qrCalls.length > 0, 'the host screen asked for a token');
+    assert.equal(qrCalls[0].host_key, 'hk_test_secret_value',
+      'without the key this endpoint answers 401 and the guest host gets no QR');
+  } finally { await context.close(); }
+});
+
+test('a guest host can set where the table should send the money', async () => {
+  const { context, page, settingsCalls } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await toHostScreen(page);
+    await page.getByRole('button', { name: /Claim My Items|View Progress/i }).click();
+    await page.getByRole('button', { name: 'Venmo', exact: true }).click();
+    await page.getByPlaceholder('e.g. @yourname').fill('@kai');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.waitForTimeout(600);
+
+    const call = settingsCalls.find((c) => c.host_payment_info);
+    assert.ok(call, 'without this nobody at the table has anywhere to send money');
+    assert.equal(call.host_key, 'hk_test_secret_value');
+    assert.deepEqual(call.host_payment_info, { method: 'venmo', handle: '@kai' });
+  } finally { await context.close(); }
+});
+
+test('the host screen fits a phone', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await toHostScreen(page);
+    await page.waitForTimeout(1200);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `overflowed by ${overflow}px`);
+  } finally { await context.close(); }
+});
+
 // ── Confirming that the money arrived ───────────────────────────────────────
 
 test('creating a split leaves the host secret on the device that made it', async () => {
@@ -653,7 +753,7 @@ test('creating a split leaves the host secret on the device that made it', async
   try {
     await toReview(page);
     await page.getByRole('button', { name: /Show the QR code/i }).click();
-    await page.waitForURL(/\/claim\?id=/, { timeout: 10000 });
+    await page.waitForURL(/\/session-host\?id=/, { timeout: 10000 });
     const stored = await page.evaluate(() => localStorage.getItem('billtap-hostkey-sess_test_1'));
     assert.equal(stored, 'hk_test_secret_value', 'without this the host can never confirm a payment');
   } finally { await context.close(); }

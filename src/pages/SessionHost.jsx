@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/lib/AuthContext";
+import { getHostKey } from "@/lib/hostKey";
 import { QRCodeSVG } from "qrcode.react";
 import confetti from "canvas-confetti";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
@@ -12,14 +12,19 @@ import CustomSplitConfig from "@/components/CustomSplitConfig";
 
 function SessionHostComponent() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoadingAuth } = useAuth();
 
-  // Back-button protection: unauthenticated users can't access host view
-  useEffect(() => {
-    if (!isLoadingAuth && !isAuthenticated) {
-      window.location.replace('/');
-    }
-  }, [isAuthenticated, isLoadingAuth]);
+  /**
+   * No sign-in gate.
+   *
+   * This screen used to bounce anyone unauthenticated to the landing page,
+   * which meant the host of a table-tent split could never see it — and this is
+   * where the QR code lives. They had made a split that nobody could be invited
+   * to join, and no way to enter the Venmo handle everyone was meant to pay.
+   *
+   * Being the host is proven by the secret minted at creation, not by having an
+   * account: every read and write below carries it, and the Worker answers 403
+   * without it. See src/lib/hostKey.js.
+   */
   const [session, setSession] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
@@ -28,6 +33,7 @@ function SessionHostComponent() {
   const [qrToken, setQrToken] = useState(null);
   const [qrTokenExpiry, setQrTokenExpiry] = useState(null);
   const [showSplitConfig, setShowSplitConfig] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [customSplitData, setCustomSplitData] = useState(null);
   const [allPaidCelebrated, setAllPaidCelebrated] = useState(false);
   const [showSummaryCard, setShowSummaryCard] = useState(false);
@@ -42,7 +48,10 @@ function SessionHostComponent() {
   // Generate a fresh signed QR token (refreshes every 25 min)
   const refreshQrToken = useCallback(async () => {
     if (!sessionId) return;
-    const res = await base44.functions.invoke("generateQRSignature", { session_id: sessionId });
+    const res = await base44.functions.invoke("generateQRSignature", {
+      session_id: sessionId,
+      host_key: getHostKey(sessionId),
+    });
     if (res.data?.qr_token) {
       setQrToken(res.data.qr_token);
       const expiry = Date.now() + 25 * 60 * 1000; // refresh before 30-min expiry
@@ -61,6 +70,16 @@ function SessionHostComponent() {
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
+    try {
+      const res = await base44.functions.invoke("getSessionAsHost", {
+        session_id: sessionId,
+        host_key: getHostKey(sessionId),
+      });
+      if (res.data?.session) { setSession(res.data.session); return; }
+    } catch {
+      // Not the host, or the key is gone. Fall through to the ordinary read,
+      // which Base44 answers for an owner and refuses for anyone else.
+    }
     const data = await base44.entities.Session.filter({ id: sessionId });
     if (data[0]) setSession(data[0]);
   }, [sessionId]);
@@ -139,37 +158,49 @@ function SessionHostComponent() {
     }
   };
 
+  const saveSettings = (changes) =>
+    base44.functions.invoke("updateSplitSettings", {
+      session_id: sessionId,
+      host_key: getHostKey(sessionId),
+      ...changes,
+    });
+
   const startClaiming = async () => {
-    await base44.entities.Session.update(sessionId, { status: "claiming" });
-    navigate(`/receipt-detail?id=${sessionId}&host=1`);
+    await saveSettings({ status: "claiming" });
+    // To the claim screen, because the host is at the table eating too. From
+    // there they can reach the who-has-paid screen. It used to go straight to
+    // /receipt-detail with ?host=1, a flag that meant nothing to the server.
+    navigate(`/claim?id=${sessionId}`);
   };
 
   const savePaymentInfo = async () => {
     if (!paymentMethod || !paymentHandle.trim()) { setShowPaymentSetup(false); return; }
-    await base44.entities.Session.update(sessionId, {
-      host_payment_info: { method: paymentMethod, handle: paymentHandle.trim() }
-    });
-    setShowPaymentSetup(false);
+    try {
+      const res = await saveSettings({
+        host_payment_info: { method: paymentMethod, handle: paymentHandle.trim() },
+      });
+      if (res.data?.session) setSession(res.data.session);
+      setShowPaymentSetup(false);
+    } catch (err) {
+      // This is the one setting the whole table depends on — without it the
+      // claim screen has nowhere to send anyone's money. Failing quietly here
+      // would look like it saved.
+      setSaveError(err?.message || "Could not save that. Check your connection and try again.");
+    }
   };
 
   const saveCustomSplit = async () => {
     if (!customSplitData?.isValid || !customSplitData.finalAmounts) return;
-    
-    const updatedParticipants = participants.map(p => ({
-      ...p,
-      amount_owed: customSplitData.finalAmounts[p.participant_id] || 0,
-      payment_status: p.payment_status || "unpaid",
-    }));
-
-    await base44.entities.Session.update(sessionId, {
-      split_mode: "custom",
-      custom_split_config: {
-        type: customSplitData.subMode,
-        values: customSplitData.finalAmounts,
-      },
-      participants: updatedParticipants,
-    });
-    setShowSplitConfig(false);
+    try {
+      // Amounts only. The server applies them to the stored participants and
+      // refuses a set that does not add up to the bill, rather than trusting a
+      // participants array assembled in the browser.
+      const res = await saveSettings({ custom_amounts: customSplitData.finalAmounts });
+      if (res.data?.session) setSession(res.data.session);
+      setShowSplitConfig(false);
+    } catch (err) {
+      setSaveError(err?.message || "Could not save those amounts.");
+    }
   };
 
   const handleStartClaimingClick = () => {
@@ -242,6 +273,11 @@ function SessionHostComponent() {
                     <label className="text-xs text-muted-foreground mb-1 block">{paymentMethod === "zelle" ? "Phone or Email" : "@Username"}</label>
                     <Input value={paymentHandle} onChange={e => setPaymentHandle(e.target.value)} placeholder={paymentMethod === "zelle" ? "e.g. (555) 123-4567" : "e.g. @yourname"} className="rounded-xl" autoFocus />
                   </div>
+                  {saveError && (
+                    <p role="alert" className="text-sm text-danger-muted-foreground bg-danger-muted rounded-xl px-3 py-2">
+                      {saveError}
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <Button onClick={savePaymentInfo} className="flex-1 bg-brand hover:bg-brand/90">Continue</Button>
                     <Button variant="outline" onClick={() => setShowPaymentSetup(false)}>Skip</Button>
@@ -432,7 +468,11 @@ function SessionHostComponent() {
           {/* Primary CTA */}
           <button
             onClick={handleStartClaimingClick}
-            aria-label={session.status === "claiming" ? "View claiming progress" : "Claim my items from the bill"}
+            // Starts with the words on the button, so a voice-control user
+            // saying what they can see actually hits it (WCAG 2.5.3).
+            aria-label={session.status === "claiming"
+              ? "View Progress — see who has claimed and paid"
+              : "Claim My Items from the bill"}
             className="w-full h-14 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0"
             style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
           >

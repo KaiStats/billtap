@@ -198,24 +198,139 @@ const HANDLERS = {
     });
   },
 
-  /** Mints the signed QR token for a session. Host only. */
+  /**
+   * Mints the signed QR token for a session. Host only.
+   *
+   * Either proof works. It used to accept only a signed-in owner, which meant
+   * the host of a table-tent split — the flow the product is sold on — could
+   * not produce the QR code their table needs to scan. They had made a split
+   * nobody could join.
+   */
   async generateQRSignature({ env, request, body }) {
-    const { session_id } = body;
+    const { session_id, host_key } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
     }
 
-    const user = await currentUser(env, request);
-    if (!user) return json({ error: 'Unauthorized' }, 401);
+    if (host_key) {
+      const rows = await serviceRole(env).entity('Session').filter({ id: session_id });
+      if (!rows[0]) return json({ error: 'Session not found' }, 404);
+      if (!(await isHost(env, request, rows[0], host_key))) {
+        return json({ error: 'Not the host of this split' }, 403);
+      }
+    } else {
+      const user = await currentUser(env, request);
+      if (!user) return json({ error: 'Unauthorized' }, 401);
 
-    // Ownership via the caller's own credentials: if Base44's rules would not
-    // show them this session, they do not get a token for it.
-    const mine = await asCaller(env, request).entity('Session').filter({ id: session_id });
-    if (!mine.length) return json({ error: 'Session not found' }, 404);
+      // Ownership via the caller's own credentials: if Base44's rules would not
+      // show them this session, they do not get a token for it.
+      const mine = await asCaller(env, request).entity('Session').filter({ id: session_id });
+      if (!mine.length) return json({ error: 'Session not found' }, 404);
+    }
 
     const expiry = Date.now() + 30 * 60 * 1000;
     const sig = await hmac(qrSecret(env), `${session_id}.${expiry}`);
     return json({ qr_token: `${session_id}.${expiry}.${sig}`, expires_at: expiry });
+  },
+
+  /**
+   * The host's own settings for a split: where to send the money, whether
+   * claiming has opened, and the amounts in a custom split.
+   *
+   * All three were raw Session.update calls from src/pages/SessionHost.jsx, so
+   * all three were governed by Base44's update rule — created_by_id must equal
+   * the caller. A table-tent split has no created_by_id, so for a guest host
+   * every one of them failed silently. The most damaging was the payment
+   * details: without them the claim screen has no Venmo handle to send anyone
+   * to, so nobody at that table could pay at all.
+   */
+  async updateSplitSettings({ env, request, body }) {
+    const { session_id, host_key, host_payment_info, status, custom_amounts } = body;
+    if (!session_id || typeof session_id !== 'string') {
+      return json({ error: 'session_id is required' }, 400);
+    }
+
+    const svc = serviceRole(env);
+    const sessions = await svc.entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+    if (!(await isHost(env, request, session, host_key))) {
+      return json({ error: 'Only the host can change this split' }, 403);
+    }
+
+    const patch = {};
+
+    if (host_payment_info !== undefined) {
+      const method = host_payment_info?.method;
+      const handle = clean(host_payment_info?.handle, 64);
+      if (!['venmo', 'cashapp', 'zelle'].includes(method)) {
+        return json({ error: 'Pick Venmo, Cash App or Zelle' }, 400);
+      }
+      if (!handle) return json({ error: 'A payment handle is required' }, 400);
+      patch.host_payment_info = { method, handle };
+    }
+
+    // The host opening claiming, and nothing else. 'completed' belongs to
+    // confirmPayment, which is the only place the last 'paid' can be written.
+    if (status !== undefined) {
+      if (status !== 'claiming') return json({ error: 'status can only be set to claiming' }, 400);
+      if (session.status !== 'completed') patch.status = 'claiming';
+    }
+
+    if (custom_amounts !== undefined) {
+      if (!custom_amounts || typeof custom_amounts !== 'object') {
+        return json({ error: 'custom_amounts must be an object' }, 400);
+      }
+      const rows = session.participants || [];
+      const total = Number(session.total_amount) || 0;
+
+      // Say what is actually wrong. A host who retypes the amounts so they add
+      // up to the bill, not realising one diner is already settled, would
+      // otherwise be told their $30 of amounts comes to $45 — a number that
+      // appears nowhere on their screen and that they cannot act on.
+      const frozen = rows.filter((p) => {
+        if (p.payment_status !== 'paid') return false;
+        const asked = Number(custom_amounts[p.participant_id]);
+        return Number.isFinite(asked) && Math.abs(asked - (Number(p.amount_owed) || 0)) > 0.005;
+      });
+      if (frozen.length) {
+        const names = frozen.map((p) => p.name || 'Someone').join(', ');
+        return json({
+          error: `${names} already paid, so that amount cannot change. Undo the confirmation first if it was wrong.`,
+        }, 409);
+      }
+
+      const next = rows.map((p) => {
+        // A settled diner's amount is frozen here for the same reason it is in
+        // joinSession: they have already handed over a number, and quietly
+        // restating it would leave them marked paid against a figure they never
+        // sent.
+        if (p.payment_status === 'paid') return p;
+        const raw = custom_amounts[p.participant_id];
+        if (raw === undefined) return p;
+        const amount = Number(raw);
+        if (!Number.isFinite(amount) || amount < 0) return p;
+        return { ...p, amount_owed: Math.round(amount * 100) / 100 };
+      });
+
+      // The table must still be paying the bill. Rejecting rather than silently
+      // storing a set of amounts that do not add up is the difference between
+      // a host noticing now and a host noticing when they are short.
+      const sum = next.reduce((s, p) => s + (Number(p.amount_owed) || 0), 0);
+      if (Math.abs(sum - total) > 0.05) {
+        return json({
+          error: `Those amounts add up to $${sum.toFixed(2)}, but the bill is $${total.toFixed(2)}.`,
+        }, 400);
+      }
+
+      patch.participants = next;
+      patch.split_mode = 'custom';
+    }
+
+    if (!Object.keys(patch).length) return json({ error: 'Nothing to change' }, 400);
+
+    const updated = await svc.entity('Session').update(session_id, patch);
+    return json({ session: publicSession(updated) });
   },
 
   /** Checks a scanned token and hands back the session id it points at. */
