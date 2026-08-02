@@ -37,10 +37,22 @@
  *   node scripts/migrate-to-supabase.mjs --dry-run     # counts only, writes nothing
  *   node scripts/migrate-to-supabase.mjs               # copies
  *   node scripts/migrate-to-supabase.mjs --only Session
+ *   node scripts/migrate-to-supabase.mjs --from-file base44-export.json
  *
  * Environment:
- *   BASE44_APP_ID, BASE44_MASTER_KEY
+ *   BASE44_APP_ID, BASE44_MASTER_KEY   (not needed with --from-file)
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *
+ * ── --from-file, and why it is the path that works ──────────────────────────
+ *
+ * Base44's server API returns 200 and an empty array for every entity on this
+ * app, with the master key, with two other credential forms, and with no
+ * credential at all. The key is being ignored, so those zeros describe nothing.
+ *
+ * Reverse-engineering a vendor's server auth on the way out of that vendor is
+ * not work worth doing. scripts/export-from-browser.js dumps the same entities
+ * from the browser, where the app's own token works, and --from-file reads that
+ * dump. Everything after the read is identical.
  */
 
 const PAGE = 200;
@@ -208,13 +220,26 @@ export async function writeAll(entity, rows, config, fetchImpl = fetch, log = ()
  * Returns a row-by-row account rather than printing one, so a test can assert
  * on it and a caller can decide what to do about a short write.
  */
-export async function migrate({ config, only = null, dryRun = false, fetchImpl = fetch, log = () => {} }) {
+export async function migrate({
+  config,
+  only = null,
+  dryRun = false,
+  fetchImpl = fetch,
+  log = () => {},
+  source = null,
+}) {
   const targets = only ? ENTITIES.filter((e) => e.name === only) : ENTITIES;
   if (!targets.length) throw new Error(`No entity called "${only}"`);
 
+  // Where the rows come from. Base44's server API by default; a file when the
+  // server API cannot be made to answer — see fromFile below. The rest of the
+  // migration does not care which, and neither should it: reshaping, batching,
+  // upserting and the short-write check are the same either way.
+  const read = source || ((name) => readAll(name, config, fetchImpl));
+
   const summary = [];
   for (const entity of targets) {
-    const rows = await readAll(entity.name, config, fetchImpl);
+    const rows = await read(entity.name);
     if (dryRun) {
       summary.push({ table: entity.table, read: rows.length, written: 0, dropped: [] });
       continue;
@@ -223,6 +248,44 @@ export async function migrate({ config, only = null, dryRun = false, fetchImpl =
     summary.push({ table: entity.table, read: rows.length, written, dropped });
   }
   return summary;
+}
+
+/**
+ * Rows out of an export file rather than out of Base44.
+ *
+ * The server API returns 200 and an empty array for every entity on this app,
+ * with any credential and with none, so the master key is being ignored. The
+ * browser is not: it holds a token Base44 accepts and reads these same entities
+ * on every page load. scripts/export-from-browser.js dumps them from there.
+ *
+ * This is the better shape anyway. It makes the export a file you can look at
+ * before it is written anywhere, and it means the last dependency on Base44
+ * being reachable at all disappears at the moment of the migration rather than
+ * lingering in it.
+ *
+ * @param contents parsed base44-export.json — { EntityName: [rows] }
+ * @returns {(name: string) => Promise<object[]>}
+ */
+export function fromFile(contents) {
+  if (!contents || typeof contents !== 'object' || Array.isArray(contents)) {
+    throw new Error('Export file should be an object of { EntityName: [rows] }');
+  }
+  const unknown = Object.keys(contents).filter((k) => !ENTITIES.some((e) => e.name === k));
+  if (unknown.length) {
+    throw new Error(
+      `Export file has entities this migration does not know: ${unknown.join(', ')}. ` +
+      'Add them to ENTITIES with their columns, or the rows will be silently skipped.',
+    );
+  }
+  return async (name) => {
+    const rows = contents[name];
+    // An entity missing from the file is not an error — the export may predate
+    // an entity, or have been taken with --only. It is zero rows, and the
+    // all-zero check still applies across the whole run.
+    if (rows === undefined) return [];
+    if (!Array.isArray(rows)) throw new Error(`Export file: ${name} is not an array`);
+    return rows;
+  };
 }
 
 /**
@@ -248,7 +311,9 @@ export function problems(summary, { only = null, dryRun = false } = {}) {
   if (!only && summary.length && summary.every((s) => s.read === 0)) {
     found.push(
       'Zero rows read from every entity. Treat that as a broken read, not an ' +
-      'empty database — run: node scripts/base44-probe.mjs',
+      'empty database. Base44\'s server API answers 200 and empty to any ' +
+      'credential and to none, so export from the browser instead — see ' +
+      'scripts/export-from-browser.js — and rerun with --from-file.',
     );
   }
 
@@ -295,7 +360,7 @@ export function keyRole(key) {
 
 // ── Command line ────────────────────────────────────────────────────────────
 
-function readConfig(envSource = process.env) {
+function readConfig(envSource = process.env, { needsBase44 = true } = {}) {
   const need = (name) => {
     const value = envSource[name];
     if (!value) {
@@ -316,9 +381,12 @@ function readConfig(envSource = process.env) {
     process.exit(1);
   }
 
+  // --from-file never contacts Base44, so demanding its credentials would be
+  // asking for a key to a door nobody is opening — and the whole point of that
+  // flag is that those credentials do not work.
   return {
-    appId: need('BASE44_APP_ID').replace(/^app_/, ''),
-    masterKey: need('BASE44_MASTER_KEY'),
+    appId: (needsBase44 ? need('BASE44_APP_ID') : envSource.BASE44_APP_ID || '').replace(/^app_/, ''),
+    masterKey: needsBase44 ? need('BASE44_MASTER_KEY') : null,
     base44Origin: (envSource.BASE44_API_ORIGIN || 'https://base44.app').replace(/\/+$/, ''),
     supabaseUrl: need('SUPABASE_URL').replace(/\/+$/, ''),
     supabaseKey,
@@ -330,17 +398,30 @@ async function main() {
   const dryRun = argv.includes('--dry-run');
   const onlyIndex = argv.indexOf('--only');
   const only = onlyIndex >= 0 ? argv[onlyIndex + 1] : null;
+  const fileIndex = argv.indexOf('--from-file');
+  const filePath = fileIndex >= 0 ? argv[fileIndex + 1] : null;
+  if (fileIndex >= 0 && !filePath) {
+    console.error('--from-file needs a path to base44-export.json');
+    process.exit(1);
+  }
 
-  const config = readConfig();
+  const config = readConfig(process.env, { needsBase44: !filePath });
+
+  let source = null;
+  if (filePath) {
+    const { readFile } = await import('node:fs/promises');
+    source = fromFile(JSON.parse(await readFile(filePath, 'utf8')));
+  }
 
   console.log(`\n${dryRun ? 'DRY RUN — nothing will be written' : 'Migrating'}`);
-  console.log(`  from Base44 app ${config.appId}`);
+  console.log(`  from ${filePath ? filePath : `Base44 app ${config.appId}`}`);
   console.log(`  to   ${config.supabaseUrl}\n`);
 
   const summary = await migrate({
     config,
     only,
     dryRun,
+    source,
     log: (line) => process.stdout.write(`\r${line}`),
   });
 

@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrate, readAll, writeAll, shape, keyRole, problems, ENTITIES } from './migrate-to-supabase.mjs';
+import { migrate, readAll, writeAll, shape, keyRole, problems, fromFile, ENTITIES } from './migrate-to-supabase.mjs';
 
 const CONFIG = {
   appId: 'app1',
@@ -314,4 +314,84 @@ test('a short write still says do not cut over', () => {
 test('a dry run is not reported as short, since it writes nothing', () => {
   const summary = [{ table: 'sessions', read: 120, written: 0, dropped: [] }];
   assert.deepEqual(problems(summary, { dryRun: true }), []);
+});
+
+// ── Migrating from an export file instead of from Base44 ────────────────────
+
+test('rows come out of the export file, and Base44 is never contacted', async () => {
+  // The point of the flag. Base44's server API ignores every credential this
+  // app has, so the migration has to be able to run without it at all.
+  let base44Calls = 0;
+  const { fetchImpl, written } = stubBoth({});
+  const counting = async (url, init) => {
+    if (new URL(url).hostname.endsWith('base44.app')) base44Calls += 1;
+    return fetchImpl(url, init);
+  };
+
+  const summary = await migrate({
+    config: CONFIG,
+    fetchImpl: counting,
+    source: fromFile({
+      Restaurant: [{ id: 'r1', name: 'Joe', slug: 'joes', owner_id: 'base44_user_7' }],
+      Session: [{ id: 's1', title: 'Dinner', restaurant_id: 'r1' }],
+    }),
+  });
+
+  assert.equal(base44Calls, 0, 'the whole point is that Base44 is out of the loop');
+  assert.equal(written.restaurants.length, 1);
+  assert.equal(written.sessions.length, 1);
+  assert.equal(summary.find((s) => s.table === 'restaurants').read, 1);
+});
+
+test('an export file still gets its owner ids parked, not carried across', async () => {
+  // Reshaping happens after the read, so it must not depend on where the rows
+  // came from. A file-sourced row carrying a Base44 owner id into a uuid column
+  // would fail the foreign key exactly the same way.
+  const { fetchImpl, written } = stubBoth({});
+  await migrate({
+    config: CONFIG,
+    fetchImpl,
+    only: 'Restaurant',
+    source: fromFile({ Restaurant: [{ id: 'r1', name: 'Joe', slug: 'joes', owner_id: 'base44_user_7' }] }),
+  });
+  assert.equal(written.restaurants[0].owner_id, undefined);
+  assert.equal(written.restaurants[0].legacy_owner_id, 'base44_user_7');
+});
+
+test('an entity missing from the file is zero rows, not a crash', async () => {
+  const { fetchImpl } = stubBoth({});
+  const summary = await migrate({
+    config: CONFIG,
+    fetchImpl,
+    source: fromFile({ Waitlist: [{ id: 'w1', email: 'a@b.com' }] }),
+  });
+  assert.equal(summary.find((s) => s.table === 'receipts').read, 0);
+  assert.equal(summary.find((s) => s.table === 'waitlist').read, 1);
+});
+
+test('an export naming an entity the migration has no columns for is refused', () => {
+  // Silently skipping it would drop a whole table and still print a clean
+  // summary — the same false green that let the empty run look successful.
+  assert.throws(
+    () => fromFile({ Restaurant: [], Invoice: [{ id: 'i1' }] }),
+    /does not know: Invoice/,
+  );
+});
+
+test('a file that is not the expected shape is refused before anything is written', () => {
+  assert.throws(() => fromFile(null), /object of/);
+  assert.throws(() => fromFile([{ id: 'r1' }]), /object of/);
+});
+
+test('an entity whose value is not an array is refused', async () => {
+  const read = fromFile({ Restaurant: { id: 'r1' } });
+  await assert.rejects(() => read('Restaurant'), /Restaurant is not an array/);
+});
+
+test('an empty export is still caught as a run you must not believe', async () => {
+  // Exporting nothing is a real possible outcome, and it must not read as a
+  // successful migration any more than an empty API read did.
+  const { fetchImpl } = stubBoth({});
+  const summary = await migrate({ config: CONFIG, fetchImpl, source: fromFile({}) });
+  assert.equal(problems(summary, {}).length, 1);
 });
