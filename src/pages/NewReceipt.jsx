@@ -11,6 +11,7 @@ import SplitModeSelector from "@/components/SplitModeSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { compressImage } from "@/lib/compressImage";
+import { rememberHostKey } from "@/lib/hostKey";
 
 const RESTAURANT_SUGGESTIONS = [
   "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
@@ -215,6 +216,10 @@ Return a JSON with:
         return;
       }
       const session = res.data.session;
+      // Returned once and never again. This is what lets whoever created the
+      // split confirm payments later — including a guest from a table tent, who
+      // has no account for Base44's ownership rules to key off.
+      rememberHostKey(session.id, res.data.host_key);
       Sentry.addBreadcrumb({ category: 'session', message: 'Bill split session created', level: 'info' });
       Sentry.setTag('split_mode', splitMode);
       trackDeviceAction('split_created');
@@ -256,6 +261,7 @@ Return a JSON with:
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
       });
       if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
+      rememberHostKey(res.data.session.id, res.data.host_key);
       trackDeviceAction('split_created');
       await afterCreate(res.data.session.id);
     } catch (err) {

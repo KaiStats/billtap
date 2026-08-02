@@ -5,8 +5,10 @@ import { Check, Loader2, ExternalLink, Copy, Smartphone, Search, CheckCheck } fr
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
+import { isHostOf } from "@/lib/hostKey";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
 
@@ -35,6 +37,7 @@ function calcEvenShare(totalAmount, participantCount) {
 }
 
 export default function Claim() {
+  const navigate = useNavigate();
   const params = new URLSearchParams(window.location.search);
   const qrToken = params.get("token");
   const legacyId = params.get("id");
@@ -564,10 +567,13 @@ export default function Claim() {
                   <div key={p.participant_id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${p.participant_id === myId ? "bg-brand/20 text-brand-muted-foreground border border-brand/30" : "bg-white/5 text-white/50 border border-white/10"}`}>
                     <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-current opacity-60">{(p.name || "?")[0].toUpperCase()}</div>
                     {p.participant_id === myId ? "You" : p.name}
-                    {/* pending_verification counts too — it is what markMePaid
-                        writes, so checking only "paid" left every guest who had
-                        paid still showing as unpaid to the whole table. */}
-                    {(p.payment_status === "paid" || p.payment_status === "pending_verification") && " ✓"}
+                    {/* Two different facts, so two different marks. One tick
+                        used to mean either, which left the table unable to tell
+                        who the host had actually confirmed from who had merely
+                        tapped the button — and the hourglass is exactly the
+                        state that still needs checking. */}
+                    {p.payment_status === "paid" && <span title="Confirmed by the host"> ✓</span>}
+                    {p.payment_status === "pending_verification" && <span title="Sent — waiting for the host to confirm"> ⏳</span>}
                   </div>
                 ))}
               </div>
@@ -739,11 +745,28 @@ export default function Claim() {
               // the button stayed tappable after payment and fired markMePaid
               // again.
               disabled={paymentSent || (splitMode === "itemized" && myMyClaimed.length === 0)}
-              aria-label={awaitingHost ? "Payment sent, waiting for the host to confirm" : paymentSent ? "Payment complete" : `Pay $${myShare.toFixed(2)}`}
+              aria-label={awaitingHost ? "Payment sent, waiting for the host to confirm" : paymentSent ? "Payment confirmed by the host" : `Pay $${myShare.toFixed(2)}`}
               className={`w-full h-14 font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-100 ${paymentSent ? "bg-success text-white" : "text-white hover:-translate-y-0.5 active:translate-y-0"}`}
               style={paymentSent ? {} : { background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
             >
-              {awaitingHost ? "✓ Sent — waiting for host" : paymentSent ? "✓ Marked as Paid" : `Pay $${myShare.toFixed(2)}`}
+              {/* "Marked as Paid" was the same words for both states. A diner
+                  who had merely tapped the button and one whose host had
+                  actually confirmed the transfer read the identical screen. */}
+              {awaitingHost ? "✓ Sent — waiting for host" : paymentSent ? "✓ Confirmed by host" : `Pay $${myShare.toFixed(2)}`}
+            </button>
+          )}
+
+          {/* The person who made this split is at the table eating too, so they
+              land here like everyone else. This is their way to the screen that
+              lists who has paid — without it a table-tent host, who has no
+              account and so never sees /session-host, had no route to it at
+              all. */}
+          {isHostOf(sessionId) && (
+            <button
+              onClick={() => navigate(`/receipt-detail?id=${sessionId}`)}
+              className="w-full h-12 rounded-2xl font-semibold text-sm bg-white/[0.06] border border-white/12 text-foreground active:scale-[0.99] transition-all"
+            >
+              Who&apos;s paid? →
             </button>
           )}
         </div>

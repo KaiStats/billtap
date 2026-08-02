@@ -89,7 +89,9 @@ const AUTH_GATED_ROUTES = new Set([
   // gating it would make them wait on an auth round-trip only to be bounced.
   '/dashboard',
   '/session-host',
-  '/receipt-detail',
+  // Not /receipt-detail: the host of a table-tent split has no account, and
+  // that is the screen where payments get confirmed. See the route itself for
+  // why opening it is safe.
   '/profile',
   '/restaurant-dashboard',
 ]);
@@ -157,6 +159,23 @@ const AuthenticatedApp = () => {
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
             <Route path="/new-receipt" element={<AnimatedPage direction={direction}><NewReceipt /></AnimatedPage>} />
+            {/*
+              Not protected, for the same reason /new-receipt is not.
+
+              This is where the host confirms that each diner's money arrived. A
+              split started from a restaurant's table tent is created by someone
+              with no account — that is the product's premise — so gating this
+              route sent the host to /login and left them unable to reach the one
+              screen that settles their bill. Everyone at the table could pay;
+              nobody could ever be recorded as having paid.
+
+              Safe to open because the authorization moved to where it belongs.
+              getSessionAsHost and confirmPayment each demand the host key minted
+              at creation, or proven ownership, and answer 403 without it. An
+              anonymous visitor holding only a session id falls through to an
+              ordinary entity read, which Base44's rules answer with nothing.
+            */}
+            <Route path="/receipt-detail" element={<AnimatedPage direction={direction}><ReceiptDetail /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
 
@@ -182,7 +201,6 @@ const AuthenticatedApp = () => {
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
               <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
               <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
-              <Route path="/receipt-detail" element={<AnimatedPage direction={direction}><ReceiptDetail /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
               <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
             </Route>

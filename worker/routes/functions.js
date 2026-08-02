@@ -62,6 +62,87 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
+// ── Host keys ───────────────────────────────────────────────────────────────
+//
+// Who is allowed to confirm that money arrived?
+//
+// Only the person whose Venmo it went to. For a split created by a signed-in
+// user that is answerable from Base44's own rules — created_by_id is them. For
+// a split created from a table tent it is not: the guest has no account, the
+// row has no owner, and Session's update rule (base44/entities/Session.jsonc)
+// therefore matches nobody. The host of a table-tent split could not confirm a
+// payment at all, and src/pages/ReceiptDetail.jsx decided who was host from a
+// `?host=1` query parameter, which is not authorization, it is a suggestion.
+//
+// So creating a split mints a secret. The creator gets it once and keeps it in
+// their browser; the session stores only its SHA-256. Presenting the secret is
+// what proves you are the host. It works identically for both kinds of host,
+// it survives Base44 having no opinion about guests, and losing it costs you
+// the host controls rather than someone else's money.
+
+/**
+ * Change one participant, and notice if the write was lost.
+ *
+ * Base44's REST layer replaces the whole Session row on a PUT and offers no
+ * compare-and-swap, so any read-modify-write here can be trampled: the host
+ * confirms Alice while a diner taps "I've sent it" as Bob, both read the same
+ * participants array, and whichever saves second reinstates the other's stale
+ * row. At a table of six that is not hypothetical — it is two thumbs moving at
+ * once, and the casualty is a payment record.
+ *
+ * Rather than pretend a lock exists, this checks its own work. After writing it
+ * reads back; if the change it just made is not there, it was the loser of a
+ * race and starts again from the winner's version. The loser always detects,
+ * so both changes survive — the retry re-applies onto whatever landed rather
+ * than onto the snapshot it started with.
+ *
+ * `mutate(session)` returns the patch to write, or null to mean "nothing to do".
+ * `settled(session)` says whether this call's intent is visible in a fresh read.
+ */
+async function patchSession(svc, sessionId, mutate, settled, attempts = 3) {
+  let latest = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const rows = await svc.entity('Session').filter({ id: sessionId });
+    latest = rows[0];
+    if (!latest) return null;
+
+    const patch = mutate(latest);
+    if (!patch) return latest;
+
+    latest = await svc.entity('Session').update(sessionId, patch);
+    if (settled(latest)) return latest;
+
+    // Someone else's save landed on top of ours. Loop: the next read sees their
+    // version and our change is re-applied over it instead of under it.
+  }
+  return latest;
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function mintHostKey() {
+  return b64url(crypto.getRandomValues(new Uint8Array(24)));
+}
+
+/**
+ * True when this request may act as the host of `session`.
+ *
+ * Either identity is sufficient and neither is trusted from the body alone:
+ * the key is checked against the stored hash, and ownership against Base44's
+ * answer for who the caller is.
+ */
+async function isHost(env, request, session, providedKey) {
+  if (session.host_key_hash && typeof providedKey === 'string' && providedKey) {
+    if (safeEqual(await sha256Hex(providedKey), session.host_key_hash)) return true;
+  }
+  if (!session.created_by_id) return false;
+  const user = await currentUser(env, request);
+  return Boolean(user && user.id && user.id === session.created_by_id);
+}
+
 // ── The functions ───────────────────────────────────────────────────────────
 
 const HANDLERS = {
@@ -316,6 +397,10 @@ const HANDLERS = {
     // no id to stamp.
     const writer = user ? asCaller(env, request) : svc;
 
+    // Minted here and returned exactly once. Only the hash is stored, so a leak
+    // of the Session row does not hand anyone the host controls.
+    const hostKey = mintHostKey();
+
     const session = await writer.entity('Session').create({
       title: title.trim().slice(0, 100),
       image_url: image_url || null,
@@ -327,10 +412,133 @@ const HANDLERS = {
       participants: [],
       status: 'waiting',
       expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      host_key_hash: await sha256Hex(hostKey),
       ...(restaurantId ? { restaurant_id: restaurantId } : {}),
     });
 
-    return json({ session });
+    return json({ session: publicSession(session), host_key: hostKey });
+  },
+
+  /**
+   * The host's own view of a split: everyone, and what everyone owes.
+   *
+   * Needed because Base44's read rule on Session matches created_by_id or a
+   * participant id, and the host of a table-tent split is neither — the row has
+   * no owner and they never joined as a diner. Reading it through the SDK
+   * returned nothing, so the screen that lists who has paid was empty for
+   * exactly the person it exists for.
+   */
+  async getSessionAsHost({ env, request, body }) {
+    const { session_id, host_key } = body;
+    if (!session_id || typeof session_id !== 'string') {
+      return json({ error: 'session_id is required' }, 400);
+    }
+
+    const svc = serviceRole(env);
+    const sessions = await svc.entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+
+    if (!(await isHost(env, request, session, host_key))) {
+      return json({ error: 'Not the host of this split' }, 403);
+    }
+
+    return json({ session: publicSession(session) });
+  },
+
+  /**
+   * The host confirming that money actually arrived — or taking it back.
+   *
+   * This is the only thing in the product that writes 'paid'. A diner tapping
+   * "I've sent payment" writes pending_verification and nothing more, because a
+   * diner asserting they paid is not evidence that they did; the person whose
+   * Venmo it lands in is the only one who knows.
+   *
+   * It replaces a raw Session.update from src/pages/ReceiptDetail.jsx that sent
+   * the whole participants array back. That is the same shape of bug the audit
+   * found in joinSession: two confirmations at once and one is silently erased,
+   * and a crafted client could rewrite every amount in the split. Here the
+   * caller names one participant and the server patches that row against stored
+   * data.
+   */
+  async confirmPayment({ env, request, body }) {
+    const { session_id, participant_id, host_key, action = 'confirm' } = body;
+    if (!session_id || typeof session_id !== 'string') {
+      return json({ error: 'session_id is required' }, 400);
+    }
+    if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
+      return json({ error: 'Invalid participant_id' }, 400);
+    }
+    if (action !== 'confirm' && action !== 'undo') {
+      return json({ error: "action must be 'confirm' or 'undo'" }, 400);
+    }
+
+    const svc = serviceRole(env);
+    const sessions = await svc.entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+
+    if (!(await isHost(env, request, session, host_key))) {
+      return json({ error: 'Only the host can confirm a payment' }, 403);
+    }
+
+    const participants = session.participants || [];
+    const target = participants.find((p) => p.participant_id === participant_id);
+    if (!target) return json({ error: 'Participant not found in session' }, 404);
+
+    // Idempotent. The host taps twice on a slow connection, or two host devices
+    // confirm the same diner; both must land on one settled row, not two.
+    const alreadySettled = target.payment_status === 'paid';
+    if (action === 'confirm' && alreadySettled) {
+      return json({ session: publicSession(session), unchanged: true });
+    }
+    if (action === 'undo' && !alreadySettled) {
+      return json({ session: publicSession(session), unchanged: true });
+    }
+
+    const wanted = action === 'confirm' ? 'paid' : 'unpaid';
+
+    const updated = await patchSession(
+      svc,
+      session_id,
+      (fresh) => {
+        const rows = fresh.participants || [];
+        if (!rows.find((p) => p.participant_id === participant_id)) return null;
+
+        const next = rows.map((p) => {
+          if (p.participant_id !== participant_id) return p;
+          if (action === 'undo') {
+            const { paid_amount, paid_at, ...rest } = p;
+            return { ...rest, payment_status: 'unpaid' };
+          }
+          return {
+            ...p,
+            payment_status: 'paid',
+            // What was actually settled, recorded at the moment it was settled.
+            // amount_owed keeps moving as people join and claim; this does not,
+            // so a host can see that Alice paid $26 against a share that later
+            // became $31 rather than being shown one comforting number.
+            paid_amount: Math.round((Number(p.amount_owed) || 0) * 100) / 100,
+            paid_at: Date.now(),
+          };
+        });
+
+        // The one place a split can complete, because it is the one place the
+        // last 'paid' can be written.
+        const everyonePaid = next.length > 0 && next.every((p) => p.payment_status === 'paid');
+        return {
+          participants: next,
+          status: everyonePaid
+            ? 'completed'
+            : (fresh.status === 'completed' ? 'claiming' : fresh.status),
+        };
+      },
+      (fresh) => (fresh.participants || [])
+        .find((p) => p.participant_id === participant_id)?.payment_status === wanted,
+    );
+
+    if (!updated) return json({ error: 'Session not found' }, 404);
+    return json({ session: publicSession(updated) });
   },
 
   /**
@@ -365,6 +573,14 @@ const HANDLERS = {
     const already = current.find((p) => p.participant_id === participant_id);
     if (!already && current.length >= 50) {
       return json({ error: 'Session is full (max 50 participants)' }, 400);
+    }
+
+    // Once the host has confirmed the money arrived, the diner's side of the
+    // split is closed. Letting them keep claiming would change what they owe
+    // after they had already paid it, and their row is frozen below, so the
+    // claim would be recorded against an amount that no longer updates.
+    if (already?.payment_status === 'paid') {
+      return json({ error: 'Your payment is already settled for this split' }, 409);
     }
 
     const splitMode = session.split_mode || 'itemized';
@@ -432,10 +648,18 @@ const HANDLERS = {
 
     // payment_status is never taken from the request: markMePaid owns it, and
     // accepting it here would let one diner mark another as paid.
-    nextParticipants = nextParticipants.map((p) => ({
-      ...p,
-      amount_owed: splitMode === 'even' ? evenShare : shareFor(p.participant_id),
-    }));
+    //
+    // A settled diner's amount is frozen. Every join recalculates what everyone
+    // owes, and in an even split that moves all of them — so a fifth person
+    // arriving after Alice's $30 was confirmed would quietly restate her share
+    // as $24 and leave her marked paid against a number she never sent. Her row
+    // stops moving once the host confirms it; the arithmetic for everyone still
+    // owing continues as before.
+    nextParticipants = nextParticipants.map((p) => (
+      p.payment_status === 'paid'
+        ? p
+        : { ...p, amount_owed: splitMode === 'even' ? evenShare : shareFor(p.participant_id) }
+    ));
 
     const updated = await svc.entity('Session').update(session_id, {
       participants: nextParticipants,
@@ -460,20 +684,48 @@ const HANDLERS = {
     if (!session) return json({ error: 'Session not found' }, 404);
 
     const participants = session.participants || [];
-    if (!participants.find((p) => p.participant_id === participant_id)) {
-      return json({ error: 'Participant not found in session' }, 404);
+    const me = participants.find((p) => p.participant_id === participant_id);
+    if (!me) return json({ error: 'Participant not found in session' }, 404);
+
+    // Already settled by the host — leave it alone. Without this, a diner
+    // returning to the tab and tapping the button again would move themselves
+    // from 'paid' back to 'pending_verification', undoing the host's
+    // confirmation and putting a settled bill back on their to-do list.
+    if (me.payment_status === 'paid') {
+      return json({ session: scopeForParticipant(session, participant_id), unchanged: true });
     }
 
     // pending_verification, not paid: only the host confirms receipt of money.
-    const next = participants.map((p) =>
-      p.participant_id === participant_id ? { ...p, payment_status: 'pending_verification' } : p,
+    // Completion is decided in confirmPayment, which is the only place the last
+    // 'paid' can be written — asserting you have sent money is not the same
+    // event as the money arriving.
+    //
+    // Through patchSession because this is the likeliest collision in the
+    // product: five people round a table tapping "I've sent it" within a few
+    // seconds of each other while the host works down the same list.
+    const updated = await patchSession(
+      svc,
+      session_id,
+      (fresh) => {
+        const rows = fresh.participants || [];
+        const mine = rows.find((p) => p.participant_id === participant_id);
+        if (!mine || mine.payment_status === 'paid') return null;
+        return {
+          participants: rows.map((p) =>
+            p.participant_id === participant_id ? { ...p, payment_status: 'pending_verification' } : p,
+          ),
+          status: fresh.status,
+        };
+      },
+      (fresh) => {
+        const mine = (fresh.participants || []).find((p) => p.participant_id === participant_id);
+        // 'paid' also settles this call: the host confirmed while we were
+        // writing, and that is a stronger statement than the one we came to make.
+        return mine?.payment_status === 'pending_verification' || mine?.payment_status === 'paid';
+      },
     );
 
-    const updated = await svc.entity('Session').update(session_id, {
-      participants: next,
-      status: next.every((p) => p.payment_status === 'paid') ? 'completed' : session.status,
-    });
-
+    if (!updated) return json({ error: 'Session not found' }, 404);
     return json({ session: scopeForParticipant(updated, participant_id) });
   },
 
@@ -548,9 +800,24 @@ function scopeForParticipant(session, participantId) {
       participant_id: p.participant_id,
       name: p.name,
       payment_status: p.payment_status,
-      ...(p.participant_id === participantId ? { amount_owed: p.amount_owed } : {}),
+      ...(p.participant_id === participantId
+        ? { amount_owed: p.amount_owed, paid_amount: p.paid_amount, paid_at: p.paid_at }
+        : {}),
     })),
     // Needed by the client to decide whether to show the rating prompt at all.
     ...(session.restaurant_id ? { restaurant_id: session.restaurant_id } : {}),
   };
+}
+
+/**
+ * The host's view: everything about the split except the thing that grants
+ * control of it.
+ *
+ * host_key_hash never leaves the Worker. It is only a SHA-256 and so not
+ * directly usable, but a hash handed to every client is a hash somebody will
+ * eventually run a wordlist against, and there is no reason for it to travel.
+ */
+function publicSession(session) {
+  const { host_key_hash, ...rest } = session || {};
+  return rest;
 }

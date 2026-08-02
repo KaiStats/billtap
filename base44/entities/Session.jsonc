@@ -80,7 +80,16 @@
               "pending_verification",
               "paid"
             ],
-            "default": "unpaid"
+            "default": "unpaid",
+            "description": "unpaid; pending_verification once the diner says they sent it; paid only once the host confirms the money arrived. Written by markMePaid and confirmPayment in worker/routes/functions.js, never by a client."
+          },
+          "paid_amount": {
+            "type": "number",
+            "description": "What was actually settled, recorded at the moment the host confirmed. amount_owed keeps moving as people join and claim; this does not, so a shortfall stays visible instead of being smoothed over."
+          },
+          "paid_at": {
+            "type": "number",
+            "description": "Epoch ms of the host's confirmation"
           },
           "split_percentage": {
             "type": "number",
@@ -92,6 +101,10 @@
           }
         }
       }
+    },
+    "host_key_hash": {
+      "type": "string",
+      "description": "SHA-256 of the secret handed to whoever created this split. Presenting the secret is what proves you are the host, which is the only way a table-tent split has a host at all — that row has no created_by_id, so the update rule below matches nobody. Never leaves the Worker: see publicSession() in worker/routes/functions.js."
     },
     "host_payment_info": {
       "type": "object",

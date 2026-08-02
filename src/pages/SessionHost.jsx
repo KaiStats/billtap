@@ -95,11 +95,17 @@ function SessionHostComponent() {
     return unsub;
   }, [sessionId]);
 
-  // Celebrate when all participants have paid
+  // Celebrate when the host has confirmed every payment.
+  //
+  // This used to fire on pending_verification too — the state a diner reaches
+  // by tapping "I've sent payment", which is an assertion, not an arrival. So
+  // the confetti went off when everyone *said* they had paid, and the host was
+  // told the bill was settled before a single transfer had been checked. On the
+  // receipt screen the same table read 0 of 5. Only one of those was true.
   useEffect(() => {
     if (!session || celebratedRef.current) return;
     const ps = session.participants || [];
-    if (ps.length > 0 && ps.every(p => p.payment_status === "paid" || p.payment_status === "pending_verification")) {
+    if (ps.length > 0 && ps.every(p => p.payment_status === "paid")) {
       celebratedRef.current = true;
       setAllPaidCelebrated(true);
       if (navigator.vibrate) navigator.vibrate([50, 50, 100]);
@@ -355,7 +361,8 @@ function SessionHostComponent() {
 
           {/* Payment Progress */}
           {participants.length > 0 && (() => {
-            const paidCount = participants.filter(p => p.payment_status === "paid" || p.payment_status === "pending_verification").length;
+            const paidCount = participants.filter(p => p.payment_status === "paid").length;
+            const awaitingCount = participants.filter(p => p.payment_status === "pending_verification").length;
             const pct = Math.round((paidCount / participants.length) * 100);
             const allDone = paidCount === participants.length;
             const waitingForLast = paidCount === participants.length - 1 && participants.length > 1;
@@ -363,7 +370,11 @@ function SessionHostComponent() {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className={allDone ? "text-emerald-400" : "text-white/60"}>
-                    {allDone ? "🎉 Everyone paid!" : `${paidCount} of ${participants.length} paid`}
+                    {allDone
+                      ? "🎉 Everyone paid!"
+                      : awaitingCount > 0
+                        ? `${paidCount} of ${participants.length} confirmed · ${awaitingCount} to check`
+                        : `${paidCount} of ${participants.length} confirmed`}
                   </span>
                   <span className={allDone ? "text-emerald-400" : "text-white/40"}>{pct}%</span>
                 </div>
@@ -372,7 +383,7 @@ function SessionHostComponent() {
                   aria-valuenow={paidCount}
                   aria-valuemin={0}
                   aria-valuemax={participants.length}
-                  aria-label={`${paidCount} of ${participants.length} participants paid`}
+                  aria-label={`${paidCount} of ${participants.length} payments confirmed`}
                   className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden"
                 >
                   <div
@@ -431,7 +442,7 @@ function SessionHostComponent() {
 
           {/* Split Summary Modal */}
           {showSummaryCard && (() => {
-            const paidCount = participants.filter(p => p.payment_status === "paid" || p.payment_status === "pending_verification").length;
+            const paidCount = participants.filter(p => p.payment_status === "paid").length;
             const minutesTaken = session.created_date ? Math.max(1, Math.round((Date.now() - new Date(session.created_date).getTime()) / 60000)) : null;
             const summaryText = `BillTap split at ${session.title}\n${participants.length} people · $${(session.total_amount || 0).toFixed(2)} total\nEveryone paid${minutesTaken ? ` in ${minutesTaken} minute${minutesTaken !== 1 ? 's' : ''}` : ''} ⚡`;
             return (

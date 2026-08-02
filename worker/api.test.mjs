@@ -843,24 +843,34 @@ test('paying moves the diner to pending_verification, never straight to paid', a
 });
 
 test('a diner saying "I paid" can never complete the session on their own', async () => {
-  // markMePaid has a `status: completed` branch, and it is unreachable: the
-  // caller is set to pending_verification in the same breath, so
-  // every(p => p.payment_status === 'paid') is always false. That is the
-  // conservative outcome — a guest should not be able to close the bill — but
-  // it does mean nothing in the codebase ever writes 'paid' or 'completed'.
-  // Pinning it here so that stays a decision rather than an accident.
+  // Asserting you sent money is not the same event as the money arriving, so
+  // markMePaid can only ever reach pending_verification. Completion belongs to
+  // confirmPayment, which is the only place the last 'paid' can be written.
   const session = {
     ...simpleSession(),
     status: 'claiming',
-    participants: [
-      { participant_id: ALICE, name: 'A', amount_owed: 20, payment_status: 'paid' },
-      { participant_id: BOB, name: 'B', amount_owed: 10, payment_status: 'paid' },
-    ],
+    participants: [{ participant_id: ALICE, name: 'A', amount_owed: 30, payment_status: 'unpaid' }],
   };
   await withStub({ entities: { Session: [session] } }, async ({ env, store }) => {
-    await paid(env, { session_id: 's1', participant_id: BOB });
-    assert.equal(store.Session[0].participants[1].payment_status, 'pending_verification');
-    assert.equal(store.Session[0].status, 'claiming', 'the last diner cannot flip the session to completed');
+    await paid(env, { session_id: 's1', participant_id: ALICE });
+    assert.equal(store.Session[0].participants[0].payment_status, 'pending_verification');
+    assert.equal(store.Session[0].status, 'claiming', 'the last diner cannot flip the split to completed');
+  });
+});
+
+test('a diner cannot undo the host confirmation by tapping "I paid" again', async () => {
+  // They come back to the tab an hour later and hit the button again. Without
+  // this guard that walks a settled row back to pending_verification and puts a
+  // finished bill back on the host's to-do list.
+  const session = {
+    ...simpleSession(),
+    participants: [{ participant_id: ALICE, name: 'A', amount_owed: 30, payment_status: 'paid', paid_amount: 30 }],
+  };
+  await withStub({ entities: { Session: [session] } }, async ({ env, store }) => {
+    const res = await paid(env, { session_id: 's1', participant_id: ALICE });
+    assert.equal(res.status, 200);
+    assert.equal((await body(res)).unchanged, true);
+    assert.equal(store.Session[0].participants[0].payment_status, 'paid');
   });
 });
 
