@@ -249,6 +249,13 @@ alter table receipts         enable row level security;
 -- restaurant row. Everything a guest sees still comes through the Worker's
 -- getPublicRestaurant, which returns four fields and withholds the alert email,
 -- the phone number and the Stripe ids.
+-- Dropped first because `create policy` has no `if not exists`, and every other
+-- statement in this file does. Without this the file is safe to re-run right up
+-- to its last line, where it aborts — and the Supabase SQL editor runs a paste
+-- as one transaction, so that abort rolls back everything, including a second
+-- migration pasted below it. A file that is idempotent except at the end is not
+-- idempotent.
+drop policy if exists "owners read their own restaurant" on restaurants;
 create policy "owners read their own restaurant"
   on restaurants for select
   using (auth.uid() = owner_id);
