@@ -6,6 +6,40 @@
 
 ---
 
+## Before any incident: the two things that make one tractable
+
+**Every failure carries a request id.** Six hex characters, shown to the caller,
+set as `X-Request-Id` on the response, and written into the structured Worker
+log line and the audit row. If someone reports a problem, the first question is
+"was there an id on the screen" — with one, the exact request is a single
+filter:
+
+```
+# Cloudflare dashboard → Workers → Logs, or:
+npx wrangler tail --format json | grep <request_id>
+```
+
+Errors log as JSON with `request_id`, `route`, `code` and `status` as fields, so
+filter on them rather than grepping prose. A 4xx logs at `level: warn` and a 5xx
+at `level: error` — a spike in the first is usually a client bug or somebody
+probing; a spike in the second is ours.
+
+**Sensitive actions are in an append-only trail.** `audit_log`, written by
+`worker/lib/audit.js`. It answers who confirmed a payment for how much and when,
+who changed a split after people started claiming, every rejected host key, and
+every read of a restaurant's guest list. See the query list at the end of
+`docs/SUPABASE-MIGRATION.md`.
+
+Three things to know before you rely on it during an incident:
+
+- **It is append-only and enforced.** You cannot correct a row. Corrections are
+  new rows. Do not spend incident time trying.
+- **It does not contain the host key**, only a fingerprint. You can tell that
+  two actions came from the same host; you cannot recover the key to act as one.
+- **It fails silently by design.** A missing row does not mean the action did
+  not happen — the write is fire-and-forget so that it can never fail a payment
+  confirmation. Treat absence as weak evidence and presence as strong.
+
 ## How to Use This Runbook
 
 1. Identify the incident type below.  
@@ -104,7 +138,8 @@
 3. **Contact Base44 support** at support@base44.com with: app ID, entity names, approximate time of loss, and a description.
 ### ⚠️ There is no restorable backup. Do not spend incident time looking for one.
 
-`nightlyBackup` does not produce a recoverable artefact today:
+The Base44 `nightlyBackup` this section was written about never produced a
+recoverable artefact (its replacement is described further down):
 
 - It writes to `/tmp` inside an ephemeral Deno isolate. That filesystem is gone
   the moment the invocation ends, so nothing is readable afterwards — not hours
