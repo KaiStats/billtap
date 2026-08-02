@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2, LogOut, User, AlertTriangle } from "lucide-react";
+import ErrorNotice from "@/components/ErrorNotice";
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -14,6 +15,7 @@ export default function Profile() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [failure, setFailure] = useState(null);
 
   // Check for active sessions before showing logout confirm
   const handleLogoutClick = async () => {
@@ -46,7 +48,7 @@ export default function Profile() {
       await base44.functions.invoke('deleteAccount', {});
       base44.auth.logout();
     } catch (error) {
-      alert('Failed to delete account. Please try again or contact support.');
+      setFailure(error);
       setDeleting(false);
     }
   };
@@ -139,6 +141,13 @@ export default function Profile() {
                 className="rounded-xl border-destructive/40 focus-visible:border-destructive focus-visible:ring-destructive/50"
                 autoFocus
               />
+              {/*
+                Above the buttons, because a failure here leaves the account
+                intact and the person needs to see that before deciding whether
+                to press Delete again.
+              */}
+              <ErrorNotice error={failure} onDismiss={() => setFailure(null)} />
+
               <div className="flex gap-3 pt-2">
                 <Button
                   variant="outline"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { Check, Loader2, ExternalLink, Copy, Smartphone, Search, CheckCheck } from "lucide-react";
@@ -218,6 +218,29 @@ export default function Claim() {
     }
   );
 
+  /**
+   * "Somebody else grabbed that one."
+   *
+   * Not an error — it is the expected outcome of six people claiming from the
+   * same list at the same time, which is the product working. It was an
+   * alert(), which froze the phone of the person who lost the race and made a
+   * normal event feel like a fault. A transient line instead, polite rather
+   * than assertive, so a screen reader finishes announcing the item before
+   * mentioning it.
+   */
+  const [taken, setTaken] = useState(null);
+  const takenTimer = useRef(null);
+
+  const announceTaken = (message) => {
+    setTaken(message);
+    clearTimeout(takenTimer.current);
+    takenTimer.current = setTimeout(() => setTaken(null), 4000);
+  };
+
+  // Without this a pending timer fires on an unmounted component when somebody
+  // navigates away mid-claim.
+  useEffect(() => () => clearTimeout(takenTimer.current), []);
+
   const toggleClaim = async (itemId) => {
     if (!session) return;
     const item = session.items.find(i => i.id === itemId);
@@ -233,7 +256,7 @@ export default function Claim() {
     }
     if (currentlyClaimed.length > 0) {
       const claimer = (session.participants || []).find(p => p.participant_id === currentlyClaimed[0]);
-      alert(`${claimer?.name || currentlyClaimed[0]} just grabbed that one!`);
+      announceTaken(`${claimer?.name || 'Someone'} just grabbed that one.`);
       return;
     }
     haptic([50]);
@@ -469,6 +492,17 @@ export default function Claim() {
       {/* Items - Only for itemized mode */}
       {splitMode === "itemized" && (
         <div className="max-w-lg mx-auto px-4 py-4 space-y-2">
+          {/*
+            Reserved space is deliberate: appearing and disappearing text that
+            reflows the list would move the next item out from under a thumb
+            that is already on its way down.
+          */}
+          <div className="min-h-[1.5rem]" role="status" aria-live="polite">
+            {taken && (
+              <p className="text-sm font-medium text-amber-300">{taken}</p>
+            )}
+          </div>
+
           {/* Search + Claim All toolbar */}
           <div className="flex gap-2 items-center pb-1">
             {items.length >= 8 && (

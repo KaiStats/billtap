@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
 import { Settings } from "lucide-react";
+import ErrorNotice from "@/components/ErrorNotice";
 
 export default function SplitConfigModal({ session, onClose, onUpdate }) {
   const [subMode, setSubMode] = useState(
@@ -12,6 +13,7 @@ export default function SplitConfigModal({ session, onClose, onUpdate }) {
   const [values, setValues] = useState({});
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState(null);
 
   // Initialize values from existing config
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function SplitConfigModal({ session, onClose, onUpdate }) {
       onClose();
     } catch (err) {
       console.error("Failed to save split config:", err);
-      alert("Failed to save configuration. Please try again.");
+      setFailure(err);
     } finally {
       setSaving(false);
     }
@@ -80,6 +82,13 @@ export default function SplitConfigModal({ session, onClose, onUpdate }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 max-h-[70vh] overflow-y-auto">
+          {/*
+            Inside the modal rather than over it. The host has just typed a set
+            of amounts; a dialog on top of a dialog would hide the numbers they
+            need in order to fix anything.
+          */}
+          <ErrorNotice error={failure} onDismiss={() => setFailure(null)} />
+
           <div className="rounded-lg p-3 bg-info-muted border border-info/30 text-info-muted-foreground text-sm">
             <p className="font-medium">💡 Split Mode: {subMode === "percentage" ? "Percentage" : subMode === "fixed" ? "Fixed Amount" : "Shares"}</p>
             <p className="text-xs mt-1 opacity-80">
