@@ -87,7 +87,7 @@ const AUTH_GATED_ROUTES = new Set([
   '/home',
   // Not /new-receipt: a guest arriving from a table tent has no account, and
   // gating it would make them wait on an auth round-trip only to be bounced.
-  '/dashboard',
+  // Not /dashboard: it shows a guest the splits recorded on their own phone.
   // Neither /session-host nor /receipt-detail: both are host screens for a
   // split that may have been created by someone with no account at all.
   // Not /receipt-detail: the host of a table-tent split has no account, and
@@ -186,6 +186,16 @@ const AuthenticatedApp = () => {
               the host key and answer 403 without it.
             */}
             <Route path="/session-host" element={<AnimatedPage direction={direction}><SessionHost /></AnimatedPage>} />
+            {/*
+              Open too. The landing page promises a bill history, and a guest
+              has no account for Base44 to key one off — so this screen used to
+              answer the product's primary user by replacing the page with the
+              landing page. It now reads the local index in
+              src/lib/splitHistory.js and re-checks those splits through the
+              scoped endpoints, which return a diner their own share and nobody
+              else's.
+            */}
+            <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
 
@@ -209,7 +219,6 @@ const AuthenticatedApp = () => {
             {/* Protected host routes */}
             <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
-              <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
               <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
             </Route>

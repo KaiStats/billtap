@@ -1068,3 +1068,162 @@ test('taking the phone back out of a pocket reads the split at once', async () =
     assert.ok(pollCalls.length > whileAway, 'coming back should read, not wait');
   } finally { await context.close(); }
 });
+
+// ── A bill history for someone with no account ──────────────────────────────
+//
+// "Bill History — every split you've been in" is on the landing page. For a
+// guest host, the person this product is built for, /dashboard used to answer
+// by replacing the page with the landing page.
+
+test('a guest with no account can see the splits from their phone', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value');
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Olive Garden', total: 61.4, status: 'claiming',
+          role: 'host', participants: 2, paid: 1, created_at: Date.now() },
+      ]));
+    });
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+
+    await page.getByText('Olive Garden').first().waitFor({ timeout: 15000 });
+    assert.ok(!page.url().includes('/login'));
+    const text = await page.locator('body').innerText();
+    assert.match(text, /Splits from this phone/);
+    assert.match(text, /\$61\.40/);
+  } finally { await context.close(); }
+});
+
+test('the history is drawn from the cache before the network answers', async () => {
+  // A list that waits on N round-trips before painting is a list that looks
+  // broken on a restaurant's wifi.
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Cached Diner', total: 42, status: 'claiming',
+          participants: 3, paid: 2, created_at: Date.now() },
+      ]));
+    });
+    // Every read hangs, so anything on screen came from the cache.
+    await page.route('**/fn/getSplitStatus', () => {});
+    await page.route('**/fn/getSessionAsHost', () => {});
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+
+    await page.getByText('Cached Diner').waitFor({ timeout: 10000 });
+    assert.match(await page.locator('body').innerText(), /2\/3 paid/);
+  } finally { await context.close(); }
+});
+
+test('the cached summary is replaced by what the server actually says', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value');
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Stale Title', total: 1, status: 'claiming',
+          role: 'host', participants: 0, paid: 0, created_at: Date.now() },
+      ]));
+    });
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+
+    await page.getByText('Olive Garden').first().waitFor({ timeout: 15000 });
+    assert.match(await page.locator('body').innerText(), /\$61\.40/);
+  } finally { await context.close(); }
+});
+
+test('a split whose row is gone leaves the cached entry in place', async () => {
+  const { context, page } = await phone({ hostSession: null });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'ghost', title: 'Last Tuesday', total: 20, status: 'completed',
+          participants: 2, paid: 2, created_at: Date.now() },
+      ]));
+    });
+    await page.route('**/fn/getSplitStatus', (r) =>
+      r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"Session not found"}' }));
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+
+    await page.getByText('Last Tuesday').waitFor({ timeout: 10000 });
+    assert.match(await page.locator('body').innerText(), /Last Tuesday/,
+      'one bad read must not empty somebody history');
+  } finally { await context.close(); }
+});
+
+test('the history opens the host screen for a split you hosted', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value');
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Olive Garden', total: 61.4, role: 'host',
+          participants: 2, paid: 0, created_at: Date.now() },
+      ]));
+    });
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Olive Garden').first().waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Olive Garden/i }).first().click();
+
+    await page.waitForURL(/receipt-detail\?id=sess_test_1/, { timeout: 10000 });
+    assert.ok(!page.url().includes('host=1'), 'that flag stopped meaning anything when the host key landed');
+  } finally { await context.close(); }
+});
+
+test('the history opens the claim screen for a split you only ate at', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION, hostAllowed: false });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.removeItem('billtap-hostkey-sess_test_1');
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Olive Garden', total: 61.4, role: 'guest',
+          participants: 2, paid: 0, created_at: Date.now() },
+      ]));
+    });
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Olive Garden').first().waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Olive Garden/i }).first().click();
+
+    await page.waitForURL(/\/claim\?id=sess_test_1/, { timeout: 10000 });
+  } finally { await context.close(); }
+});
+
+test('a guest sees what they owe, not a column they cannot read', async () => {
+  // The scoped read withholds everyone else's amount_owed, so summing every
+  // participant would show a diner $0.00 owed on a bill they have not paid.
+  const owing = structuredClone(HOST_SESSION);
+  owing.participants = [
+    { participant_id: 'p_1700000000000_aaa', name: 'Alice', payment_status: 'paid' },
+    { participant_id: 'p_1700000000009_zzz', name: 'You', amount_owed: 23.5, payment_status: 'unpaid' },
+  ];
+  const { context, page } = await phone({ hostSession: owing, hostAllowed: false });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      localStorage.setItem('billtap_participant_id', 'p_1700000000009_zzz');
+      localStorage.setItem('billtap-split-history', JSON.stringify([
+        { id: 'sess_test_1', title: 'Olive Garden', total: 61.4, role: 'guest',
+          participants: 2, paid: 1, created_at: Date.now() },
+      ]));
+    });
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('You owe').waitFor({ timeout: 15000 });
+    await page.getByText('$23.50').first().waitFor({ timeout: 10000 });
+  } finally { await context.close(); }
+});
+
+test('a phone with no history is invited to split its first bill', async () => {
+  const { context, page } = await phone({ hostSession: null });
+  try {
+    await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/No bills yet/i).waitFor({ timeout: 15000 });
+    assert.ok(!page.url().includes('/login'));
+  } finally { await context.close(); }
+});

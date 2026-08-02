@@ -12,6 +12,7 @@ import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { compressImage } from "@/lib/compressImage";
 import { rememberHostKey } from "@/lib/hostKey";
+import { rememberSplit } from "@/lib/splitHistory";
 
 const RESTAURANT_SUGGESTIONS = [
   "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
@@ -217,6 +218,12 @@ Return a JSON with:
       // split confirm payments later — including a guest from a table tent, who
       // has no account for Base44's ownership rules to key off.
       rememberHostKey(session.id, res.data.host_key);
+      // Their own record of the bill. Without it a guest host closes the tab
+      // and the split is gone from their phone, whatever the server still holds.
+      rememberSplit({
+        id: session.id, title: session.title, total: session.total_amount,
+        status: session.status, role: 'host',
+      });
       Sentry.addBreadcrumb({ category: 'session', message: 'Bill split session created', level: 'info' });
       Sentry.setTag('split_mode', splitMode);
       trackDeviceAction('split_created');
@@ -259,6 +266,10 @@ Return a JSON with:
       });
       if (res.data?.error) { alert(res.data.error); setSaving(false); return; }
       rememberHostKey(res.data.session.id, res.data.host_key);
+      rememberSplit({
+        id: res.data.session.id, title: res.data.session.title,
+        total: res.data.session.total_amount, status: res.data.session.status, role: 'host',
+      });
       trackDeviceAction('split_created');
       await afterCreate(res.data.session.id);
     } catch (err) {

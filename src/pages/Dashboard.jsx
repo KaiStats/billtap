@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useSaveScroll } from "@/hooks/useTabHistory";
 import { useAuth } from "@/lib/AuthContext";
 import ListLayout from "@/components/ListLayout";
+import { listSplits, rememberSplit } from "@/lib/splitHistory";
+import { getHostKey } from "@/lib/hostKey";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 
 const statusConfig = {
@@ -52,49 +54,119 @@ const SessionCard = memo(function SessionCard({ session, onClick }) {
   );
 });
 
+/** How many recent splits a guest's history re-reads from the server on open. */
+const HYDRATE_LIMIT = 8;
+
 export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const { ref: scrollRef, onScroll, restoreScroll } = useSaveScroll("dashboard");
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoadingAuth } = useAuth();
+  const { isAuthenticated, isLoadingAuth } = useAuth();
 
-  // Back-button protection: if not authenticated after auth check, go to landing
-  useEffect(() => {
-    if (!isLoadingAuth && !isAuthenticated) {
-      window.location.replace('/');
-    }
-  }, [isAuthenticated, isLoadingAuth]);
-
-  const fetchSessions = useCallback(async () => {
-    const data = await base44.entities.Session.list("-created_date", 20);
-    setSessions(data);
-    setLoading(false);
-    setTimeout(restoreScroll, 50);
+  const myId = useMemo(() => {
+    try { return localStorage.getItem("billtap_participant_id"); } catch { return null; }
   }, []);
 
-  useEffect(() => { fetchSessions(); }, [fetchSessions]);
+  /**
+   * Two histories, because there are two kinds of user.
+   *
+   * A signed-in host gets theirs from Base44, which knows what they own. A
+   * guest has no account for it to key off, so theirs is the local index in
+   * src/lib/splitHistory.js — and this screen used to answer them by replacing
+   * the page with the landing page. The product's primary user could not see a
+   * single bill they had ever split.
+   *
+   * The cached summary paints first so the list is there instantly, then the
+   * most recent few are re-read from the server so the paid counts are real
+   * rather than whatever was true when the tab last closed.
+   */
+  const fetchSessions = useCallback(async () => {
+    if (isAuthenticated) {
+      const data = await base44.entities.Session.list("-created_date", 20);
+      setSessions(data);
+      setLoading(false);
+      setTimeout(restoreScroll, 50);
+      return;
+    }
+
+    const local = listSplits();
+    setSessions(local.map((e) => ({
+      id: e.id,
+      title: e.title || "Split",
+      total_amount: e.total,
+      status: e.status || "claiming",
+      __role: e.role,
+      // Enough for the card to draw a truthful "2/5 paid" before the network
+      // answers, rather than flashing 0 of 0 at everybody.
+      participants: Array.from({ length: e.participants || 0 }, (_, i) => ({
+        participant_id: `cached_${i}`,
+        payment_status: i < (e.paid || 0) ? "paid" : "unpaid",
+      })),
+    })));
+    setLoading(false);
+    setTimeout(restoreScroll, 50);
+
+    const fresh = await Promise.all(local.slice(0, HYDRATE_LIMIT).map(async (entry) => {
+      try {
+        const hostKey = getHostKey(entry.id);
+        const res = hostKey
+          ? await base44.functions.invoke("getSessionAsHost", { session_id: entry.id, host_key: hostKey })
+          : await base44.functions.invoke("getSplitStatus", { session_id: entry.id, participant_id: myId });
+        const session = res?.data?.session;
+        if (!session) return null;
+        rememberSplit({
+          id: session.id, title: session.title, total: session.total_amount, status: session.status,
+          participants: (session.participants || []).length,
+          paid: (session.participants || []).filter((p) => p.payment_status === "paid").length,
+        });
+        return { ...session, __role: entry.role };
+      } catch {
+        // A split the server has dropped, or a flaky connection. The cached row
+        // stays; it is better than a list that empties itself on one bad poll.
+        return null;
+      }
+    }));
+
+    const byId = new Map(fresh.filter(Boolean).map((s) => [s.id, s]));
+    if (byId.size) setSessions((prev) => prev.map((s) => byId.get(s.id) || s));
+  }, [isAuthenticated, myId, restoreScroll]);
+
+  useEffect(() => { if (!isLoadingAuth) fetchSessions(); }, [fetchSessions, isLoadingAuth]);
 
   useEffect(() => {
+    // Base44's realtime only ever delivered to a signed-in owner; a guest's
+    // list is refreshed on open and on pull-to-refresh instead.
+    if (!isAuthenticated) return undefined;
     const unsub = base44.entities.Session.subscribe((event) => {
       if (event.type === 'create')  setSessions(prev => [event.data, ...prev]);
       if (event.type === 'update')  setSessions(prev => prev.map(s => s.id === event.id ? event.data : s));
       if (event.type === 'delete')  setSessions(prev => prev.filter(s => s.id !== event.id));
     });
     return unsub;
-  }, []);
+  }, [isAuthenticated]);
 
-  const { totalOwed, totalCollected } = useMemo(() => ({
-    totalOwed: sessions.reduce((sum, s) =>
-      sum + (s.participants || []).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
-    totalCollected: sessions.reduce((sum, s) =>
-      sum + (s.participants || []).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
-  }), [sessions]);
+  /**
+   * A host is owed money; a diner owes it. The old figures summed every
+   * participant's amount_owed, which for a guest is a column they cannot see —
+   * the scoped read returns their own share and withholds everyone else's — so
+   * the cards would have read $0.00 and $0.00 for exactly the person looking.
+   */
+  const { totalOwed, totalCollected } = useMemo(() => {
+    const mine = (s) => (s.participants || []).filter(p =>
+      isAuthenticated ? true : p.participant_id === myId);
+    return {
+      totalOwed: sessions.reduce((sum, s) =>
+        sum + mine(s).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
+      totalCollected: sessions.reduce((sum, s) =>
+        sum + mine(s).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.paid_amount ?? p.amount_owed ?? 0), 0), 0),
+    };
+  }, [sessions, isAuthenticated, myId]);
 
   const statCards = [
-    { label: "Bills Split",   value: sessions.length,             icon: Receipt,      color: "from-violet-500 to-purple-600" },
-    { label: "Outstanding",   value: `$${totalOwed.toFixed(2)}`,  icon: Clock,        color: "from-amber-400 to-orange-400" },
-    { label: "Collected",     value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "from-emerald-400 to-teal-500" },
+    { label: "Bills Split", value: sessions.length, icon: Receipt, color: "from-violet-500 to-purple-600" },
+    { label: isAuthenticated ? "Outstanding" : "You owe", value: `$${totalOwed.toFixed(2)}`, icon: Clock, color: "from-amber-400 to-orange-400" },
+    { label: isAuthenticated ? "Collected" : "You paid", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "from-emerald-400 to-teal-500" },
   ];
 
   return (
@@ -108,7 +180,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between pt-1">
               <div>
                 <h1 className="text-2xl font-black text-foreground tracking-tight">Your Bills</h1>
-                <p className="text-muted-foreground text-sm mt-0.5">Your recent splits</p>
+                <p className="text-muted-foreground text-sm mt-0.5">
+                  {isAuthenticated ? "Your recent splits" : "Splits from this phone"}
+                </p>
               </div>
               <button
                 onClick={() => navigate("/new-receipt")}
@@ -165,7 +239,11 @@ export default function Dashboard() {
                   <SessionCard
                     key={session.id}
                     session={session}
-                    onClick={() => navigate(`/receipt-detail?id=${session.id}&host=1`)}
+                    onClick={() => navigate(
+                      getHostKey(session.id)
+                        ? `/receipt-detail?id=${session.id}`
+                        : `/claim?id=${session.id}`,
+                    )}
                   />
                 ))}
               </div>

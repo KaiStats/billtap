@@ -10,6 +10,7 @@ import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { isHostOf } from "@/lib/hostKey";
 import { useLiveSplit } from "@/hooks/useLiveSplit";
+import { rememberSplit } from "@/lib/splitHistory";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
 
@@ -149,7 +150,21 @@ export default function Claim() {
    */
   useLiveSplit(sessionId, {
     participantId: myId,
-    onUpdate: setSession,
+    onUpdate: (fresh) => {
+      setSession(fresh);
+      // Every diner keeps their own record of a bill they ate at, not only the
+      // person who photographed it. Written from the live read so the summary
+      // on the history screen is the last thing that was actually true.
+      rememberSplit({
+        id: fresh.id,
+        title: fresh.title,
+        total: fresh.total_amount,
+        status: fresh.status,
+        participants: (fresh.participants || []).length,
+        paid: (fresh.participants || []).filter((p) => p.payment_status === "paid").length,
+        role: isHostOf(sessionId) ? "host" : "guest",
+      });
+    },
     enabled: Boolean(sessionId) && tokenVerified,
   });
 

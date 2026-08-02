@@ -216,7 +216,10 @@ export default function Landing() {
     { icon: Users, title: "Guest Access", desc: "Scan and join. No download needed." },
     { icon: Zap, title: "Real-Time Tracking", desc: "See who's paid and who hasn't. Live." },
     { icon: CreditCard, title: "One-Tap Payment", desc: "Venmo, Cash App, or Zelle. Done." },
-    { icon: FileText, title: "Bill History", desc: "Every split. Always on record." },
+    // "Always on record" implied a vault this product does not have. A guest
+    // has no account, so their history is the index kept on their own phone —
+    // which is now true, where before this line described nothing at all.
+    { icon: FileText, title: "Bill History", desc: "Every split you've been in. Kept on your phone." },
   ];
 
   const stats = [
