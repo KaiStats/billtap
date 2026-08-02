@@ -108,7 +108,7 @@ after(async () => {
  * A phone-sized page with every network call stubbed and console errors
  * collected, so a test can assert the screen came up clean.
  */
-async function phone({ validation = null, scan = SCAN, onCreate, hostSession = null, hostAllowed = true } = {}) {
+async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0 } = {}) {
   const context = await browser.newContext({
     viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
   });
@@ -121,6 +121,7 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
   const confirmCalls = [];
   const settingsCalls = [];
   const qrCalls = [];
+  const uploadCalls = [];
   const statusCalls = [];
   // Every poll of any kind. The host screen reads through getSessionAsHost and
   // a diner through getSplitStatus, so a test that counts only one of them is
@@ -134,10 +135,20 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
     const url = route.request().url();
     const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
 
-    if (url.includes('UploadFile')) return send({ file_url: 'https://cdn.example/receipt.jpg' });
+    if (url.includes('UploadFile')) {
+      uploadCalls.push(Date.now());
+      // A distinct URL per upload, so a test can tell WHICH photo was used —
+      // matching a retaken photo with the first upload is a receipt for the
+      // wrong table, and a fixed URL cannot detect it.
+      const n = uploadCalls.length;
+      if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
+      return send({ file_url: `https://cdn.example/receipt-${n}.jpg` });
+    }
     if (url.includes('InvokeLLM')) return send(scan);
+    // Still routed so that a call would be visible: a test asserts the scan
+    // makes none, because the arithmetic moved into the browser.
     if (url.includes('/fn/validateReceiptParse')) {
-      return validation ? send(validation) : route.fulfill({ status: 500, body: '{}' });
+      return route.fulfill({ status: 500, body: '{}' });
     }
     if (url.includes('/fn/createSession')) {
       const payload = route.request().postDataJSON();
@@ -202,7 +213,7 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
   });
 
   return {
-    context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls,
+    context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -440,21 +451,25 @@ test('the restaurant name can be corrected, with suggestions', async () => {
 // ── When the scan is not trustworthy ────────────────────────────────────────
 
 test('a low-confidence scan opens the editor by itself and says why', async () => {
-  const { context, page } = await phone({
-    validation: { confidence: 'low', issues: { sumMismatch: true, calculatedTotal: '61.40', expectedTotal: '75.00' } },
-  });
+  // Driven by the scan itself now, not by a stubbed verdict: the arithmetic
+  // runs in the browser, so a receipt whose numbers do not reconcile is the
+  // actual input. $57.20 of items and $4.20 tax against a printed $75.00.
+  const { context, page } = await phone({ scan: { ...SCAN, total: 75 } });
   try {
     await toReview(page);
     assert.ok(await page.locator('input:visible').count() > 0, 'editing is already open');
     const text = await page.locator('body').innerText();
     assert.match(text, /hard to read/i);
-    assert.match(text, /61\.40/);
-    assert.match(text, /75\.00/);
+    assert.match(text, /61\.40/, 'what the items actually come to');
+    assert.match(text, /75\.00/, 'what the receipt claims');
   } finally { await context.close(); }
 });
 
 test('a middling scan asks for a look without opening the editor', async () => {
-  const { context, page } = await phone({ validation: { confidence: 'medium' } });
+  // The totals reconcile, but one item came back with no name — worth a glance,
+  // not worth forcing nineteen fields open.
+  const items = [...SCAN.items, { name: '', price: 0, quantity: 1 }];
+  const { context, page } = await phone({ scan: { ...SCAN, items } });
   try {
     await toReview(page);
     assert.equal(await page.locator('input:visible').count(), 0);
@@ -470,8 +485,11 @@ test('a scan that found nothing opens the editor rather than an empty receipt', 
   } finally { await context.close(); }
 });
 
-test('a failed validation call never costs the diner their scan', async () => {
-  // validateReceiptParse is stubbed to 500 by default; the items must survive.
+test('the arithmetic check cannot cost the diner their scan', async () => {
+  // It used to be a server call awaited before anything was shown, so a failure
+  // there discarded a perfectly good parse. It now runs in the browser, which
+  // removes the failure mode rather than handling it — the endpoint is still
+  // stubbed to 500 here to prove nothing depends on it.
   const { context, page } = await phone();
   try {
     await toReview(page);
@@ -1428,4 +1446,116 @@ test('the security page is in the prerendered HTML, not only after React boots',
   const html = await res.text();
   assert.match(html, /never see a card number/i);
   assert.match(html, /penetration test/i);
+});
+
+// ── How long a scan takes ───────────────────────────────────────────────────
+//
+// "Scanning takes too long" has been the standing complaint about this product.
+// The upload is the longest phase on a restaurant's wifi, and it used to wait
+// for a button press that comes seconds after the photo is chosen.
+
+test('the upload starts when the photo is chosen, not when the button is tapped', async () => {
+  const { context, page, uploadCalls } = await phone();
+  try {
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: PNG_1PX });
+
+    // Nobody has pressed anything yet.
+    await page.waitForTimeout(1500);
+    assert.equal(uploadCalls.length, 1,
+      'the network sat idle here — the seconds between picking a photo and finding the button');
+  } finally { await context.close(); }
+});
+
+test('a scan does not upload the same photo twice', async () => {
+  const { context, page, uploadCalls } = await phone();
+  try {
+    await toReview(page);
+    assert.equal(uploadCalls.length, 1, 'the background upload is reused, not repeated');
+  } finally { await context.close(); }
+});
+
+test('retaking the photo uploads the new one, and the scan uses it', async () => {
+  // The bug worth guarding: matching the second photo with the first upload is
+  // a receipt for the wrong table.
+  const { context, page, uploadCalls, created } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'first.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await page.waitForTimeout(500);
+    await page.locator('#file-input').setInputFiles({ name: 'second.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await page.waitForTimeout(500);
+
+    assert.equal(uploadCalls.length, 2);
+    await page.getByRole('button', { name: /Parse Receipt with AI/i }).click();
+    await page.getByRole('heading', { name: 'Olive Garden' }).waitFor({ timeout: 15000 });
+    assert.equal(uploadCalls.length, 2, 'the second upload was already in hand');
+
+    // And it is the SECOND photo that gets used. Carrying the first one
+    // forward would attach the wrong table's receipt to this split.
+    await page.getByRole('button', { name: /Show the QR code/i }).click();
+    await page.waitForURL(/session-host/, { timeout: 10000 });
+    assert.match(created[0].image_url, /receipt-2\.jpg$/);
+  } finally { await context.close(); }
+});
+
+test('a slow upload is absorbed by the time spent looking at the preview', async () => {
+  // The whole point. With a 2.5s upload, waiting before tapping should make the
+  // scan finish sooner than tapping immediately would.
+  const { context, page } = await phone({ uploadDelayMs: 2500 });
+  try {
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: PNG_1PX });
+
+    // A person looking at their photo and finding the button.
+    await page.waitForTimeout(2600);
+
+    const started = Date.now();
+    await page.getByRole('button', { name: /Parse Receipt with AI/i }).click();
+    await page.getByRole('heading', { name: 'Olive Garden' }).waitFor({ timeout: 15000 });
+    const afterTap = Date.now() - started;
+
+    assert.ok(afterTap < 1500,
+      `${afterTap}ms passed after the tap; the 2.5s upload should already have finished`);
+  } finally { await context.close(); }
+});
+
+test('the arithmetic check costs no network call at all', async () => {
+  // It was a third round trip, awaited before the diner saw anything, to add up
+  // a column of numbers the phone was already holding.
+  const { context, page } = await phone();
+  const calls = [];
+  try {
+    page.on('request', (r) => { if (r.url().includes('validateReceiptParse')) calls.push(r.url()); });
+    await toReview(page);
+    assert.deepEqual(calls, []);
+  } finally { await context.close(); }
+});
+
+test('a receipt that does not add up is still caught, without the server', async () => {
+  const { context, page } = await phone({
+    scan: { title: 'Olive Garden', items: [{ name: 'Steak', price: 20, quantity: 1 }], tax: 0, tip: 0, total: 95 },
+  });
+  try {
+    await toReview(page);
+    const text = await page.locator('body').innerText();
+    assert.match(text, /hard to read/i, 'low confidence opens the editor and says why');
+    assert.match(text, /20\.00/);
+    assert.match(text, /95\.00/);
+  } finally { await context.close(); }
+});
+
+test('a clean receipt is not accused of being hard to read', async () => {
+  const { context, page } = await phone({
+    scan: { title: 'Olive Garden', items: [{ name: 'Steak', price: 20, quantity: 1 }], tax: 2, tip: 3, total: 25 },
+  });
+  try {
+    await toReview(page);
+    const text = await page.locator('body').innerText();
+    assert.ok(!/hard to read/i.test(text));
+    assert.equal(await page.locator('input:visible').count(), 0, 'the editor stays shut');
+  } finally { await context.close(); }
 });

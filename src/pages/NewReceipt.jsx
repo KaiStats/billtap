@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import * as Sentry from "@sentry/react";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +13,8 @@ import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { compressImage } from "@/lib/compressImage";
 import { rememberHostKey } from "@/lib/hostKey";
 import { rememberSplit } from "@/lib/splitHistory";
+import { startScanTimer } from "@/lib/scanTiming";
+import { validateReceiptParse, parseConfidence } from "../../shared/receipt-math";
 
 const RESTAURANT_SUGGESTIONS = [
   "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
@@ -68,6 +70,21 @@ export default function NewReceipt() {
    */
   const [editing, setEditing] = useState(false);
 
+  /**
+   * The upload, started the moment a photo is chosen.
+   *
+   * It used to begin when "Parse Receipt with AI" was tapped, which meant the
+   * network sat idle through the seconds between picking a photo, looking at
+   * the preview and finding the button — reliably two to four of them, and on a
+   * restaurant's wifi the upload is the longest phase of the whole scan. Now it
+   * runs underneath that, so by the time the button is pressed the file is
+   * usually already there and the tap goes straight to the model.
+   *
+   * A ref rather than state: nothing renders from it, and re-rendering on every
+   * transition of an upload would be noise.
+   */
+  const uploadRef = useRef(null);
+
   const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -83,6 +100,32 @@ export default function NewReceipt() {
     }
     setImageFile(file);
     setImageUrl(URL.createObjectURL(file));
+    beginUpload(file);
+  };
+
+  /**
+   * Compress and upload in the background, keyed to the file it belongs to.
+   *
+   * Keyed, because someone retakes a photo: the second pick must not be matched
+   * with the first upload, which is a receipt for the wrong table. Failures are
+   * swallowed here and retried on tap — telling somebody their upload failed
+   * before they have asked for anything is noise, and the retry usually works.
+   */
+  const beginUpload = (file) => {
+    const attempt = {
+      file,
+      compression: null,
+      promise: (async () => {
+        const upload = await compressImage(file);
+        attempt.compression = upload.__compression || null;
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: upload });
+        return file_url;
+      })(),
+    };
+    // Nothing awaits this yet, and an unhandled rejection would surface as a
+    // console error on a screen where nothing has gone wrong.
+    attempt.promise.catch(() => {});
+    uploadRef.current = attempt;
   };
 
   const handleFileChange = (e) => {
@@ -96,15 +139,29 @@ export default function NewReceipt() {
 
   const handleParseReceipt = async () => {
     if (!imageFile) return;
+    const timer = startScanTimer();
     try {
       setUploading(true);
-      // Downscale first. A phone photo is 4032x3024 and several megabytes, and
-      // all of it was being pushed over a restaurant's wifi before the OCR
-      // model even started. The upload was most of the wait. 2000px on the long
-      // edge keeps receipt line items legible and typically cuts the payload by
-      // an order of magnitude; it returns the original if anything goes wrong.
-      const upload = await compressImage(imageFile);
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: upload });
+
+      // Usually already finished — it started when the photo was picked. If the
+      // background attempt was for a different file, or failed, do it now.
+      let attempt = uploadRef.current;
+      if (!attempt || attempt.file !== imageFile) {
+        beginUpload(imageFile);
+        attempt = uploadRef.current;
+      }
+
+      let file_url;
+      try {
+        file_url = await attempt.promise;
+      } catch {
+        // One retry, in the foreground, where a failure is worth reporting.
+        beginUpload(imageFile);
+        file_url = await uploadRef.current.promise;
+        attempt = uploadRef.current;
+      }
+
+      timer.mark('upload');
       setUploading(false);
       setParsing(true);
 
@@ -130,21 +187,25 @@ Return a JSON with:
         }
       });
 
-      // In its own catch. This is an advisory "does the arithmetic look right"
-      // check, and it sat bare inside the upload handler — so when it threw,
-      // the OCR parse above it was discarded with it and the guest was told the
-      // upload had failed. A missing sanity check is worth far less than the
-      // parse it was sanity-checking.
-      let validation = null;
-      try {
-        validation = await base44.functions.invoke("validateReceiptParse", {
-          items: result.items || [],
-          tax: result.tax || 0,
-          tip: result.tip || 0,
-          total: result.total || 0
-        });
-      } catch {
-        /* Advisory only — keep the parse. */
+      timer.mark('model');
+
+      // Computed here rather than asked of a server.
+      //
+      // This was a third round trip, awaited before the diner saw anything, to
+      // add up a column of numbers the phone was already holding — the function
+      // touches no database and needs no credentials. On a restaurant's wifi
+      // that was several hundred milliseconds of somebody watching a spinner.
+      // shared/receipt-math.js is the same code /api/fn/validateReceiptParse
+      // runs, so the two answers cannot drift.
+      const check = validateReceiptParse({
+        items: result.items || [],
+        tax: result.tax || 0,
+        tip: result.tip || 0,
+        total: result.total || 0,
+      });
+      const validation = parseConfidence(check);
+      if (validation?.issues) {
+        validation.issues.expectedTotal = Number(result.total || 0).toFixed(2);
       }
 
       setTitle(result.title || "Receipt");
@@ -152,11 +213,16 @@ Return a JSON with:
       setTax(result.tax || 0);
       setTip(result.tip || 0);
       setImageUrl(file_url);
-      if (validation?.data) setParseValidation(validation.data);
+      if (validation) setParseValidation(validation);
       // Only pre-open the editor when we already know the numbers are suspect.
       // Anything else and the diner is being asked to fix what is not broken.
-      setEditing(validation?.data?.confidence === 'low' || (result.items || []).length === 0);
+      setEditing(validation?.confidence === 'low' || (result.items || []).length === 0);
       setStep(2);
+      timer.finish({
+        items: (result.items || []).length,
+        confidence: validation?.confidence || 'unknown',
+        compression: attempt.compression,
+      });
       if (typeof window.gtag === 'function') {
         window.gtag('event', 'receipt_scanned', { items_count: (result.items || []).length });
       }

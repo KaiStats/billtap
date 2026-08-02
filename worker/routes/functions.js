@@ -19,6 +19,7 @@
  */
 import { json } from '../lib/email.js';
 import { serviceRole, asCaller, currentUser, appId } from '../lib/base44.js';
+import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -203,32 +204,19 @@ const HANDLERS = {
     });
   },
 
-  /** Advisory arithmetic check on a parsed receipt. No stored data involved. */
+  /**
+   * Advisory arithmetic check on a parsed receipt. No stored data involved.
+   *
+   * The scan no longer waits on this — the browser runs the same function from
+   * shared/receipt-math.js, because a network round trip to add up a column of
+   * numbers the phone is already holding is time spent in front of someone
+   * staring at a spinner. Kept for any caller that wants the check server-side,
+   * and sharing the implementation is what stops the two answers drifting.
+   */
   async validateReceiptParse({ body }) {
-    const { items, tax, tip, total } = body;
-    if (!Array.isArray(items)) return json({ error: 'Invalid items array' }, 400);
-
-    const itemSum = items.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
-    const calculated = itemSum + (Number(tax) || 0) + (Number(tip) || 0);
-    const difference = Math.abs(calculated - (Number(total) || 0));
-
-    const warnings = [];
-    if (Number(total) && difference > 0.05) {
-      warnings.push(`Items add up to $${calculated.toFixed(2)} but the total reads $${Number(total).toFixed(2)}.`);
-    }
-    for (const i of items) {
-      if (!i.name || !String(i.name).trim()) warnings.push('An item has no name.');
-      if (!Number.isFinite(Number(i.price)) || Number(i.price) < 0) {
-        warnings.push(`"${String(i.name || 'An item')}" has an unreadable price.`);
-      }
-    }
-
-    return json({
-      valid: warnings.length === 0,
-      warnings: warnings.slice(0, 5),
-      item_sum: Math.round(itemSum * 100) / 100,
-      calculated_total: Math.round(calculated * 100) / 100,
-    });
+    const result = computeParse(body);
+    if (result.error) return json(result, 400);
+    return json(result);
   },
 
   /**
