@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { isHostOf } from "@/lib/hostKey";
+import { useLiveSplit } from "@/hooks/useLiveSplit";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
 
@@ -137,13 +138,20 @@ export default function Claim() {
 
   useEffect(() => { if (tokenVerified) fetchSession(); }, [fetchSession, tokenVerified]);
 
-  useEffect(() => {
-    if (!sessionId) return;
-    const unsub = base44.entities.Session.subscribe((event) => {
-      if (event.id === sessionId && event.data) setSession(event.data);
-    });
-    return unsub;
-  }, [sessionId]);
+  /**
+   * Live, at last.
+   *
+   * This was a Session.subscribe() that could never fire for a guest — the
+   * socket is anonymous and Session's read rule does not match them — so the
+   * ticks beside everyone's name only ever showed what was true when the page
+   * loaded. It also wrote event.data straight into state, which is the raw row:
+   * every other diner's amount_owed, and the host key hash along with it.
+   */
+  useLiveSplit(sessionId, {
+    participantId: myId,
+    onUpdate: setSession,
+    enabled: Boolean(sessionId) && tokenVerified,
+  });
 
   const ensureJoined = async (name) => {
     const res = await base44.functions.invoke("joinSession", {

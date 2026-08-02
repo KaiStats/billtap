@@ -120,6 +120,11 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
   const confirmCalls = [];
   const settingsCalls = [];
   const qrCalls = [];
+  const statusCalls = [];
+  // Every poll of any kind. The host screen reads through getSessionAsHost and
+  // a diner through getSplitStatus, so a test that counts only one of them is
+  // counting nothing on half the screens.
+  const pollCalls = [];
   // The split the host screen reads back. Mutated by confirmPayment below so
   // the page behaves like the real thing across a confirm.
   let hostState = hostSession ? structuredClone(hostSession) : null;
@@ -156,7 +161,14 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
       hostState = { ...hostState, ...(payload.host_payment_info ? { host_payment_info: payload.host_payment_info } : {}), ...(payload.status ? { status: payload.status } : {}) };
       return send({ session: hostState });
     }
+    if (url.includes('/fn/getSplitStatus')) {
+      const payload = route.request().postDataJSON();
+      statusCalls.push({ ...payload, header: route.request().headers()['x-billtap-participant'] });
+      pollCalls.push('guest');
+      return send({ session: hostState });
+    }
     if (url.includes('/fn/getSessionAsHost')) {
+      pollCalls.push('host');
       const { host_key } = route.request().postDataJSON();
       if (!hostAllowed || !host_key) {
         return route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"Not the host of this split"}' });
@@ -188,7 +200,12 @@ async function phone({ validation = null, scan = SCAN, onCreate, hostSession = n
     return send({});
   });
 
-  return { context, page, errors, created, confirmCalls, settingsCalls, qrCalls, host: () => hostState };
+  return {
+    context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls,
+    host: () => hostState,
+    /** Change the split behind the app's back, the way another phone would. */
+    setHost: (next) => { hostState = next; },
+  };
 }
 
 /** A split mid-service: one diner says they sent it, one has not moved. */
@@ -924,3 +941,130 @@ for (const route of ['/', '/restaurants', '/about', '/blog', '/changelog', '/pri
     } finally { await context.close(); }
   });
 }
+
+// ── The table updating itself ───────────────────────────────────────────────
+//
+// The moment the product is sold on: as each person settles up, a tick appears
+// on every other screen with nobody refreshing anything. This used to be a
+// Session.subscribe() that could not fire for a guest, so the ticks only ever
+// showed what was true when the page loaded.
+
+test('a payment landing elsewhere appears on the host screen by itself', async () => {
+  const { context, page, host, setHost } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await openReceipt(page);
+    assert.match(await page.locator('body').innerText(), /0\/2 confirmed/);
+
+    // Another device confirms Alice. Nothing is clicked here.
+    const next = structuredClone(host());
+    next.participants[0] = { ...next.participants[0], payment_status: 'paid', paid_amount: 21.4, paid_at: 1 };
+    setHost(next);
+
+    await page.getByText('1/2 confirmed').waitFor({ timeout: 15000 });
+    assert.match(await page.locator('body').innerText(), /\$21\.40 of \$61\.40 collected/);
+  } finally { await context.close(); }
+});
+
+test('a diner arriving shows up on the host screen without a refresh', async () => {
+  const { context, page, host, setHost } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await openReceipt(page);
+    const next = structuredClone(host());
+    next.participants.push({
+      participant_id: 'p_1700000000002_ccc', name: 'Priya', amount_owed: 0, payment_status: 'unpaid',
+    });
+    setHost(next);
+
+    await page.getByText('Priya').first().waitFor({ timeout: 15000 });
+    assert.match(await page.locator('body').innerText(), /0\/3 confirmed/);
+  } finally { await context.close(); }
+});
+
+test('polling stops once the split is finished', async () => {
+  const done = structuredClone(HOST_SESSION);
+  done.status = 'completed';
+  done.participants = done.participants.map((p) => ({ ...p, payment_status: 'paid', paid_amount: p.amount_owed }));
+
+  const { context, page, pollCalls } = await phone({ hostSession: done });
+  try {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value'));
+    await page.goto(`${base}/receipt-detail?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Who owes what').waitFor({ timeout: 15000 });
+
+    await page.waitForTimeout(6000);
+    const settled = pollCalls.length;
+    await page.waitForTimeout(8000);
+    assert.equal(pollCalls.length, settled, 'a finished split has nothing left to watch');
+  } finally { await context.close(); }
+});
+
+test('a phone in a pocket does not poll', async () => {
+  const { context, page, pollCalls } = await phone({ hostSession: HOST_SESSION });
+  try {
+    // Report the tab as hidden from the very first paint, the way a locked
+    // phone would. Most of a meal is spent like this.
+    await page.addInitScript(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+    });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value'));
+    await page.goto(`${base}/receipt-detail?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(8000);
+
+    assert.ok(pollCalls.length <= 1,
+      `a hidden tab made ${pollCalls.length} polls; a table of six would be paying for all of them`);
+  } finally { await context.close(); }
+});
+
+test('every poll says which diner it is for, so one table is not one bucket', async () => {
+  const { context, page, statusCalls } = await phone({ hostSession: HOST_SESSION, hostAllowed: false });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(6000);
+
+    assert.ok(statusCalls.length > 0, 'the claim screen polls');
+    const withParticipant = statusCalls.filter((c) => c.participant_id);
+    assert.ok(withParticipant.length > 0, 'the poll is scoped to a diner');
+    assert.equal(withParticipant[0].header, withParticipant[0].participant_id,
+      'the rate-limit header rides along, or six diners on one wifi share one allowance');
+  } finally { await context.close(); }
+});
+
+test('taking the phone back out of a pocket reads the split at once', async () => {
+  // The likeliest moment for something to have changed is the moment you look
+  // again, so this must not wait out the interval — the tick a diner is waiting
+  // for should already be there when the screen lights up.
+  const { context, page, pollCalls, host, setHost } = await phone({ hostSession: HOST_SESSION });
+  try {
+    await page.addInitScript(() => {
+      window.__hidden = true;
+      Object.defineProperty(document, 'visibilityState', {
+        get: () => (window.__hidden ? 'hidden' : 'visible'), configurable: true,
+      });
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden, configurable: true });
+    });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => localStorage.setItem('billtap-hostkey-sess_test_1', 'hk_test_secret_value'));
+    await page.goto(`${base}/receipt-detail?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4000);
+
+    const whileAway = pollCalls.length;
+
+    // Someone paid while the phone was face-down on the table.
+    const next = structuredClone(host());
+    next.participants[0] = { ...next.participants[0], payment_status: 'paid', paid_amount: 21.4, paid_at: 1 };
+    setHost(next);
+
+    await page.evaluate(() => {
+      window.__hidden = false;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Well inside FAST_MS, so this can only pass if the visibility handler read
+    // straight away rather than the next scheduled tick happening to land.
+    await page.getByText('1/2 confirmed').waitFor({ timeout: 1200 });
+    assert.ok(pollCalls.length > whileAway, 'coming back should read, not wait');
+  } finally { await context.close(); }
+});

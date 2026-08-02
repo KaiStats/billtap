@@ -40,9 +40,20 @@ export const base44 = createClient({
  * getRestaurantDashboardData would 401 for a signed-in host.
  */
 base44.functions.invoke = async function invokeViaWorker(name, body = {}) {
+  // Which rate-limit bucket this counts against, for the endpoints a whole
+  // table hits at once. Not an identity claim — the Worker never trusts it for
+  // anything else — but without it six diners on one restaurant wifi are a
+  // single IP and a single bucket, and the limiter's first act in production
+  // would be to 429 a paying customer's table. See worker/lib/rate-limit.js.
+  const participant = body?.participant_id;
+  const headers = { 'Content-Type': 'application/json' };
+  if (typeof participant === 'string' && participant) {
+    headers['X-BillTap-Participant'] = participant;
+  }
+
   const res = await fetch(`/api/fn/${name}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     credentials: 'same-origin',
     body: JSON.stringify(body ?? {}),
   });

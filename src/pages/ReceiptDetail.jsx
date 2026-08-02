@@ -9,6 +9,7 @@ import AppHeader from "@/components/AppHeader";
 import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { getHostKey } from "@/lib/hostKey";
+import { useLiveSplit } from "@/hooks/useLiveSplit";
 
 /**
  * What each state means to a person, rather than what it is called in the
@@ -76,13 +77,12 @@ export default function ReceiptDetail() {
 
   useEffect(() => { fetchSession().finally(() => setLoading(false)); }, [fetchSession]);
 
-  useEffect(() => {
-    if (!sessionId) return;
-    const unsub = base44.entities.Session.subscribe((event) => {
-      if (event.id === sessionId && event.data) setSession(event.data);
-    });
-    return unsub;
-  }, [sessionId]);
+  // The host watching payments arrive. Only polls as the host when this device
+  // holds the key; a diner reading their own receipt gets the scoped view.
+  useLiveSplit(sessionId, {
+    hostKey: isHost ? getHostKey(sessionId) : undefined,
+    onUpdate: setSession,
+  });
 
   /**
    * Confirming, and taking it back.

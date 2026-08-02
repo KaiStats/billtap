@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 
 import { HANDLERS, onRequestPost } from './routes/functions.js';
 import { appId, base44Origin, serviceRole, asCaller, currentUser } from './lib/base44.js';
+import { LIMITED, PER_PARTICIPANT, limitKey } from './lib/rate-limit.js';
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
@@ -1189,4 +1190,113 @@ test('list can page past the first two hundred rows', async () => {
     assert.equal(second.length, 50);
     assert.notEqual(first[0].id, second[0].id, 'the second page is not the first page again');
   });
+});
+
+// ── Keeping the table in sync ───────────────────────────────────────────────
+
+test('a diner can read the split without being able to read the row', async () => {
+  const session = {
+    ...simpleSession(),
+    host_key_hash: 'a'.repeat(64),
+    host_payment_info: { method: 'venmo', handle: '@kai' },
+    participants: [
+      { participant_id: ALICE, name: 'Alice', amount_owed: 20, payment_status: 'paid', paid_amount: 20 },
+      { participant_id: BOB, name: 'Bob', amount_owed: 10, payment_status: 'unpaid' },
+    ],
+  };
+  await withStub({ entities: { Session: [session] } }, async ({ env }) => {
+    const res = await HANDLERS.getSplitStatus({ env, body: { session_id: 's1', participant_id: BOB } });
+    assert.equal(res.status, 200);
+    const { session: scoped } = await body(res);
+
+    const alice = scoped.participants.find((p) => p.participant_id === ALICE);
+    const bob = scoped.participants.find((p) => p.participant_id === BOB);
+    assert.equal(alice.payment_status, 'paid', 'the table can see who has settled');
+    assert.equal(alice.name, 'Alice');
+    assert.equal(alice.amount_owed, undefined, "but not what anyone else owes");
+    assert.equal(bob.amount_owed, 10, 'their own share is theirs to see');
+    assert.equal(scoped.host_payment_info.handle, '@kai', 'they need somewhere to send the money');
+  });
+});
+
+test('polling never hands out the key that controls the split', async () => {
+  const session = { ...simpleSession(), host_key_hash: 'b'.repeat(64) };
+  await withStub({ entities: { Session: [session] } }, async ({ env }) => {
+    const res = await HANDLERS.getSplitStatus({ env, body: { session_id: 's1', participant_id: ALICE } });
+    const out = await body(res);
+    assert.equal(out.session.host_key_hash, undefined);
+    assert.ok(!JSON.stringify(out).includes('b'.repeat(64)));
+  });
+});
+
+test('someone who has not joined yet can still watch the split', async () => {
+  // The claim screen polls before the name gate is answered.
+  await withStub({ entities: { Session: [simpleSession()] } }, async ({ env }) => {
+    const res = await HANDLERS.getSplitStatus({ env, body: { session_id: 's1' } });
+    assert.equal(res.status, 200);
+    const { session: scoped } = await body(res);
+    assert.equal(scoped.id, 's1');
+    for (const p of scoped.participants) assert.equal(p.amount_owed, undefined);
+  });
+});
+
+test('getSplitStatus validates its inputs', async () => {
+  await withStub({ entities: { Session: [] } }, async ({ env }) => {
+    assert.equal((await HANDLERS.getSplitStatus({ env, body: {} })).status, 400);
+    assert.equal((await HANDLERS.getSplitStatus({ env, body: { session_id: 's1', participant_id: '../x' } })).status, 400);
+    assert.equal((await HANDLERS.getSplitStatus({ env, body: { session_id: 'gone' } })).status, 404);
+  });
+});
+
+// ── Rate limiting a restaurant's shared wifi ────────────────────────────────
+
+test('a whole table on one wifi does not share a rate-limit bucket', async () => {
+  // Six diners behind a restaurant's NAT are one CF-Connecting-IP. Keying the
+  // table endpoints on that address means the busiest, most legitimate use of
+  // the product is the first thing throttled.
+  const at = (path, participant) => limitKey(
+    new Request('https://billtap.app' + path, {
+      headers: {
+        'CF-Connecting-IP': '203.0.113.7',
+        ...(participant ? { 'X-BillTap-Participant': participant } : {}),
+      },
+    }),
+    path,
+  );
+
+  const alice = at('/api/fn/joinSession', ALICE);
+  const bob = at('/api/fn/joinSession', BOB);
+  assert.notEqual(alice, bob, 'two diners at one table are counted separately');
+  assert.equal(at('/api/fn/getSplitStatus', ALICE), alice, 'one bucket per person, not per endpoint');
+});
+
+test('the endpoints that spend money stay keyed to the address', async () => {
+  const spendy = (path) => limitKey(
+    new Request('https://billtap.app' + path, {
+      headers: { 'CF-Connecting-IP': '203.0.113.7', 'X-BillTap-Participant': ALICE },
+    }),
+    path,
+  );
+  // rating-alert sends an SMS per call, restaurant-lead sends email, and
+  // createSession writes rows. A fresh participant id must not buy a fresh
+  // allowance for any of them.
+  for (const path of ['/api/rating-alert', '/api/restaurant-lead', '/api/fn/createSession']) {
+    assert.equal(spendy(path), '203.0.113.7', `${path} must stay on the address`);
+  }
+});
+
+test('a malformed participant header falls back to the address', async () => {
+  const key = limitKey(
+    new Request('https://billtap.app/api/fn/joinSession', {
+      headers: { 'CF-Connecting-IP': '203.0.113.7', 'X-BillTap-Participant': '../../etc/passwd' },
+    }),
+    '/api/fn/joinSession',
+  );
+  assert.equal(key, '203.0.113.7', 'an arbitrary key would let one caller spray buckets');
+});
+
+test('every table endpoint is actually rate limited', async () => {
+  for (const path of PER_PARTICIPANT) {
+    assert.ok(LIMITED.has(path), `${path} is keyed per participant but never checked`);
+  }
 });

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { getHostKey } from "@/lib/hostKey";
+import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { QRCodeSVG } from "qrcode.react";
 import confetti from "canvas-confetti";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
@@ -106,13 +107,9 @@ function SessionHostComponent() {
     return () => clearInterval(interval);
   }, [refreshQrToken]);
 
-  useEffect(() => {
-    if (!sessionId) return;
-    const unsub = base44.entities.Session.subscribe((event) => {
-      if (event.id === sessionId && event.data) setSession(event.data);
-    });
-    return unsub;
-  }, [sessionId]);
+  // Watching the table fill up: guests joining, items being claimed, payments
+  // landing. Reads as the host, so the amounts are the real ones.
+  useLiveSplit(sessionId, { hostKey: getHostKey(sessionId), onUpdate: setSession });
 
   // Celebrate when the host has confirmed every payment.
   //

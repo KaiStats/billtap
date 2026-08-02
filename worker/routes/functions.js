@@ -146,6 +146,39 @@ async function isHost(env, request, session, providedKey) {
 // ── The functions ───────────────────────────────────────────────────────────
 
 const HANDLERS = {
+  /**
+   * A diner's own view of the split, cheap enough to ask for repeatedly.
+   *
+   * The three screens used to watch base44.entities.Session.subscribe() for
+   * changes. That was never going to work for the people this product is for.
+   * The socket connects anonymously — its own URL reads app_id=null&token=null —
+   * and Session's read rule matches created_by_id or a participant id that is a
+   * Base44 user. A guest is neither, so nothing was ever delivered to them: the
+   * table sat watching a screen that could not change, which is precisely the
+   * moment the product is sold on.
+   *
+   * Worse if it had worked. Claim.jsx wrote event.data straight into state, and
+   * event.data is the raw row — every diner's amount_owed and, since the last
+   * change, host_key_hash with it. This returns the same scoped view
+   * joinSession does: names, who has settled, your own share, nothing else.
+   */
+  async getSplitStatus({ env, body }) {
+    const { session_id, participant_id } = body;
+    if (!session_id || typeof session_id !== 'string') {
+      return json({ error: 'session_id is required' }, 400);
+    }
+    if (participant_id !== undefined && participant_id !== null
+        && !PARTICIPANT_RE.test(String(participant_id))) {
+      return json({ error: 'Invalid participant_id' }, 400);
+    }
+
+    const sessions = await serviceRole(env).entity('Session').filter({ id: session_id });
+    const session = sessions[0];
+    if (!session) return json({ error: 'Session not found' }, 404);
+
+    return json({ session: scopeForParticipant(session, participant_id || null) });
+  },
+
   /** Guest-visible restaurant fields, and nothing else. */
   async getPublicRestaurant({ env, body }) {
     const { slug, id } = body;
