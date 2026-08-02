@@ -57,3 +57,18 @@ jobs:
       # every actual deploy via wrangler's build.command.
       - name: Verify referenced assets exist
         run: node scripts/verify-dist.mjs --assets-only
+
+      # The browser suite drives the built bundle through the guest journey —
+      # scan, review, correct, share — with the network stubbed. It is the only
+      # thing here that checks what a diner actually sees: that the total on
+      # screen is the total sent to the server, that nothing spills off a 390px
+      # phone, that the receipt is readable rather than near-black on black.
+      #
+      # It needs Chromium, which is why it is not in `npm test`. Installed here
+      # rather than in the fast path so a developer running the unit suite pays
+      # nothing for it.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm run test:ui

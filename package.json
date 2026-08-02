@@ -14,7 +14,8 @@
     "build:static": "vite build && node scripts/prerender.mjs",
     "build:ci": "vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
-    "deploy": "npm run build:static && wrangler deploy"
+    "deploy": "npm run build:static && wrangler deploy",
+    "test:ui": "node --test --test-concurrency=2 scripts/ui.test.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.41",
