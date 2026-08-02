@@ -175,3 +175,84 @@ test('a correctly configured Worker serves as normal', async () => {
   const res = await worker.fetch(new Request('https://billtap.app/'), { ...DEV, ASSETS: assets });
   assert.equal(res.status, 200);
 });
+
+// ── Supabase isolation, which is the whole reason staging exists ────────────
+
+const PROD_URL = 'https://prod.supabase.co';
+const SUPA_PROD = {
+  ENVIRONMENT: 'production',
+  DATA_BACKEND: 'supabase',
+  SUPABASE_URL: PROD_URL,
+  PRODUCTION_SUPABASE_URL: PROD_URL,
+  SUPABASE_SERVICE_ROLE_KEY: 'k',
+};
+const SUPA_STAGING = {
+  ENVIRONMENT: 'staging',
+  DATA_BACKEND: 'supabase',
+  SUPABASE_URL: 'https://staging.supabase.co',
+  PRODUCTION_SUPABASE_URL: PROD_URL,
+  SUPABASE_SERVICE_ROLE_KEY: 'k',
+};
+
+test('staging pointed at the production Supabase project refuses to serve', () => {
+  // Without this, "deploy to staging and walk the flow by hand" means creating
+  // splits, claiming items and confirming payments inside a real restaurant's
+  // live data — a rehearsal that writes to the thing it is rehearsing for.
+  assert.throws(
+    () => assertEnvironmentIsolated({ ...SUPA_STAGING, SUPABASE_URL: PROD_URL }),
+    /production Supabase project/,
+  );
+});
+
+test('the refusal says what to do about it, not just that it refused', () => {
+  assert.throws(
+    () => assertEnvironmentIsolated({ ...SUPA_STAGING, SUPABASE_URL: PROD_URL }),
+    /Create a second Supabase project/,
+  );
+});
+
+test('a trailing slash cannot smuggle production past the check', () => {
+  // db.js trims trailing slashes before calling PostgREST, so these are the
+  // same project. Comparing raw strings would miss it.
+  assert.throws(
+    () => assertEnvironmentIsolated({ ...SUPA_STAGING, SUPABASE_URL: `${PROD_URL}/` }),
+    /production Supabase project/,
+  );
+});
+
+test('staging on its own project is allowed through', () => {
+  assert.equal(assertEnvironmentIsolated(SUPA_STAGING), 'staging');
+});
+
+test('production on the production project is obviously fine', () => {
+  assert.equal(assertEnvironmentIsolated(SUPA_PROD), 'production');
+});
+
+test('a Supabase deployment is not asked for a Base44 app id', () => {
+  // The same mistake this codebase already made in functions.js: refusing to
+  // serve without a credential the deployment has no use for, while looking
+  // correctly configured.
+  assert.equal(assertEnvironmentIsolated(SUPA_STAGING), 'staging');
+  assert.equal(SUPA_STAGING.BASE44_APP_ID, undefined);
+});
+
+test('production on Supabase must still carry a service role key', () => {
+  const { SUPABASE_SERVICE_ROLE_KEY: _omitted, ...noKey } = SUPA_PROD;
+  assert.throws(() => assertEnvironmentIsolated(noKey), /SUPABASE_SERVICE_ROLE_KEY is not set/);
+});
+
+test('a Supabase deployment with no URL fails loudly rather than calling nowhere', () => {
+  assert.throws(
+    () => assertEnvironmentIsolated({ ENVIRONMENT: 'staging', DATA_BACKEND: 'supabase' }),
+    /SUPABASE_URL is not set/,
+  );
+});
+
+test('the Base44 checks still apply while Base44 is the database', () => {
+  // The backend switch must not have quietly disabled the guard that was
+  // already there.
+  assert.throws(
+    () => assertEnvironmentIsolated({ ...DEV, BASE44_APP_ID: 'prod_app' }),
+    /must not share a database/,
+  );
+});

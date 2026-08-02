@@ -39,8 +39,15 @@
   //
   // BASE44_APP_ID is set per environment as a secret or a var; there is no
   // default anywhere, because the only sensible default would be production's.
+  //
+  // PRODUCTION_SUPABASE_URL is committed for the same reason as
+  // PRODUCTION_APP_ID: a project ref is not a secret. It is inside every anon
+  // key, and the anon key ships in the browser bundle. What it buys is a
+  // staging deployment that refuses to serve when it is pointed at production's
+  // database — which is the entire reason a staging project exists.
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
   },
 
   "env": {

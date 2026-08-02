@@ -32,6 +32,8 @@
  * variable name in it, not a warning nobody reads.
  */
 
+import { backendName } from './data.js';
+
 export const ENVIRONMENTS = ['production', 'staging', 'development'];
 
 /**
@@ -74,23 +76,68 @@ function normalise(value) {
  */
 export function assertEnvironmentIsolated(env) {
   const name = environmentName(env);
-  const appId = configuredAppId(env);
+  const onBase44 = backendName(env) === 'base44';
 
-  if (!appId) {
-    throw new Error(
-      `BASE44_APP_ID is not set for the ${name} environment. ` +
-      'Set it explicitly — there is deliberately no default, because the only ' +
-      'sensible default would be production.',
-    );
+  // Only demanded while Base44 is the database. After the cutover a staging
+  // deployment has no use for a Base44 app id, and refusing to serve without
+  // one would take down a correctly configured environment over a credential it
+  // does not need — see the same mistake, and the same fix, in
+  // worker/routes/functions.js.
+  if (onBase44) {
+    const appId = configuredAppId(env);
+    if (!appId) {
+      throw new Error(
+        `BASE44_APP_ID is not set for the ${name} environment. ` +
+        'Set it explicitly — there is deliberately no default, because the only ' +
+        'sensible default would be production.',
+      );
+    }
+
+    const productionAppId = normalise(env?.PRODUCTION_APP_ID);
+    if (name !== 'production' && productionAppId && appId === productionAppId) {
+      throw new Error(
+        `The ${name} environment is pointed at the production Base44 app ` +
+        `(${appId}). Development and production must not share a database. ` +
+        'Create a separate Base44 app and set BASE44_APP_ID for this environment.',
+      );
+    }
   }
 
-  const productionAppId = normalise(env?.PRODUCTION_APP_ID);
-  if (name !== 'production' && productionAppId && appId === productionAppId) {
-    throw new Error(
-      `The ${name} environment is pointed at the production Base44 app ` +
-      `(${appId}). Development and production must not share a database. ` +
-      'Create a separate Base44 app and set BASE44_APP_ID for this environment.',
-    );
+  // The same guarantee for Supabase, and it is the whole reason a staging
+  // project is worth creating.
+  //
+  // Without this, "deploy to staging and walk the flow by hand" means creating
+  // splits, claiming items and confirming payments in a real restaurant's live
+  // data — a rehearsal that writes to the thing it is rehearsing for. The URL
+  // is compared rather than the key because the key is a secret this check
+  // cannot know, and the project is identified by the URL anyway.
+  //
+  // PRODUCTION_SUPABASE_URL is committed, for the same reason PRODUCTION_APP_ID
+  // is: the project ref is not a secret. It is inside every anon key, and the
+  // anon key ships in the browser bundle.
+  if (!onBase44) {
+    // Trailing slashes stripped, because db.js strips them before calling
+    // PostgREST — so https://prod.supabase.co/ and https://prod.supabase.co are
+    // the same project, and a raw string comparison would wave one of them
+    // through. Found by a test, not by reasoning about it.
+    // normalise returns null when unset, which is the ordinary case for
+    // PRODUCTION_SUPABASE_URL outside a configured deployment.
+    const projectUrl = (value) => (normalise(value) || '').replace(/\/+$/, '') || null;
+    const url = projectUrl(env?.SUPABASE_URL);
+    if (!url) {
+      throw new Error(
+        `DATA_BACKEND is supabase but SUPABASE_URL is not set for the ${name} environment.`,
+      );
+    }
+    const productionUrl = projectUrl(env?.PRODUCTION_SUPABASE_URL);
+    if (name !== 'production' && productionUrl && url === productionUrl) {
+      throw new Error(
+        `The ${name} environment is pointed at the production Supabase project ` +
+        `(${url}). Walking the flow by hand here would create splits and confirm ` +
+        "payments in a real restaurant's live data. Create a second Supabase " +
+        'project and set SUPABASE_URL for this environment.',
+      );
+    }
   }
 
   // A live Stripe key outside production takes real money off real cards.
@@ -111,8 +158,11 @@ export function assertEnvironmentIsolated(env) {
   // worth catching is the key being absent: falling back to an unauthenticated
   // call would fail later and further away, in a handler, as a 500 nobody can
   // trace back to configuration.
-  if (name === 'production' && !env?.BASE44_MASTER_KEY) {
+  if (name === 'production' && onBase44 && !env?.BASE44_MASTER_KEY) {
     throw new Error('BASE44_MASTER_KEY is not set for production.');
+  }
+  if (name === 'production' && !onBase44 && !env?.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set for production.');
   }
 
   return name;

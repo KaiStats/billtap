@@ -8,6 +8,8 @@ reversible up to step 7, and step 7 is reversible in under a minute.
 
 **Where you are:** `~/scan-repo/billtap`
 
+**Steps 1–2 are done.** Eight tables exist in `billtap-prod`. Start at step 3.
+
 ---
 
 ## Before anything
@@ -131,6 +133,76 @@ confirm a payment on that split again.
 
 ---
 
+## 4b — Create the staging project (5 min)
+
+Skip this and step 7 has nowhere to rehearse: "walk the flow by hand" would mean
+creating splits, claiming items and confirming payments inside a real
+restaurant's live data — a rehearsal that writes to the thing it is rehearsing
+for.
+
+Supabase dashboard → **New project**. Name it `billtap-staging`. Free tier.
+
+Then, in its **SQL Editor**, run the same two files you just ran, in order:
+
+1. `supabase/migrations/0001_initial_schema.sql`
+2. `supabase/migrations/0002_audit_log.sql`
+
+Empty tables are correct here. Staging does not get a copy of the data — you
+walk the flow from scratch, which is a better test anyway, because it exercises
+creating a split rather than reading one somebody else made.
+
+Now give the staging Worker its own credentials. Note `--env staging` on every
+line; without it these overwrite production's.
+
+```
+npx wrangler secret put SUPABASE_URL --env staging
+```
+```
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env staging
+```
+```
+npx wrangler secret put SUPABASE_ANON_KEY --env staging
+```
+```
+npx wrangler secret put DATA_BACKEND --env staging
+```
+
+The last one is `supabase`.
+
+```
+npx wrangler deploy --env staging
+```
+
+It publishes to a `workers.dev` subdomain. No routes and no crons, so it cannot
+answer for billtap.app and never runs the nightly backup.
+
+**If you paste production's Supabase URL here by mistake, staging refuses to
+serve** and says so — `PRODUCTION_SUPABASE_URL` is committed in
+`wrangler.jsonc` precisely so that check can be made without knowing any secret.
+That refusal is the feature. Do not work around it.
+
+### Walk the flow on staging, on your phone
+
+Open the `workers.dev` URL the deploy printed.
+
+1. Scan a receipt.
+2. Share the code.
+3. Claim an item from a second phone or a private window.
+4. Mark it paid as the diner.
+5. Confirm it as the host.
+
+Then check the trail actually recorded it, in staging's SQL editor:
+
+```sql
+select at, action, outcome, detail from audit_log order by at desc limit 20;
+```
+
+You want `split.created`, `split.claimed`, `payment.self_reported` and
+`payment.confirmed`, in that order, with the amount on the last two. If those
+are there, the money path works against Postgres and step 7 is a formality.
+
+---
+
 ## 5 — Give the Worker its credentials (5 min)
 
 Four secrets. Each command prompts for a value — paste it and press Enter.
@@ -184,13 +256,10 @@ Type `supabase` and press Enter.
 
 No deploy. It takes effect on the next request.
 
-### Then walk the flow by hand, on your phone
+### Then walk the same flow on production
 
-1. Scan a receipt.
-2. Share the code.
-3. Claim an item from a second phone or a private window.
-4. Mark it paid as the diner.
-5. Confirm it as the host.
+The five steps from 4b, on billtap.app this time. You have already proved they
+work against Postgres, so this is confirming the credentials, not the code.
 
 If any step fails:
 
