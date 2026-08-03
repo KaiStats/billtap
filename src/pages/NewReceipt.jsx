@@ -11,6 +11,7 @@ import SplitModeSelector from "@/components/SplitModeSelector";
 import DesktopWarningModal from "@/components/DesktopWarningModal";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { compressImage } from "@/lib/compressImage";
+import { uploadReceipt } from "@/lib/uploadReceipt";
 import { rememberHostKey } from "@/lib/hostKey";
 import { rememberSplit } from "@/lib/splitHistory";
 import { startScanTimer } from "@/lib/scanTiming";
@@ -136,9 +137,7 @@ export default function NewReceipt() {
     // is actually created — by which point it finished minutes ago. It used to
     // be the first half of the critical path, and the model call could not
     // start until it returned a URL.
-    attempt.stored = attempt.compressed.then((upload) =>
-      base44.integrations.Core.UploadFile({ file: upload }).then((r) => r.file_url),
-    );
+    attempt.stored = attempt.compressed.then((upload) => uploadReceipt(upload));
 
     // Nothing awaits these yet, and an unhandled rejection would surface as a
     // console error on a screen where nothing has gone wrong.
