@@ -14,7 +14,21 @@
  *
  *   node scripts/check-env.mjs                  # checks VITE_ENVIRONMENT
  *   node scripts/check-env.mjs --env production # asserts it is that one
+ *
+ * ── Why it loads .env files itself ──────────────────────────────────────────
+ *
+ * .env.example says "copy to .env.local", which is the documented way to
+ * configure a local build. This script used to read process.env only — so a
+ * correctly filled-in .env.local failed the check, and the only way past it was
+ * to prefix every build command with the variables by hand. The gate has to see
+ * what vite will see, or it is testing a different build than the one that
+ * ships.
+ *
+ * loadEnv is vite's own resolver rather than a reimplementation, so the
+ * precedence rules (.env.local over .env, mode-specific over general) cannot
+ * drift from the build this is guarding.
  */
+import { loadEnv } from 'vite';
 
 const ENVIRONMENTS = ['production', 'staging', 'development'];
 
@@ -25,7 +39,24 @@ const expected = expectedIndex >= 0 ? argv[expectedIndex + 1] : null;
 const problems = [];
 const notes = [];
 
-const raw = (process.env.VITE_ENVIRONMENT || '').trim().toLowerCase();
+/**
+ * The variables this build will actually be given.
+ *
+ * The '' prefix loads every variable, not just VITE_ ones, because the Stripe
+ * check below looks at STRIPE_SECRET_KEY.
+ *
+ * loadEnv already merges process.env and gives it precedence at that prefix, so
+ * an explicit `VITE_ENVIRONMENT=production npm run build:static` overrides a
+ * stale .env.local — which is the direction that matters, since the other way
+ * round means a deploy silently shipping the wrong bundle. The spread below
+ * does not change that and is not what provides it; it is there so this line
+ * still behaves if loadEnv's merging ever changes. A mutation test proved the
+ * two orderings are equivalent today.
+ */
+const fileEnv = loadEnv(process.env.VITE_ENVIRONMENT || 'development', process.cwd(), '');
+const env = { ...fileEnv, ...process.env };
+
+const raw = (env.VITE_ENVIRONMENT || '').trim().toLowerCase();
 const environment = raw || 'development';
 
 if (raw && !ENVIRONMENTS.includes(raw)) {
@@ -52,8 +83,8 @@ if (expected && environment !== expected) {
   );
 }
 
-const appId = (process.env.VITE_BASE44_APP_ID || '').trim().replace(/^app_/, '');
-const productionAppId = (process.env.PRODUCTION_APP_ID || '').trim().replace(/^app_/, '');
+const appId = (env.VITE_BASE44_APP_ID || '').trim().replace(/^app_/, '');
+const productionAppId = (env.PRODUCTION_APP_ID || '').trim().replace(/^app_/, '');
 
 if (environment === 'production' && !appId) {
   problems.push(
@@ -73,7 +104,7 @@ if (environment !== 'production' && appId && productionAppId && appId === produc
 // Cheap and worth it: a live Stripe key is distinguishable by prefix, so this
 // needs no knowledge of what production's key actually is.
 for (const name of ['STRIPE_SECRET_KEY', 'VITE_STRIPE_PUBLISHABLE_KEY']) {
-  const value = process.env[name] || '';
+  const value = env[name] || '';
   if (environment !== 'production' && /^(sk|pk)_live_/.test(value)) {
     problems.push(`${name} is a LIVE Stripe key in a ${environment} build.`);
   }
