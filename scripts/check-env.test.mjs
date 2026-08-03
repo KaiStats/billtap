@@ -46,10 +46,41 @@ function check(envLocal, extraEnv = {}) {
   }
 }
 
+/** Everything a production build now requires. */
+const COMPLETE = [
+  'VITE_ENVIRONMENT=production',
+  'VITE_BASE44_APP_ID=abc123',
+  'VITE_SUPABASE_URL=https://p.supabase.co',
+  'VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig',
+].join('\n');
+
 test('a filled-in .env.local satisfies the gate, as .env.example promises', () => {
-  const result = check('VITE_ENVIRONMENT=production\nVITE_BASE44_APP_ID=abc123\n');
+  const result = check(`${COMPLETE}\n`);
   assert.ok(result.ok, result.out);
   assert.match(result.out, /production/);
+});
+
+test('a production build with no way to sign in is refused', () => {
+  // Operators would reach a "sign-in is not available" panel and nothing else
+  // would report a problem — guests are unaffected, so the site looks healthy
+  // while every dashboard is unreachable.
+  const result = check('VITE_ENVIRONMENT=production\nVITE_BASE44_APP_ID=abc123\n');
+  assert.equal(result.ok, false);
+  assert.match(result.out, /VITE_SUPABASE_URL is empty/);
+});
+
+test('the service role key in a VITE_ variable is refused outright', () => {
+  // The worst available mistake in this repo: that key bypasses row level
+  // security, and every VITE_ variable ships to every browser that loads the
+  // page. Refused in all environments, not just production.
+  const result = check([
+    'VITE_ENVIRONMENT=development',
+    'VITE_SUPABASE_URL=https://p.supabase.co',
+    'VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig',
+  ].join('\n'));
+  assert.equal(result.ok, false);
+  assert.match(result.out, /service_role/);
+  assert.match(result.out, /bypasses row level security/);
 });
 
 test('an explicit variable overrides a stale .env.local, matching vite', () => {
@@ -62,7 +93,7 @@ test('an explicit variable overrides a stale .env.local, matching vite', () => {
   // script anyway, because the guarantee is what matters and it would break the
   // same way if loadEnv's behaviour ever changed.
   const result = check(
-    'VITE_ENVIRONMENT=development\nVITE_BASE44_APP_ID=abc123\n',
+    COMPLETE.replace('VITE_ENVIRONMENT=production', 'VITE_ENVIRONMENT=development'),
     { VITE_ENVIRONMENT: 'production' },
   );
   assert.ok(result.ok, result.out);

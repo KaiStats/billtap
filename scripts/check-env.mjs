@@ -101,6 +101,45 @@ if (environment !== 'production' && appId && productionAppId && appId === produc
   );
 }
 
+// Sign-in is Supabase now. Without these two the login screen renders a "not
+// available" panel instead — which is the right behaviour for a broken build
+// (guests are unaffected) and the wrong thing to ship, because operators cannot
+// reach their dashboards and nothing else reports a problem.
+for (const name of ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']) {
+  if (environment === 'production' && !(env[name] || '').trim()) {
+    problems.push(`${name} is empty for a production build. Operators would have no way to sign in.`);
+  }
+}
+
+// The anon key is public and belongs in the bundle. The service role key
+// bypasses row level security entirely, and anything prefixed VITE_ ships to
+// every browser that loads the page. This is the worst single mistake available
+// in this repo, and the two keys are the same length with the same prefix and
+// sit next to each other on the same dashboard page.
+//
+// The role has to be decoded, not grepped: "service_role" lives inside the
+// base64 payload, so a substring check against the raw key matches nothing and
+// waves the real thing through. A test caught that.
+const supabaseRole = (() => {
+  const payload = String(env.VITE_SUPABASE_ANON_KEY || '').split('.')[1];
+  if (!payload) return null;
+  try {
+    return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')).role ?? null;
+  } catch {
+    // Supabase's newer publishable/secret keys are not JWTs. Unreadable is not
+    // the same as wrong, and refusing everything unrecognisable would block a
+    // project on the new format for no reason.
+    return null;
+  }
+})();
+
+if (supabaseRole && supabaseRole !== 'anon') {
+  problems.push(
+    `VITE_SUPABASE_ANON_KEY is a "${supabaseRole}" key, not the anon key. That key ` +
+    'bypasses row level security and VITE_ variables ship to every browser. Use the anon key.',
+  );
+}
+
 // Cheap and worth it: a live Stripe key is distinguishable by prefix, so this
 // needs no knowledge of what production's key actually is.
 for (const name of ['STRIPE_SECRET_KEY', 'VITE_STRIPE_PUBLISHABLE_KEY']) {

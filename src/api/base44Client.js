@@ -1,5 +1,6 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
+import { accessToken } from '@/lib/supabase';
 
 const { appId, token, functionsVersion, appBaseUrl } = appParams;
 
@@ -34,10 +35,11 @@ export const base44 = createClient({
  * callers already destructure res.data, and several rely on a rejection to hit
  * their catch.
  *
- * `credentials: 'same-origin'` matters. The Worker resolves the caller's
- * identity by forwarding their cookie to Base44, so an invoke that drops
- * cookies is an invoke that arrives anonymous — and generateQRSignature and
- * getRestaurantDashboardData would 401 for a signed-in host.
+ * Identity travels as a bearer token now, not a cookie. The Worker verifies it
+ * against Supabase — see currentUser() in worker/lib/db.js. The old
+ * `credentials: 'same-origin'` existed because the Worker forwarded the
+ * caller's Base44 cookie; there is no such cookie any more, and sending
+ * credentials to an endpoint that ignores them is a habit worth not keeping.
  */
 base44.functions.invoke = async function invokeViaWorker(name, body = {}) {
   // Which rate-limit bucket this counts against, for the endpoints a whole
@@ -51,10 +53,23 @@ base44.functions.invoke = async function invokeViaWorker(name, body = {}) {
     headers['X-BillTap-Participant'] = participant;
   }
 
+  // The operator's Supabase session, when there is one.
+  //
+  // Sent on every call rather than a chosen list, because the Worker decides
+  // what an identity is worth: currentUser() returning null is the ordinary
+  // case and every handler already treats it as such. A signed-in operator who
+  // also splits a bill as a diner is a real person, and withholding their token
+  // on those calls would mean their own splits never appear in their dashboard.
+  //
+  // What must never happen is the reverse — a guest path that *requires* one.
+  // Nothing here fails when the token is absent, and worker/api.test.mjs holds
+  // that line for joinSession, markMePaid and getSplitStatus.
+  const token = await accessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(`/api/fn/${name}`, {
     method: 'POST',
     headers,
-    credentials: 'same-origin',
     body: JSON.stringify(body ?? {}),
   });
 

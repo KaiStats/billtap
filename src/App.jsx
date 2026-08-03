@@ -26,8 +26,6 @@ const TableEntry  = lazy(() => import('@/pages/TableEntry'));
 const RestaurantDashboard = lazy(() => import('@/pages/RestaurantDashboard'));
 const Login       = lazy(() => import('@/pages/Login'));
 const Register    = lazy(() => import('@/pages/Register'));
-const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
-const ResetPassword  = lazy(() => import('@/pages/ResetPassword'));
 const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
 const Privacy     = lazy(() => import('@/pages/Privacy'));
 const Terms       = lazy(() => import('@/pages/Terms'));
@@ -215,8 +213,14 @@ const AuthenticatedApp = () => {
               link with a 404 before React ever loads. See SPA_ROUTES in
               worker/index.js.
             */}
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+            {/*
+              Kept as redirects, not removed. Both paths are in Base44's old
+              reset emails and in people's history, and a 404 is a worse answer
+              than the sign-in screen for somebody who is trying to get in.
+              There is nothing to reset any more — see src/pages/Login.jsx.
+            */}
+            <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
+            <Route path="/reset-password" element={<Navigate to="/login" replace />} />
 
             {/* Legacy capitalized redirects */}
             <Route path="/About" element={<Navigate to="/about" replace />} />

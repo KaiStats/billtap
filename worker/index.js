@@ -74,10 +74,11 @@ const SPA_ROUTES = new Set([
   '/icon-generator',
   '/login',
   '/register',
-  // The reset link in Base44's email is a deep link straight to this path. If
-  // it is not listed here the Worker serves the SPA shell with a 404 status —
-  // the app would still boot, but the first thing anyone recovering an account
-  // sees is a page reporting itself as not found.
+  // Both redirect to /login now — there is no password to reset. They stay
+  // listed because they are in Base44's old emails and in people's history, and
+  // an unlisted path is served with a 404 status: the app would still boot and
+  // still redirect, but the response would report itself as not found to
+  // anybody watching, including crawlers.
   '/forgot-password',
   '/reset-password',
   '/home',
