@@ -5,7 +5,7 @@ import App from '@/App.jsx'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import '@/index.css'
 import { registerServiceWorker } from '@/lib/registerServiceWorker'
-import { ENVIRONMENT, APP_ID } from '@/lib/environment'
+import { ENVIRONMENT, DATABASE_REF } from '@/lib/environment'
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
@@ -23,9 +23,7 @@ Sentry.init({
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value || "";
-    if (msg.includes('ws.base44.com')) return null;
     if (msg.includes('WebSocket')) return null;
-    if (msg.includes('base44-preview')) return null;
     return event;
   },
 });
@@ -94,8 +92,8 @@ Sentry.setContext("device", {
   connection: navigator.connection?.effectiveType || 'unknown',
 });
 // Which database produced this error. Two environments' stack traces look
-// identical; the app id is the thing that tells them apart.
-Sentry.setTag('base44_app_id', APP_ID || 'unset');
+// identical; the project ref is the thing that tells them apart.
+Sentry.setTag('database_ref', DATABASE_REF || 'unset');
 Sentry.setTag('is_mobile', /Mobi|Android/i.test(navigator.userAgent));
 Sentry.setTag(
   'browser',

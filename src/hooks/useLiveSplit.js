@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 
 /**
  * Keeps a split up to date on everyone's phone.
@@ -83,8 +83,8 @@ export function useLiveSplit(sessionId, { participantId, hostKey, onUpdate, enab
 
       try {
         const res = hostKey
-          ? await base44.functions.invoke("getSessionAsHost", { session_id: sessionId, host_key: hostKey })
-          : await base44.functions.invoke("getSplitStatus", { session_id: sessionId, participant_id: participantId });
+          ? await invoke("getSessionAsHost", { session_id: sessionId, host_key: hostKey })
+          : await invoke("getSplitStatus", { session_id: sessionId, participant_id: participantId });
 
         const session = res?.data?.session;
         failures = 0;

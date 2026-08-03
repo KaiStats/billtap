@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Refuses to build when the configuration would touch the wrong database.
+ * Refuses to build when the configuration would ship something wrong.
  *
  * The runtime guards in worker/lib/environment.js catch a misconfigured Worker
  * on its first request. This catches the frontend, which has no such moment:
- * VITE_ vars are baked into the bundle at build time, so a production build
- * carrying a staging app id — or a staging build carrying production's — is
- * wrong the instant it is written and stays wrong until somebody notices which
- * bills they are looking at.
+ * VITE_ vars are baked into the bundle at build time, so a bundle built with
+ * the wrong ones is wrong the instant it is written and stays wrong until
+ * somebody notices.
  *
  * Run by `npm run build:static` and `npm run build:ci`, ahead of vite, so a bad
  * bundle is never produced rather than produced and then rejected.
@@ -83,23 +82,22 @@ if (expected && environment !== expected) {
   );
 }
 
-const appId = (env.VITE_BASE44_APP_ID || '').trim().replace(/^app_/, '');
-const productionAppId = (env.PRODUCTION_APP_ID || '').trim().replace(/^app_/, '');
-
-if (environment === 'production' && !appId) {
-  problems.push(
-    'VITE_BASE44_APP_ID is empty for a production build. Every API call would 404 ' +
-    'while the prerendered marketing pages carried on looking healthy — which is ' +
-    'exactly how that outage went unnoticed the first time.',
-  );
-}
-
-if (environment !== 'production' && appId && productionAppId && appId === productionAppId) {
-  problems.push(
-    `This ${environment} build is pointed at the production Base44 app (${appId}). ` +
-    'Development and production must not share a database.',
-  );
-}
+/**
+ * VITE_BASE44_APP_ID is no longer required, and no longer read.
+ *
+ * A production build without it used to be refused, because every API call
+ * would 404 while the prerendered marketing pages carried on looking healthy —
+ * which is exactly how that outage went unnoticed the first time. Nothing in
+ * the bundle talks to Base44 now, so demanding the id would only stop a correct
+ * build from shipping.
+ *
+ * The pairing check went with it: it refused a non-production build carrying
+ * production's app id, on the grounds that two environments must not share a
+ * database. That question moved to the Worker, where the database actually is —
+ * assertEnvironmentIsolated in worker/lib/environment.js refuses to serve when a
+ * non-production deployment points at production Postgres, and it does so per
+ * request rather than only at build time.
+ */
 
 // Sign-in is Supabase now. Without these two the login screen renders a "not
 // available" panel instead — which is the right behaviour for a broken build
@@ -149,7 +147,7 @@ for (const name of ['STRIPE_SECRET_KEY', 'VITE_STRIPE_PUBLISHABLE_KEY']) {
   }
 }
 
-const label = `env-check: ${environment}${appId ? ` · app ${appId}` : ''}`;
+const label = `env-check: ${environment}`;
 
 if (problems.length) {
   console.error(`\n✖ ${label}\n`);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
+import { getHostKey } from "@/lib/hostKey";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
@@ -40,29 +41,19 @@ export default function SplitConfigModal({ session, onClose, onUpdate }) {
     
     setSaving(true);
     try {
-      const updatedParticipants = session.participants.map(p => ({
-        ...p,
-        amount_owed: config.finalAmounts[p.participant_id] || 0,
-      }));
-
-      await base44.entities.Session.update(session.id, {
-        split_mode: "custom",
-        custom_split_config: {
-          type: subMode,
-          values: config.finalAmounts,
-        },
-        participants: updatedParticipants,
+      // Through updateSplitSettings rather than writing the participants array
+      // from here. Sending the whole array is the shape of bug the audit found
+      // in joinSession: two saves at once and one is silently erased, and a
+      // crafted client can restate every amount in the split. The server
+      // recomputes the rows from the amounts, proves the host key, and refuses
+      // to move a diner who has already paid.
+      const res = await invoke("updateSplitSettings", {
+        session_id: session.id,
+        host_key: getHostKey(session.id),
+        custom_amounts: config.finalAmounts,
       });
 
-      onUpdate({
-        ...session,
-        split_mode: "custom",
-        custom_split_config: {
-          type: subMode,
-          values: config.finalAmounts,
-        },
-        participants: updatedParticipants,
-      });
+      onUpdate(res.data?.session);
       onClose();
     } catch (err) {
       console.error("Failed to save split config:", err);

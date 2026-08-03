@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import * as Sentry from "@sentry/react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 import { useNavigate } from "react-router-dom";
 import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap, Pencil, Check, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -150,53 +150,30 @@ export default function NewReceipt() {
    * Read the receipt.
    *
    * Straight to /api/scan-receipt, which sends the image inline to the model
-   * from the Worker — one hop, and Base44 is not in it. Falls back to Base44's
-   * InvokeLLM when that route reports it has no key, so this ships before the
-   * key exists and a provider outage degrades to the old path rather than to a
-   * broken scan.
+   * from the Worker — one hop, and nothing in between.
+   *
+   * There was a fallback here that re-ran the parse through Base44's InvokeLLM
+   * against the stored URL. It has been dead since operators moved to Supabase:
+   * reaching Base44 needs a Base44 session and there is no longer one to have,
+   * so the "degraded" path could only fail a second time — more slowly, after
+   * waiting on an upload the fast path does not wait for. Failing here instead
+   * puts the error in ErrorNotice, whose retry can genuinely work.
    */
   const readReceipt = async (upload) => {
-    try {
-      const res = await fetch("/api/scan-receipt", {
-        method: "POST",
-        headers: { "Content-Type": upload.type || "image/jpeg" },
-        body: upload,
-      });
-      if (res.ok) return { result: await res.json(), via: "direct" };
-
-      const detail = await res.json().catch(() => ({}));
-      if (detail.code !== "not_configured") {
-        // A real failure of the fast path. Fall back rather than fail, and say
-        // so in the timings so the fallback rate is visible.
-        console.warn("scan-receipt failed, falling back to Base44:", detail.code);
-      }
-    } catch (err) {
-      console.warn("scan-receipt unreachable, falling back to Base44:", err?.message);
-    }
-
-    const file_url = await uploadRef.current.stored;
-    const result = await base44.integrations.Core.InvokeLLM({
-      model: "gemini_3_flash",
-      prompt: `Analyze this receipt image and extract all line items with their prices. Also extract tax, tip, and total if present.
-Return a JSON with:
-- title: short restaurant/store name if visible, else "Receipt"
-- items: array of {name: string, price: number, quantity: number}
-- tax: number (0 if not found)
-- tip: number (0 if not found)
-- total: number`,
-      file_urls: [file_url],
-      response_json_schema: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" } } } },
-          tax: { type: "number" },
-          tip: { type: "number" },
-          total: { type: "number" }
-        }
-      }
+    const res = await fetch("/api/scan-receipt", {
+      method: "POST",
+      headers: { "Content-Type": upload.type || "image/jpeg" },
+      body: upload,
     });
-    return { result, via: "base44" };
+    if (res.ok) return { result: await res.json(), via: "direct" };
+
+    // The server's own sentence and code, so the notice can say what went wrong
+    // rather than "something went wrong".
+    const detail = await res.json().catch(() => ({}));
+    const error = new Error(detail.error || `Couldn't read that receipt (${res.status})`);
+    error.status = res.status;
+    error.data = detail;
+    throw error;
   };
 
   const handleFileChange = (e) => {
@@ -328,7 +305,7 @@ Return a JSON with:
       const storedImage = await (uploadRef.current?.stored ?? Promise.resolve(null))
         .catch(() => null);
 
-      const res = await base44.functions.invoke("createSession", {
+      const res = await invoke("createSession", {
         title,
         image_url: storedImage,
         items,
@@ -388,7 +365,7 @@ Return a JSON with:
     setSaving(true);
     try {
       const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
-      const res = await base44.functions.invoke("createSession", {
+      const res = await invoke("createSession", {
         title: title || "Quick Split",
         items: [],
         tax: 0,

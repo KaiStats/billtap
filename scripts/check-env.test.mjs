@@ -49,7 +49,6 @@ function check(envLocal, extraEnv = {}) {
 /** Everything a production build now requires. */
 const COMPLETE = [
   'VITE_ENVIRONMENT=production',
-  'VITE_BASE44_APP_ID=abc123',
   'VITE_SUPABASE_URL=https://p.supabase.co',
   'VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig',
 ].join('\n');
@@ -64,7 +63,7 @@ test('a production build with no way to sign in is refused', () => {
   // Operators would reach a "sign-in is not available" panel and nothing else
   // would report a problem — guests are unaffected, so the site looks healthy
   // while every dashboard is unreachable.
-  const result = check('VITE_ENVIRONMENT=production\nVITE_BASE44_APP_ID=abc123\n');
+  const result = check('VITE_ENVIRONMENT=production\n');
   assert.equal(result.ok, false);
   assert.match(result.out, /VITE_SUPABASE_URL is empty/);
 });
@@ -107,16 +106,15 @@ test('no configuration anywhere still fails, and says where to put it', () => {
   assert.match(result.out, /\.env\.local/);
 });
 
-test('a production build with no app id is still refused from a file', () => {
-  // The check that caught the real deploy: every API call would 404 while the
-  // prerendered marketing pages carried on looking healthy.
-  const result = check('VITE_ENVIRONMENT=production\n');
-  assert.equal(result.ok, false);
-  assert.match(result.out, /VITE_BASE44_APP_ID is empty/);
-});
+test('a Base44 app id is neither required nor complained about', () => {
+  // It used to be refused when missing, because every API call would 404 while
+  // the prerendered marketing pages carried on looking healthy. Nothing in the
+  // bundle talks to Base44 now, so demanding it would only stop a correct build
+  // from shipping — and a leftover one in somebody's .env.local must not fail a
+  // build either.
+  assert.ok(check(`${COMPLETE}\n`).ok);
 
-test('a non-production build pointed at the production app is refused from a file', () => {
-  const result = check('VITE_ENVIRONMENT=staging\nVITE_BASE44_APP_ID=prod_app\nPRODUCTION_APP_ID=prod_app\n');
-  assert.equal(result.ok, false);
-  assert.match(result.out, /must not share a database/);
+  const withStale = check(`${COMPLETE}\nVITE_BASE44_APP_ID=abc123\n`);
+  assert.ok(withStale.ok, withStale.out);
+  assert.ok(!/BASE44/.test(withStale.out), 'the gate should have nothing to say about it');
 });

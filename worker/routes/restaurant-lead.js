@@ -1,10 +1,14 @@
 /**
  * POST /api/restaurant-lead
  *
- * Sends the "new restaurant lead" alert. The lead row itself is written from the
- * browser (see src/pages/Restaurants.jsx) the same way the Waitlist capture
- * works; this endpoint is the notification half only, because the Resend API key
- * must never reach the client.
+ * Sends the "new restaurant lead" alert.
+ *
+ * This used to be the notification half of a pair: the browser wrote a
+ * RestaurantLead row and then called here so somebody found out about it. The
+ * row went to Base44, nothing writes one now, and so this is the lead in its
+ * entirety. src/pages/Restaurants.jsx checks the status it returns rather than
+ * firing and forgetting, because a failure here is now a restaurant that filled
+ * in the form and never heard back.
  *
  * Bindings: POSTMARK_SERVER_TOKEN or RESEND_API_KEY (one required),
  * LEAD_NOTIFY_TO (default alerts@billtap.app), LEAD_NOTIFY_FROM (must be a

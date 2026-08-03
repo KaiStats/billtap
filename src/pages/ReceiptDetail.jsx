@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Clock, Users, Receipt, QrCode, PartyPopper, Share2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
@@ -58,7 +58,7 @@ export default function ReceiptDetail() {
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await base44.functions.invoke("getSessionAsHost", {
+      const res = await invoke("getSessionAsHost", {
         session_id: sessionId,
         host_key: getHostKey(sessionId),
       });
@@ -70,8 +70,16 @@ export default function ReceiptDetail() {
     } catch {
       // 403 is the ordinary answer for a diner opening their own receipt.
     }
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    setSession(data[0] || null);
+    try {
+      // No participant id, matching the live poll below: this screen does not
+      // know which diner is looking, so it asks for the view that names nobody's
+      // share. It used to be a direct entity read, which returned the raw row —
+      // every amount and the host key hash — to whoever opened the link.
+      const res = await invoke("getSplitStatus", { session_id: sessionId });
+      setSession(res.data?.session || null);
+    } catch {
+      setSession(null);
+    }
     setIsHost(false);
   }, [sessionId]);
 
@@ -95,7 +103,7 @@ export default function ReceiptDetail() {
    */
   const confirmMutation = useMutationOptimistic(
     async ({ participantId, action }) => {
-      const res = await base44.functions.invoke("confirmPayment", {
+      const res = await invoke("confirmPayment", {
         session_id: sessionId,
         participant_id: participantId,
         host_key: getHostKey(sessionId),

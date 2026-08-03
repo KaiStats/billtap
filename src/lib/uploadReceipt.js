@@ -92,8 +92,8 @@ function randomId() {
 }
 
 /**
- * Imported at call time rather than at the top of the file. src/lib/supabase.js
- * reads import.meta.env when it loads, which only exists in a bundle.
+ * Imported at call time rather than at the top of the file, so the auth client
+ * is not pulled into this page's first chunk to store a photograph.
  */
 async function defaultStorage() {
   const { supabase } = await import('./supabase.js');

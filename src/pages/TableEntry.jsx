@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, Camera, Users } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 
 const GOLD = "#f0b429";
 
@@ -26,7 +26,7 @@ export default function TableEntry() {
         // so a direct filter from an anonymous guest returns nothing — and this
         // returns only the four guest-visible fields rather than the operator's
         // alert email, phone and Stripe state.
-        const res = await base44.functions.invoke("getPublicRestaurant", { slug });
+        const res = await invoke("getPublicRestaurant", { slug });
         if (!alive) return;
         const found = res?.data?.restaurant;
         if (found) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 import { useNavigate } from "react-router-dom";
 import { Plus, Receipt, CheckCircle2, Clock, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,27 +69,25 @@ export default function Dashboard() {
   }, []);
 
   /**
-   * Two histories, because there are two kinds of user.
+   * One history, from the device.
    *
-   * A signed-in host gets theirs from Base44, which knows what they own. A
-   * guest has no account for it to key off, so theirs is the local index in
-   * src/lib/splitHistory.js — and this screen used to answer them by replacing
-   * the page with the landing page. The product's primary user could not see a
-   * single bill they had ever split.
+   * A signed-in operator used to get theirs from a Base44 entity list that knew
+   * what they owned. Nothing serves that now: there is no "my sessions"
+   * endpoint on the Worker, and adding one is a change to the data layer rather
+   * than to this screen. What is left is the local index in
+   * src/lib/splitHistory.js, which is what a guest has always used — this
+   * screen used to answer them by replacing the page with the landing page, so
+   * the product's primary user could not see a single bill they had ever split.
+   *
+   * The cost, stated plainly: an operator who split a bill on another device no
+   * longer sees it here. It is a real loss and it needs a Worker endpoint that
+   * lists sessions by owner to undo.
    *
    * The cached summary paints first so the list is there instantly, then the
    * most recent few are re-read from the server so the paid counts are real
    * rather than whatever was true when the tab last closed.
    */
   const fetchSessions = useCallback(async () => {
-    if (isAuthenticated) {
-      const data = await base44.entities.Session.list("-created_date", 20);
-      setSessions(data);
-      setLoading(false);
-      setTimeout(restoreScroll, 50);
-      return;
-    }
-
     const local = listSplits();
     setSessions(local.map((e) => ({
       id: e.id,
@@ -111,8 +109,8 @@ export default function Dashboard() {
       try {
         const hostKey = getHostKey(entry.id);
         const res = hostKey
-          ? await base44.functions.invoke("getSessionAsHost", { session_id: entry.id, host_key: hostKey })
-          : await base44.functions.invoke("getSplitStatus", { session_id: entry.id, participant_id: myId });
+          ? await invoke("getSessionAsHost", { session_id: entry.id, host_key: hostKey })
+          : await invoke("getSplitStatus", { session_id: entry.id, participant_id: myId });
         const session = res?.data?.session;
         if (!session) return null;
         rememberSplit({
@@ -130,21 +128,13 @@ export default function Dashboard() {
 
     const byId = new Map(fresh.filter(Boolean).map((s) => [s.id, s]));
     if (byId.size) setSessions((prev) => prev.map((s) => byId.get(s.id) || s));
-  }, [isAuthenticated, myId, restoreScroll]);
+  }, [myId, restoreScroll]);
 
   useEffect(() => { if (!isLoadingAuth) fetchSessions(); }, [fetchSessions, isLoadingAuth]);
 
-  useEffect(() => {
-    // Base44's realtime only ever delivered to a signed-in owner; a guest's
-    // list is refreshed on open and on pull-to-refresh instead.
-    if (!isAuthenticated) return undefined;
-    const unsub = base44.entities.Session.subscribe((event) => {
-      if (event.type === 'create')  setSessions(prev => [event.data, ...prev]);
-      if (event.type === 'update')  setSessions(prev => prev.map(s => s.id === event.id ? event.data : s));
-      if (event.type === 'delete')  setSessions(prev => prev.filter(s => s.id !== event.id));
-    });
-    return unsub;
-  }, [isAuthenticated]);
+  // There was a Session.subscribe() here. It was Base44 realtime, it only ever
+  // delivered to a signed-in owner, and the list is refreshed on open and on
+  // pull-to-refresh instead — which is what a guest has always had.
 
   /**
    * A host is owed money; a diner owes it. The old figures summed every
@@ -153,15 +143,22 @@ export default function Dashboard() {
    * the cards would have read $0.00 and $0.00 for exactly the person looking.
    */
   const { totalOwed, totalCollected } = useMemo(() => {
+    // Whether this device holds the host key, not whether anyone is signed in.
+    // Being signed in used to imply the whole row, because the list came from an
+    // owner-scoped entity read; it comes from getSessionAsHost or
+    // getSplitStatus now, and which of those answered is decided by the host
+    // key. A signed-in operator looking at a split they merely ate at gets the
+    // scoped view like everybody else, and summing it as though they owned it
+    // would show them somebody else's money.
     const mine = (s) => (s.participants || []).filter(p =>
-      isAuthenticated ? true : p.participant_id === myId);
+      s.__role === "host" ? true : p.participant_id === myId);
     return {
       totalOwed: sessions.reduce((sum, s) =>
         sum + mine(s).filter(p => p.payment_status !== "paid").reduce((a, p) => a + (p.amount_owed || 0), 0), 0),
       totalCollected: sessions.reduce((sum, s) =>
         sum + mine(s).filter(p => p.payment_status === "paid").reduce((a, p) => a + (p.paid_amount ?? p.amount_owed ?? 0), 0), 0),
     };
-  }, [sessions, isAuthenticated, myId]);
+  }, [sessions, myId]);
 
   const statCards = [
     { label: "Bills Split", value: sessions.length, icon: Receipt, color: "from-violet-500 to-purple-600" },
@@ -181,7 +178,7 @@ export default function Dashboard() {
               <div>
                 <h1 className="text-2xl font-black text-foreground tracking-tight">Your Bills</h1>
                 <p className="text-muted-foreground text-sm mt-0.5">
-                  {isAuthenticated ? "Your recent splits" : "Splits from this phone"}
+                  {"Splits from this phone"}
                 </p>
               </div>
               <button

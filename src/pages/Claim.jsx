@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as Sentry from "@sentry/react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 import { Check, Loader2, ExternalLink, Copy, Smartphone, Search, CheckCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,7 @@ export default function Claim() {
 
   useEffect(() => {
     if (!qrToken) return;
-    base44.functions.invoke("verifyQRToken", { qr_token: qrToken }).then(res => {
+    invoke("verifyQRToken", { qr_token: qrToken }).then(res => {
       if (res.data?.valid) {
         Sentry.addBreadcrumb({ category: 'qr', message: 'QR code scanned by participant', level: 'info' });
         setSessionId(res.data.session_id);
@@ -87,11 +87,20 @@ export default function Claim() {
     });
   }, [qrToken]);
 
+  /**
+   * The first read of the split, through the same function the live poll uses.
+   *
+   * This was a direct entity read, which handed the browser the raw row: every
+   * other diner's amount_owed, and the host key hash with it. getSplitStatus
+   * returns the scoped view instead — names, who has settled, your own share —
+   * so the opening read and every refresh afterwards now agree about what a
+   * diner is allowed to see, rather than the first one being more generous.
+   */
   const fetchSession = useCallback(async () => {
     if (!sessionId || !tokenVerified) return;
     try {
-      const data = await base44.entities.Session.filter({ id: sessionId });
-      const found = data[0];
+      const res = await invoke("getSplitStatus", { session_id: sessionId, participant_id: myId });
+      const found = res.data?.session;
       if (found) {
         setSession(found);
         const existing = (found.participants || []).find(p => p.participant_id === myId);
@@ -100,6 +109,14 @@ export default function Claim() {
         setLoadError("This split couldn't be found. It may have expired.");
       }
     } catch (err) {
+      // A split that is gone is not a connection problem, and telling someone
+      // to check their wifi when the bill has expired sends them to look in the
+      // wrong place. The entity read used to answer an empty list for this; the
+      // function answers 404.
+      if (err?.status === 404) {
+        setLoadError("This split couldn't be found. It may have expired.");
+        return;
+      }
       Sentry.captureException(err, { tags: { feature: 'claim_fetch' } });
       setLoadError("Couldn't load this split. Check your connection and try again.");
     } finally {
@@ -169,7 +186,7 @@ export default function Claim() {
   });
 
   const ensureJoined = async (name) => {
-    const res = await base44.functions.invoke("joinSession", {
+    const res = await invoke("joinSession", {
       session_id: sessionId,
       participant_id: myId,
       name: name || "Anonymous",
@@ -202,7 +219,7 @@ export default function Claim() {
 
   const claimMutation = useMutationOptimistic(
     async ({ optimisticItems, optimisticParticipants }) => {
-      const res = await base44.functions.invoke("joinSession", {
+      const res = await invoke("joinSession", {
         session_id: sessionId,
         participant_id: myId,
         name: nameInput.trim() || myName || "Anonymous",
@@ -284,7 +301,7 @@ export default function Claim() {
 
   const paidMutation = useMutationOptimistic(
     async () => {
-      const res = await base44.functions.invoke("markMePaid", {
+      const res = await invoke("markMePaid", {
         session_id: sessionId,
         participant_id: myId,
       });

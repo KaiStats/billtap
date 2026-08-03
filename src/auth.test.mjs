@@ -60,7 +60,10 @@ test('no guest screen gates on isAuthenticated', () => {
 });
 
 test('the token is attached when present and never required', () => {
-  const client = read('src/api/base44Client.js');
+  // src/api/base44Client.js, until the SDK it wrapped was deleted. Same
+  // function, same property: this is the one place a header could start being
+  // demanded of everybody.
+  const client = read('src/api/functions.js');
   // Attached...
   assert.match(client, /const token = await accessToken\(\)/);
   assert.match(client, /if \(token\) headers\.Authorization/);

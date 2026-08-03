@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
 import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/lib/landing-assets";
 
@@ -146,13 +145,16 @@ export default function Landing() {
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [waitlistStatus, setWaitlistStatus] = useState(null); // null | "loading" | "done" | "error"
 
-  const handleSplitNow = async () => {
-    const authed = await base44.auth.isAuthenticated();
-    if (authed) {
-      navigate("/new-receipt");
-    } else {
-      navigate("/register");
-    }
+  /**
+   * Straight to the split.
+   *
+   * This used to ask whether the visitor was signed in and send everyone else
+   * to /register. Nobody needs an account to split a bill — that is the product
+   * — so the check could only ever put a sign-up form between somebody and the
+   * thing they came to do, and it cost a round trip to do it.
+   */
+  const handleSplitNow = () => {
+    navigate("/new-receipt");
   };
 
   useEffect(() => {
@@ -177,24 +179,31 @@ export default function Landing() {
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * The waitlist capture, which currently has nowhere to put an email.
+   *
+   * It wrote a Waitlist row through the Base44 SDK and there is no endpoint on
+   * the Worker that accepts one — /api/restaurant-lead is for operators and
+   * requires a restaurant name, so it is not this. Since operators moved to
+   * Supabase there has been no Base44 session either, which means this has been
+   * failing for every visitor already; removing the SDK does not break it, it
+   * makes the breakage legible.
+   *
+   * Reporting the failure rather than showing "you're on the list" is the
+   * deliberate half. Silently accepting an address nothing records tells a real
+   * person they will hear from us when nobody will, and the error copy below
+   * gives them the phone number instead.
+   *
+   * To restore it: a POST /api/waitlist on the Worker, shaped like
+   * routes/restaurant-lead.js — honeypot, size cap, and the notification
+   * through lib/email.js. Not added here because a public email-sending
+   * endpoint is its own change with its own abuse surface, and this commit is
+   * meant to only remove things.
+   */
   const handleWaitlist = async () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(waitlistEmail.trim())) return;
-    setWaitlistStatus("loading");
-    try {
-      // Check for duplicate before inserting
-      const existing = await base44.entities.Waitlist.filter({ email: waitlistEmail.trim() });
-      if (existing && existing.length > 0) {
-        setWaitlistStatus("done"); // Treat as success silently (don't leak existence)
-        setWaitlistEmail("");
-        return;
-      }
-      await base44.entities.Waitlist.create({ email: waitlistEmail.trim(), app: "billtap", source: "landing_page", created_at: Date.now() });
-      setWaitlistStatus("done");
-      setWaitlistEmail("");
-    } catch {
-      setWaitlistStatus("error");
-    }
+    setWaitlistStatus("error");
   };
 
   const steps = [
@@ -677,8 +686,12 @@ export default function Landing() {
                     {waitlistStatus === "loading" ? "..." : "Join the Waitlist →"}
                   </button>
                 </div>
+                {/* "Try again" would be a lie — nothing is recording these yet,
+                    so a second attempt fails identically. */}
                 {waitlistStatus === "error" && (
-                  <p role="alert" className="text-xs mt-2" style={{ color: "#f87171" }}>Something went wrong. Please try again.</p>
+                  <p role="alert" className="text-xs mt-2" style={{ color: "#f87171" }}>
+                    We can&apos;t take waitlist signups right now. Email hello@billtap.app and we&apos;ll add you by hand.
+                  </p>
                 )}
                 <p className="text-xs mt-3" style={{ color: "#4a5068" }}>No spam. One email when Pro launches. Unsubscribe anytime.</p>
               </>

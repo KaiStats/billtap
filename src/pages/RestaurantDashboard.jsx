@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,34 +32,39 @@ export default function RestaurantDashboard() {
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
   const handledCheckout = useRef(null);
 
+  /**
+   * What the Worker can currently tell this screen, which is not all of it.
+   *
+   * The restaurant row itself used to come from an owner-scoped entity read.
+   * getRestaurantDashboardData returns the ratings, the contacts and the
+   * restaurant's id — it re-derives ownership from the signed-in user rather
+   * than accepting an id here, because GuestRating and GuestContact as open
+   * reads let anyone on the internet enumerate every restaurant's guest list —
+   * but it does not return the row's own fields.
+   *
+   * So the settings form below has nothing to populate and nothing to save
+   * against, and it says so rather than presenting empty inputs that discard
+   * what is typed into them. The gap closes with one endpoint returning the
+   * restaurant and one accepting a patch to it; both belong to the data layer
+   * and neither belongs in a commit whose job is to delete a vendor.
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const me = await base44.auth.me();
-      const owned = await base44.entities.Restaurant.filter({ owner_id: me.id });
-      const r = owned?.[0] || null;
-      setRestaurant(r);
-      if (r) {
-        setForm({
-          name: r.name || "",
-          google_review_url: r.google_review_url || "",
-          alert_email: r.alert_email || "",
-          alert_phone: r.alert_phone || "",
-          rating_threshold: r.rating_threshold ?? 3,
-        });
-        // Through the function: GuestRating.read and GuestContact.read are
-        // admin-only now, because as open rules they let anyone on the internet
-        // enumerate every restaurant's guest list. The function re-derives
-        // ownership from the signed-in user rather than accepting an id here.
-        const res = await base44.functions.invoke("getRestaurantDashboardData", {});
-        setRatings(res?.data?.ratings || []);
-        setContacts(res?.data?.contacts || []);
-      }
+      const res = await invoke("getRestaurantDashboardData", {});
+      const id = res?.data?.restaurant_id || null;
+      setRestaurant(id ? { id } : null);
+      setRatings(res?.data?.ratings || []);
+      setContacts(res?.data?.contacts || []);
     } catch {
       setRestaurant(null);
     }
     setLoading(false);
   }, []);
+
+  /** Set when a write has nowhere to go — see load(). */
+  const SETTINGS_UNAVAILABLE =
+    "Restaurant settings can't be edited from here yet. Email hello@billtap.app and we'll change it for you.";
 
   useEffect(() => { load(); }, [load]);
 
@@ -93,18 +98,11 @@ export default function RestaurantDashboard() {
         const data = await res.json();
         if (!alive) return;
 
+        // The plan is already active by the time this answers. /api/verify-checkout
+        // asks Stripe and writes the row itself now — this used to read "paid"
+        // and then write plan: "active" from the browser, which meant the client
+        // that could write the row did not really have to ask.
         if (data.paid && data.restaurant_id === restaurant.id) {
-          await base44.entities.Restaurant.update(restaurant.id, {
-            plan: "active",
-            stripe_subscription_id: data.subscription_id || "",
-            current_period_end: data.current_period_end || null,
-            // Where this customer is, for sales tax nexus. Economic nexus is
-            // measured per state, and the state was recorded nowhere in this
-            // system — so the customer list could not be broken down by state
-            // at all. Only written when Stripe actually returned one, so a
-            // partial read never blanks an address already on file.
-            ...(data.billing_address?.state ? { billing_address: data.billing_address } : {}),
-          });
           setBilling(null);
           await load();
         } else {
@@ -169,70 +167,26 @@ export default function RestaurantDashboard() {
     }
   }, [restaurant, trialDaysLeft]);
 
+  /**
+   * Both writes are refused rather than attempted.
+   *
+   * They wrote Restaurant rows straight from the browser through the Base44
+   * SDK. There is no endpoint on the Worker that creates or patches a
+   * restaurant, and inventing one here means deciding who may rename a
+   * restaurant, who may repoint its Google review URL, and what happens to the
+   * slug printed on its table tents — an ownership question, in the paid part
+   * of the product, which is not something to answer on the way past.
+   *
+   * Refusing in one line beats a form that appears to work: an operator who
+   * types a new alert email and sees "Saved" will stop watching for the alerts
+   * that never arrive.
+   */
   const createRestaurant = async () => {
-    const name = form.name.trim();
-    if (!name) { setFormError("Give the restaurant a name."); return; }
-    setCreating(true);
-    setFormError("");
-    try {
-      const me = await base44.auth.me();
-      const base = slugify(name) || "restaurant";
-      // Collision-safe: append a short suffix if the slug is taken.
-      //
-      // Via getPublicRestaurant rather than a direct filter. Restaurant.read is
-      // owner-scoped now, so an owner querying by slug can only ever see their
-      // own row — every other restaurant's slug would read as free, and the
-      // check would silently stop detecting collisions. Two restaurants sharing
-      // a slug means one of their table tents points at the other's listing.
-      let taken = false;
-      try {
-        const res = await base44.functions.invoke("getPublicRestaurant", { slug: base });
-        taken = Boolean(res?.data?.restaurant);
-      } catch {
-        // 404 is the expected "free" answer; anything else we treat as taken
-        // and suffix, since a collision is worse than an ugly slug.
-        taken = false;
-      }
-      const slug = taken ? `${base}-${Math.random().toString(36).slice(2, 6)}` : base;
-
-      await base44.entities.Restaurant.create({
-        name,
-        slug,
-        owner_id: me.id,
-        alert_email: form.alert_email.trim() || me.email,
-        rating_threshold: 3,
-        plan: "trial",
-        trial_ends_at: Date.now() + 14 * 24 * 60 * 60 * 1000,
-        created_at: Date.now(),
-      });
-      await load();
-    } catch {
-      setFormError("Couldn't create that. Try again in a moment.");
-    }
-    setCreating(false);
+    setFormError(SETTINGS_UNAVAILABLE);
   };
 
   const save = async () => {
-    if (form.alert_email && !EMAIL_RE.test(form.alert_email.trim())) {
-      setFormError("That alert email doesn't look right.");
-      return;
-    }
-    setSaving(true);
-    setFormError("");
-    try {
-      await base44.entities.Restaurant.update(restaurant.id, {
-        name: form.name.trim(),
-        google_review_url: form.google_review_url.trim(),
-        alert_email: form.alert_email.trim(),
-        alert_phone: form.alert_phone.trim(),
-        rating_threshold: Number(form.rating_threshold),
-      });
-      setSavedAt(Date.now());
-      await load();
-    } catch {
-      setFormError("Save failed. Try again.");
-    }
-    setSaving(false);
+    setFormError(SETTINGS_UNAVAILABLE);
   };
 
   const exportCsv = () => {

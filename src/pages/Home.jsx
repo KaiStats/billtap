@@ -1,5 +1,5 @@
-import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { listSplits } from '@/lib/splitHistory';
 import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
@@ -10,9 +10,27 @@ export default function Home() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  /**
+   * From the device rather than from the server.
+   *
+   * This was an owner-scoped entity list, which no longer has anything serving
+   * it: the Worker exposes a split by id, not a list by owner. The local index
+   * in src/lib/splitHistory.js is what a guest has always used and it holds
+   * everything this browser has taken part in — which for a single-device
+   * operator is the same set, and for one who moves between devices is less.
+   * Restoring the difference needs a list-by-owner endpoint.
+   */
   const { data: sessions = [], refetch } = useQuery({
     queryKey: ['sessions', 'home'],
-    queryFn: () => base44.entities.Session.list('-updated_date', 50),
+    queryFn: async () => listSplits().slice(0, 50).map((e) => ({
+      id: e.id,
+      title: e.title || 'Split',
+      total_amount: e.total,
+      status: e.status || 'claiming',
+      // The index stores a count; this screen renders "N people". An array of
+      // the right length is all it reads.
+      participants: Array.from({ length: e.participants || 0 }),
+    })),
   });
 
   const recentSessions = sessions.slice(0, 3);

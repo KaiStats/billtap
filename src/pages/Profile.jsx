@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
+import { listSplits } from "@/lib/splitHistory";
 import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,18 @@ export default function Profile() {
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState(null);
 
-  // Check for active sessions before showing logout confirm
+  /**
+   * Warn before signing out of a table that is still paying.
+   *
+   * Read from the local index rather than from an entity query on
+   * created_by_id. That query only ever found splits made while signed in, so
+   * it missed the case this warning exists for — an operator who started a
+   * split as a guest, from a table tent, whose row has no owner at all. The
+   * index knows which splits this device hosts because it is what holds the
+   * host keys.
+   */
   const handleLogoutClick = async () => {
-    const sessions = await base44.entities.Session.filter({ status: "claiming" });
-    const hosting = (sessions || []).filter(s => s.created_by_id === user?.id);
+    const hosting = listSplits().filter(s => s.role === "host" && s.status !== "completed");
     if (hosting.length > 0) {
       setActiveSessions(hosting);
       setActiveSessionWarning(true);
@@ -29,11 +38,17 @@ export default function Profile() {
     }
   };
 
-  const handleForceLogout = async () => {
-    // Mark all hosted active sessions as completed so guests see the right state
-    await Promise.all(
-      activeSessions.map(s => base44.entities.Session.update(s.id, { status: "completed" }))
-    );
+  /**
+   * Sign out, and leave the table alone.
+   *
+   * This used to mark every active hosted split completed on the way out. That
+   * ends the split for everyone still at the table — a diner mid-payment finds
+   * the bill closed — because somebody signed out on their own phone. Signing
+   * out is about this browser's session and nothing else; the host key stays in
+   * local storage for the same reason, so the split is still confirmable
+   * afterwards.
+   */
+  const handleForceLogout = () => {
     logout();
   };
 
@@ -45,8 +60,8 @@ export default function Profile() {
     if (confirmText !== "DELETE") return;
     setDeleting(true);
     try {
-      await base44.functions.invoke('deleteAccount', {});
-      base44.auth.logout();
+      await invoke('deleteAccount', {});
+      logout();
     } catch (error) {
       setFailure(error);
       setDeleting(false);
@@ -182,7 +197,7 @@ export default function Profile() {
               <div>
                 <div className="font-bold text-foreground">Active split in progress</div>
                 <div className="text-sm text-muted-foreground">
-                  You're hosting {activeSessions.length} active bill split{activeSessions.length > 1 ? 's' : ''}. Logging out will end the session for all participants.
+                  You&apos;re hosting {activeSessions.length} bill split{activeSessions.length > 1 ? 's' : ''} that {activeSessions.length > 1 ? 'are' : 'is'} still being paid. Signing out won&apos;t end {activeSessions.length > 1 ? 'them' : 'it'} — the split stays open and this phone can still confirm payments.
                 </div>
               </div>
             </div>

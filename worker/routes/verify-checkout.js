@@ -1,20 +1,26 @@
 /**
  * POST /api/verify-checkout
  *
- * Asks Stripe whether a Checkout session actually paid. The browser calls this
- * when it lands back on the dashboard, then writes the plan change through the
- * Base44 SDK as the signed-in owner.
+ * Asks Stripe whether a Checkout session actually paid, and records the answer.
  *
- * Whether the subscription is live is decided here, server-side against Stripe —
- * the client cannot talk its way into an active plan by lying about the session.
- * It can still write its own Restaurant row directly through the SDK, so this is
- * a correctness boundary rather than a hard security one; see RESTAURANTS_PAGE.md
- * on adding a webhook before this carries real revenue at scale.
+ * The browser used to do the recording: this route said yes or no, and the
+ * dashboard then wrote plan: "active" onto its own Restaurant row through the
+ * Base44 SDK. That made this a correctness boundary rather than a security one,
+ * because a client that could write the row directly did not have to ask.
+ *
+ * The SDK is gone, so the write moved here — where it should have been. Now
+ * both halves happen server-side and the only way to an active plan is a
+ * Stripe session that Stripe itself says was paid.
+ *
+ * Still not a webhook. A customer who closes the tab on the Stripe page before
+ * being redirected has paid and will not be marked active until they come back;
+ * see RESTAURANTS_PAGE.md before this carries real revenue at scale.
  *
  * Bindings: STRIPE_SECRET_KEY (required)
  */
 import { json, clean } from '../lib/email.js';
 import { audit, ACTIONS } from '../lib/audit.js';
+import { serviceRole } from '../lib/data.js';
 
 export async function onRequestPost({ request, env, ctx, requestId = null }) {
   let body;
@@ -50,8 +56,7 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     const paid = data.payment_status === 'paid' || data.status === 'complete';
     const sub = data.subscription && typeof data.subscription === 'object' ? data.subscription : null;
 
-    // The billing address, returned so the dashboard can store it on the
-    // Restaurant row.
+    // The billing address, stored on the Restaurant row below.
     //
     // Economic nexus is measured per state, and the state was captured nowhere
     // in this system — so "which states do we have nexus in" could not be
@@ -61,6 +66,39 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     // any of this app's business.
     const customer = data.customer && typeof data.customer === 'object' ? data.customer : null;
     const address = customer?.address || data.customer_details?.address || null;
+    const billingAddress = address
+      ? {
+          line1: address.line1 || '',
+          line2: address.line2 || '',
+          city: address.city || '',
+          state: (address.state || '').toUpperCase(),
+          postal_code: address.postal_code || '',
+          country: (address.country || 'US').toUpperCase(),
+        }
+      : null;
+
+    const restaurantId = data.client_reference_id || null;
+    const subscriptionId = sub?.id || (typeof data.subscription === 'string' ? data.subscription : null);
+    const currentPeriodEnd = sub?.current_period_end ? sub.current_period_end * 1000 : null;
+
+    // The plan change, written here rather than handed back for the browser to
+    // apply. Only on a paid session, and only when Stripe told us which
+    // restaurant it was for.
+    //
+    // A throw here reaches the catch below and answers "could not verify". The
+    // alternative — reporting ok while the row still says trial — leaves
+    // somebody who has been charged looking at a dashboard that says they have
+    // not paid, which is the outcome worth failing loudly for.
+    if (paid && restaurantId) {
+      await serviceRole(env).entity('Restaurant').update(restaurantId, {
+        plan: 'active',
+        stripe_subscription_id: subscriptionId || '',
+        current_period_end: currentPeriodEnd,
+        // Only written when Stripe actually returned one, so a partial read
+        // never blanks an address already on file.
+        ...(billingAddress?.state ? { billing_address: billingAddress } : {}),
+      });
+    }
 
     // A subscription changing state is a sensitive action by the same test as
     // the rest: if it went wrong, somebody's account of what happened would be
@@ -71,7 +109,7 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
       action: paid ? ACTIONS.BILLING_ACTIVATED : ACTIONS.BILLING_CHECKOUT,
       request,
       requestId,
-      restaurantId: data.client_reference_id || null,
+      restaurantId,
       outcome: paid ? 'ok' : 'failed',
       detail: { status: data.status || null, plan: 'pro' },
     });
@@ -79,19 +117,10 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     return json({
       ok: true,
       paid,
-      restaurant_id: data.client_reference_id || null,
-      subscription_id: sub?.id || (typeof data.subscription === 'string' ? data.subscription : null),
-      current_period_end: sub?.current_period_end ? sub.current_period_end * 1000 : null,
-      billing_address: address
-        ? {
-            line1: address.line1 || '',
-            line2: address.line2 || '',
-            city: address.city || '',
-            state: (address.state || '').toUpperCase(),
-            postal_code: address.postal_code || '',
-            country: (address.country || 'US').toUpperCase(),
-          }
-        : null,
+      restaurant_id: restaurantId,
+      subscription_id: subscriptionId,
+      current_period_end: currentPeriodEnd,
+      billing_address: billingAddress,
     });
   } catch (err) {
     console.error('verify-checkout: Stripe request threw', err?.message);

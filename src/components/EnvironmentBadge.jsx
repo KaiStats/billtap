@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ENVIRONMENT, IS_PRODUCTION, APP_ID } from "@/lib/environment";
+import { ENVIRONMENT, IS_PRODUCTION, DATABASE_REF } from "@/lib/environment";
 
 /**
  * A permanent, unmissable marker on anything that is not production.
@@ -12,9 +12,9 @@ import { ENVIRONMENT, IS_PRODUCTION, APP_ID } from "@/lib/environment";
  * has ever prevented that, and it costs production nothing — this renders null
  * there, so the bundle carries a few lines and no markup.
  *
- * Tapping it shows which Base44 app is behind the screen, because "am I on the
- * right database" is the actual question and an environment name is only a
- * proxy for it.
+ * Tapping it shows which Supabase project is behind the screen, because "am I
+ * on the right database" is the actual question and an environment name is only
+ * a proxy for it.
  */
 export default function EnvironmentBadge() {
   const [expanded, setExpanded] = useState(false);
@@ -29,7 +29,7 @@ export default function EnvironmentBadge() {
     <button
       type="button"
       onClick={() => setExpanded((v) => !v)}
-      aria-label={`${ENVIRONMENT} environment. This is not the live site. Tap for the app id.`}
+      aria-label={`${ENVIRONMENT} environment. This is not the live site. Tap for the database.`}
       style={{
         position: 'fixed',
         top: 0,
@@ -55,7 +55,7 @@ export default function EnvironmentBadge() {
       }}
     >
       {expanded
-        ? `${ENVIRONMENT} · app ${APP_ID || 'NOT SET'}`
+        ? `${ENVIRONMENT} · db ${DATABASE_REF || 'NOT SET'}`
         : `${ENVIRONMENT} — not live data`}
     </button>
   );

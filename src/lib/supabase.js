@@ -26,8 +26,14 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// `?? {}` so this module can be loaded outside a bundle. vite replaces
+// import.meta.env with a real object; node leaves it undefined, and reading a
+// property off that throws before any test can get to the thing it came to
+// check. Absent means unconfigured, which is a state this file already handles.
+const env = import.meta.env ?? {};
+
+const url = env.VITE_SUPABASE_URL;
+const anonKey = env.VITE_SUPABASE_ANON_KEY;
 
 /**
  * Whether sign-in is available at all.

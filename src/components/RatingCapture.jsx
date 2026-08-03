@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Star, Loader2, Check, ExternalLink } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,7 +31,7 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
         // Restaurant.read is owner-scoped now, so this goes through the public
         // projection — which is all this component ever needed anyway: the
         // name, the Google URL and the threshold.
-        const res = await base44.functions.invoke("getPublicRestaurant", { id: restaurantId });
+        const res = await invoke("getPublicRestaurant", { id: restaurantId });
         if (alive) setRestaurant(res?.data?.restaurant || null);
       } catch {
         if (alive) setRestaurant(null);
@@ -55,7 +55,7 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
       // Server-side: it derives restaurant_id from the stored session rather
       // than trusting this component, so a forged rating cannot be attributed
       // to a restaurant the guest was never at.
-      const res = await base44.functions.invoke("submitGuestRating", {
+      const res = await invoke("submitGuestRating", {
         action: "rate",
         session_id: sessionId,
         stars: value,
@@ -87,7 +87,7 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     if (text) body.comment = text;
     if (!ratingId || (!body.email && !body.comment)) return;
     try {
-      await base44.functions.invoke("submitGuestRating", {
+      await invoke("submitGuestRating", {
         action: "contact",
         rating_id: ratingId,
         ...body,

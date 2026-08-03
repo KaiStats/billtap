@@ -21,15 +21,12 @@ import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
-import { proxyToBase44 } from './routes/base44-proxy.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { rateLimit } from './lib/rate-limit.js';
 import { assertEnvironmentIsolated } from './lib/environment.js';
 import { errorResponse, requestId } from './lib/errors.js';
 
-const BASE44_PREFIX = '/api/apps/';
-
-/** Where the ported Base44 functions answer. */
+/** Where the app's own functions answer. */
 const FN_PREFIX = '/api/fn/';
 
 /** POST-only endpoints owned by this app. */
@@ -224,16 +221,16 @@ export default {
       if (limited) return limited;
     }
 
-    // Base44 data layer. The SDK is built with serverUrl: '', so entity, auth
-    // and function calls arrive same-origin under /api/apps/<appId>/...
-    if (path.startsWith(BASE44_PREFIX)) {
-      return proxyToBase44(request, env, path.slice(BASE44_PREFIX.length));
-    }
+    // There was a proxy here forwarding /api/apps/** to Base44, because the SDK
+    // was built with serverUrl: '' and issued every entity, auth and function
+    // call same-origin under that prefix. Nothing in the browser speaks to
+    // Base44 any more, so the prefix is gone and those paths 404 as JSON like
+    // any other unmatched /api/ path.
 
-    // The Base44 functions, running here. Base44 blocks backend functions on
-    // this app's plan, so every one of them answered "Functions are blocked"
-    // and no core operation worked. src/api/base44Client.js rewrites
-    // functions.invoke() to point here.
+    // The app's functions. These were Base44 backend functions until Base44
+    // blocked them on this app's plan, at which point every one of them
+    // answered "Functions are blocked" and no core operation worked.
+    // src/api/functions.js is what calls them.
     if (path.startsWith(FN_PREFIX)) {
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
       const name = path.slice(FN_PREFIX.length);

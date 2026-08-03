@@ -1355,9 +1355,10 @@ test('the password endpoints are rate limited too', async () => {
   }
 });
 
-test('rate limiting is not skipped by the Base44 proxy', async () => {
-  // The check used to sit below the proxy branch, which returns for every
-  // /api/apps/** path, so none of the auth endpoints were ever checked.
+test('rate limiting runs before anything can route past it', async () => {
+  // The check used to sit below the Base44 proxy branch, which returned for
+  // every /api/apps/** path, so none of the auth endpoints were ever checked.
+  // The proxy is gone; the ordering it exposed is the thing worth keeping.
   const worker = (await import('./index.js')).default;
   let proxied = false;
   const env = {
@@ -1379,7 +1380,13 @@ test('rate limiting is not skipped by the Base44 proxy', async () => {
   }
 });
 
-test('ordinary entity reads still pass through the proxy untouched', async () => {
+test('an entity read is answered by this Worker rather than forwarded anywhere', async () => {
+  // /api/apps/** used to be proxied to Base44 — that is the shape the SDK
+  // issued every entity, auth and function call in, and the browser has no SDK
+  // now. The path must 404 as JSON like any other unmatched /api/ route, and it
+  // must not reach the network on its way there: a proxy left in place after
+  // the client stopped using it is an open forwarder pointed at a vendor whose
+  // credentials this app still holds.
   const worker = (await import('./index.js')).default;
   let reached = null;
   const originalFetch = globalThis.fetch;
@@ -1387,10 +1394,11 @@ test('ordinary entity reads still pass through the proxy untouched', async () =>
   try {
     const res = await worker.fetch(
       new Request('https://billtap.app/api/apps/69a5abc/entities/Session'),
-      { ...WORKER_ENV, ASSETS: { fetch: async () => new Response('', { status: 404 }) }, API_RATE_LIMITER: { limit: async () => ({ success: false }) } },
+      { ...WORKER_ENV, ASSETS: { fetch: async () => new Response('', { status: 404 }) } },
     );
-    assert.equal(res.status, 200, 'reading a bill is not something to throttle');
-    assert.match(reached, /entities\/Session/);
+    assert.equal(res.status, 404);
+    assert.equal(res.headers.get('content-type'), 'application/json');
+    assert.equal(reached, null, 'nothing may be forwarded to Base44');
   } finally {
     globalThis.fetch = originalFetch;
   }

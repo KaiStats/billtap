@@ -5,7 +5,6 @@ import {
   ArrowRight, Check, X, Star, Bell, Mail, BarChart3, Smartphone,
   Zap, ThumbsUp, Cpu, Clock, Phone, Loader2,
 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import Seo from "@/components/Seo";
 import { art, artSrcSet, artSizes } from "@/lib/restaurant-assets";
 
@@ -169,26 +168,25 @@ export default function Restaurants() {
       source: "restaurants_page",
     };
 
+    // The alert is now the whole of the save.
+    //
+    // This used to write a RestaurantLead row from the browser and treat the
+    // email as a nicety on top. The row went to Base44 and there is nothing
+    // writing one now — so the notification is the lead, and it is checked
+    // rather than fired and forgotten. A lead that produces neither a row nor
+    // an email is a restaurant that filled in a form and never heard back.
     try {
-      // Save first — the lead is the thing that must not be lost.
-      await base44.entities.RestaurantLead.create({
-        restaurant_name, contact_name: payload.contact_name, email,
-        phone: payload.phone, locations: payload.locations,
-        plan_interest: "trial", source: payload.source, created_at: Date.now(),
+      const res = await fetch("/api/restaurant-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error(`restaurant-lead responded ${res.status}`);
     } catch {
       setErrorMsg("Couldn't save that. Call (702) 844-0938 and we'll set you up by hand.");
       setStatus("error");
       return;
     }
-
-    try {
-      await fetch("/api/restaurant-lead", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch { /* lead is saved */ }
 
     if (typeof window.fbq === "function") window.fbq("trackCustom", "RestaurantLead");
     if (typeof window.gtag === "function") window.gtag("event", "generate_lead", { value: 149, currency: "USD" });

@@ -50,7 +50,7 @@ const ADVICE = {
  *             retry: boolean, advice: string|null }}
  */
 export function describeError(error) {
-  // src/api/base44Client.js attaches the parsed body to `error.data` and the
+  // src/api/functions.js attaches the parsed body to `error.data` and the
   // status to `error.status`. Anything else is a network failure or a bug.
   const data = error?.data || {};
   const code = data.code || (error?.status ? 'http_error' : 'offline');

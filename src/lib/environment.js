@@ -26,5 +26,20 @@ export const ENVIRONMENT = ['production', 'staging', 'development'].includes(RAW
 
 export const IS_PRODUCTION = ENVIRONMENT === 'production';
 
-/** The Base44 app this build talks to. Shown in the badge, so it is checkable at a glance. */
-export const APP_ID = (import.meta.env.VITE_BASE44_APP_ID || '').trim();
+/**
+ * Which database this build talks to, in a form a person can read at a glance.
+ *
+ * This was the Base44 app id. It is the Supabase project ref now — the
+ * subdomain of VITE_SUPABASE_URL — because that is what the question "am I
+ * about to confirm a payment on real data" actually turns on. Just the ref, not
+ * the URL: it goes on a badge and into a Sentry tag, and neither needs the rest.
+ */
+export const DATABASE_REF = (() => {
+  const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  if (!url) return '';
+  try {
+    return new URL(url).hostname.split('.')[0];
+  } catch {
+    return '';
+  }
+})();

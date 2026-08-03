@@ -16,9 +16,11 @@ export async function registerServiceWorker() {
     }
   }
 
-  // Skip registration in all preview/dev/base44 environments
+  // Skip registration on anything that is not a real deployment. A service
+  // worker caches aggressively and outlives the tab, so one registered against
+  // a dev server keeps serving stale bundles long after it is shut down.
   const hostname = window.location.hostname;
-  const isPreview = hostname.includes('base44.app') || hostname === 'localhost' || hostname === '127.0.0.1';
+  const isPreview = hostname === 'localhost' || hostname === '127.0.0.1';
   if (import.meta.env.DEV || isPreview) {
     return;
   }

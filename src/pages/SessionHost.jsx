@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { invoke } from "@/api/functions";
 import { useNavigate } from "react-router-dom";
 import { getHostKey } from "@/lib/hostKey";
 import { useLiveSplit } from "@/hooks/useLiveSplit";
@@ -49,7 +49,7 @@ function SessionHostComponent() {
   // Generate a fresh signed QR token (refreshes every 25 min)
   const refreshQrToken = useCallback(async () => {
     if (!sessionId) return;
-    const res = await base44.functions.invoke("generateQRSignature", {
+    const res = await invoke("generateQRSignature", {
       session_id: sessionId,
       host_key: getHostKey(sessionId),
     });
@@ -72,17 +72,22 @@ function SessionHostComponent() {
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await base44.functions.invoke("getSessionAsHost", {
+      const res = await invoke("getSessionAsHost", {
         session_id: sessionId,
         host_key: getHostKey(sessionId),
       });
       if (res.data?.session) { setSession(res.data.session); return; }
     } catch {
-      // Not the host, or the key is gone. Fall through to the ordinary read,
-      // which Base44 answers for an owner and refuses for anyone else.
+      // Not the host, or the key is gone. Fall through to the scoped read that
+      // anyone holding the link may make.
     }
-    const data = await base44.entities.Session.filter({ id: sessionId });
-    if (data[0]) setSession(data[0]);
+    try {
+      const res = await invoke("getSplitStatus", { session_id: sessionId });
+      if (res.data?.session) setSession(res.data.session);
+    } catch {
+      // Nothing to show, and nothing useful to say about it here — the host
+      // screen already renders its own empty state.
+    }
   }, [sessionId]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
@@ -156,7 +161,7 @@ function SessionHostComponent() {
   };
 
   const saveSettings = (changes) =>
-    base44.functions.invoke("updateSplitSettings", {
+    invoke("updateSplitSettings", {
       session_id: sessionId,
       host_key: getHostKey(sessionId),
       ...changes,
