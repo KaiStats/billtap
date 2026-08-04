@@ -15,9 +15,10 @@
     "build:ci": "node scripts/check-env.mjs && vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy",
-    "test:ui": "node --test --test-concurrency=2 scripts/ui.browser.mjs",
+    "test:ui": "npm run build:test && node --test --test-concurrency=2 scripts/ui.browser.mjs",
     "check:env": "node scripts/check-env.mjs",
-    "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs"
+    "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
+    "build:test": "node scripts/build-for-tests.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

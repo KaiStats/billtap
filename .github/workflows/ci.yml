@@ -78,5 +78,10 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # Builds its own bundle with fixed configuration — see
+      # scripts/build-for-tests.mjs. It used to run against whatever dist/ the
+      # previous step left, built from whatever .env.local existed, which is why
+      # this suite passed on a laptop and failed here on the same commit for
+      # days running.
       - name: Browser tests
         run: npm run test:ui
