@@ -22,6 +22,7 @@ import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
+import { scheduled as applyRetention } from './routes/retention.js';
 import { rateLimit } from './lib/rate-limit.js';
 import { assertEnvironmentIsolated } from './lib/environment.js';
 import { errorResponse, requestId } from './lib/errors.js';
@@ -194,6 +195,37 @@ export default {
    */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(nightlyBackup(env));
+
+    /**
+     * The retention schedule in src/pages/Privacy.jsx, applied.
+     *
+     * Separately waitUntil'd rather than chained onto the backup, because the
+     * two have opposite failure postures and must not share one. The backup
+     * throws when it cannot do its job — a backup that reports success and
+     * stores nothing is the thing it is designed against — and chaining would
+     * mean a missing R2 binding silently stops guest names being removed.
+     *
+     * Order still matters within the night: the backup runs first, so a
+     * restore taken from it holds the data as it was before redaction rather
+     * than after. Both start here; nothing depends on which finishes.
+     */
+    ctx.waitUntil(
+      applyRetention(env)
+        .then((summary) => {
+          console.log(JSON.stringify({ at: new Date().toISOString(), job: 'retention', ...summary }));
+        })
+        .catch((error) => {
+          // Logged, never rethrown. An exception out of a scheduled handler
+          // fails the whole invocation, and taking the backup down with it is
+          // the one outcome worse than a night of unredacted names.
+          console.error(JSON.stringify({
+            at: new Date().toISOString(),
+            job: 'retention',
+            level: 'error',
+            message: error?.message || String(error),
+          }));
+        }),
+    );
   },
 
   /**

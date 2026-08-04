@@ -17,6 +17,7 @@ import { rememberSplit } from "@/lib/splitHistory";
 import { startScanTimer } from "@/lib/scanTiming";
 import ErrorNotice from "@/components/ErrorNotice";
 import { validateReceiptParse, parseConfidence } from "../../shared/receipt-math";
+import { sessionPath } from '@/lib/sessionLinks';
 
 const RESTAURANT_SUGGESTIONS = [
   "McDonald's", "Chipotle", "Chick-fil-A", "Cheesecake Factory",
@@ -290,7 +291,7 @@ export default function NewReceipt() {
    * only possible answer was no.
    */
   const afterCreate = (sessionId) => {
-    navigate(`/session-host?id=${sessionId}`);
+    navigate(sessionPath('/session-host', sessionId));
   };
 
   const handleCreateSession = async () => {

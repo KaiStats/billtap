@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import CustomSplitConfig from "@/components/CustomSplitConfig";
+import { sessionPath, claimUrl as sessionClaimUrl } from '@/lib/sessionLinks';
 
 function SessionHostComponent() {
   const navigate = useNavigate();
@@ -65,9 +66,12 @@ function SessionHostComponent() {
     }
   }, [sessionId]);
 
+  // Both encoded. The token is already base64url from b64url() in the Worker,
+  // but a link builder that encodes one parameter and not the other is a link
+  // builder somebody will extend wrongly. See src/lib/sessionLinks.js.
   const claimUrl = qrToken
-    ? `${window.location.origin}/claim?token=${qrToken}`
-    : `${window.location.origin}/claim?id=${sessionId}`;
+    ? `${window.location.origin}/claim?${new URLSearchParams({ token: qrToken })}`
+    : sessionClaimUrl(window.location.origin, sessionId);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -172,7 +176,7 @@ function SessionHostComponent() {
     // To the claim screen, because the host is at the table eating too. From
     // there they can reach the who-has-paid screen. It used to go straight to
     // /receipt-detail with ?host=1, a flag that meant nothing to the server.
-    navigate(`/claim?id=${sessionId}`);
+    navigate(sessionPath('/claim', sessionId));
   };
 
   const savePaymentInfo = async () => {

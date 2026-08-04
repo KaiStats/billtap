@@ -310,3 +310,34 @@ test('a rejected identity check is rejected on its status, not on its body', asy
     assert.equal(await currentUser(ENV, req('Bearer forged')), null);
   } finally { s.restore(); }
 });
+
+// ── The backup covers what the database holds ───────────────────────────────
+//
+// AuditLog was in neither TABLES nor the backup's ENTITIES, and the backup's
+// own header said "all eight entities" while listing seven. Nothing compared
+// the two lists, so the append-only record of who confirmed which payment — the
+// table a payment dispute is settled from — had no copy of it anywhere.
+//
+// These compare them in both directions, because either drift is a real bug: a
+// table nobody backs up, or a backup asking for an entity the data layer cannot
+// resolve, which throws at 9am and takes the night's snapshot with it.
+
+test('every entity the nightly backup asks for is one the data layer knows', async () => {
+  const { ENTITIES } = await import('./routes/nightly-backup.js');
+  for (const name of ENTITIES) {
+    assert.ok(
+      Object.hasOwn(TABLES, name),
+      `nightly-backup lists "${name}" but TABLES in db.js cannot resolve it`,
+    );
+  }
+});
+
+test('every table the data layer knows about is backed up', async () => {
+  const { ENTITIES } = await import('./routes/nightly-backup.js');
+  for (const name of Object.keys(TABLES)) {
+    assert.ok(
+      ENTITIES.includes(name),
+      `TABLES has "${name}" and the nightly backup does not copy it`,
+    );
+  }
+});

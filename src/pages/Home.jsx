@@ -5,6 +5,7 @@ import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
 import { useNavigate } from 'react-router-dom';
+import { sessionPath } from '@/lib/sessionLinks';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -118,7 +119,7 @@ export default function Home() {
                 return (
                   <button
                     key={session.id}
-                    onClick={() => navigate(`/receipt-detail?id=${session.id}&host=1`)}
+                    onClick={() => navigate(sessionPath('/receipt-detail', session.id, { host: 1 }))}
                     className="w-full rounded-2xl p-4 text-left flex items-center justify-between transition-all group"
                     style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
                     onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.15)'}

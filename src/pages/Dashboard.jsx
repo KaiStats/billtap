@@ -9,6 +9,7 @@ import ListLayout from "@/components/ListLayout";
 import { listSplits, rememberSplit } from "@/lib/splitHistory";
 import { getHostKey } from "@/lib/hostKey";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
+import { sessionPath } from '@/lib/sessionLinks';
 
 const statusConfig = {
   waiting:   { label: "Waiting",     cls: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
@@ -238,8 +239,8 @@ export default function Dashboard() {
                     session={session}
                     onClick={() => navigate(
                       getHostKey(session.id)
-                        ? `/receipt-detail?id=${session.id}`
-                        : `/claim?id=${session.id}`,
+                        ? sessionPath('/receipt-detail', session.id)
+                        : sessionPath('/claim', session.id),
                     )}
                   />
                 ))}

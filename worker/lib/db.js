@@ -42,6 +42,17 @@ const TABLES = {
   RestaurantLead: 'restaurant_leads',
   Waitlist: 'waitlist',
   Receipt: 'receipts',
+  /**
+   * Readable, and only readable.
+   *
+   * Migration 0002 revokes update, delete and truncate from service_role and
+   * grants it insert and select, with a trigger enforcing the same thing at the
+   * row level. So this entry cannot be used to rewrite history; it exists
+   * because the nightly backup could not see the table at all, which meant the
+   * append-only record of who confirmed which payment was the one thing in the
+   * database with no copy of it anywhere.
+   */
+  AuditLog: 'audit_log',
 };
 
 export class DbError extends Error {
@@ -127,15 +138,35 @@ function entityApi(env, authHeaders, apikey) {
       /**
        * Rows matching every key in `query`. Returns an array, as base44.js did,
        * so ported code reads the same and a reviewer can diff the two.
+       *
+       * A plain value means equality. An object value is one or more PostgREST
+       * operators — `{ created_date: { gte: iso } }`, `{ redacted_at: { is:
+       * 'null' } }` — which is what lets a caller narrow in the database
+       * instead of reading everything and filtering in the Worker.
+       *
+       * `options.limit` and `options.select` exist for the same reason. Both
+       * are optional and both are absent from base44.js, so a caller that uses
+       * them must still be correct when they are ignored — see the comment on
+       * the guest-split count in createSession.
+       *
+       * Values are sent as query parameters, not interpolated into SQL.
+       * PostgREST parses them, so there is no injection surface here; keep it
+       * that way if this ever grows an or/like clause.
        */
-      async filter(query = {}) {
-        const params = new URLSearchParams({ select: '*' });
+      async filter(query = {}, { select = '*', limit, order: orderSpec } = {}) {
+        const params = new URLSearchParams({ select });
         for (const [column, value] of Object.entries(query)) {
-          // eq. is exact match. Values are sent as parameters, not interpolated
-          // into SQL — PostgREST parses them, so there is no injection surface
-          // here, but keep it that way if this ever grows an or/like clause.
-          params.append(column, `eq.${value}`);
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            for (const [op, operand] of Object.entries(value)) {
+              params.append(column, `${op}.${operand}`);
+            }
+          } else {
+            params.append(column, `eq.${value}`);
+          }
         }
+        const ordering = order(orderSpec);
+        if (ordering) params.set('order', ordering);
+        if (limit) params.set('limit', String(limit));
         const rows = await call({ path: `/${from}?${params}` });
         return Array.isArray(rows) ? rows : [];
       },
@@ -212,14 +243,77 @@ function entityApi(env, authHeaders, apikey) {
  */
 export const CONDITIONAL_WRITES = true;
 
+/**
+ * Whether filter() here understands `{ column: { gte: value } }`, `limit` and
+ * `select`.
+ *
+ * Same contract as CONDITIONAL_WRITES: a caller checks it and keeps a path that
+ * is correct without it, because base44.js answers false and throws rather than
+ * quietly returning the wrong rows.
+ */
+export const QUERY_OPERATORS = true;
+
 /** Acts as the app. Bypasses row level security — see the header before using. */
 export function serviceRole(env) {
   const key = env?.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
   return {
     conditionalWrites: CONDITIONAL_WRITES,
+    queryOperators: QUERY_OPERATORS,
     entity: entityApi(env, { Authorization: `Bearer ${key}` }, key),
   };
+}
+
+/**
+ * Delete one object from a storage bucket.
+ *
+ * Here rather than in the retention job because it needs supabaseUrl() and the
+ * service role key, and because the storage API is a different path prefix from
+ * the REST one — /storage/v1/object/<bucket>/<key>, not /rest/v1.
+ *
+ * A 404 counts as success. The job runs nightly and retries whatever it did not
+ * finish, so an object already gone is the expected outcome of a previous run
+ * that deleted it and then failed before it could record that it had.
+ */
+export async function deleteObject(env, bucket, key) {
+  const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+
+  const res = await fetch(
+    `${supabaseUrl(env)}/storage/v1/object/${encodeURIComponent(bucket)}/${key
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+    },
+  );
+
+  if (res.ok || res.status === 404) return true;
+  throw new DbError(res.status, await res.text());
+}
+
+/**
+ * The object key inside `bucket` for a public storage URL, or null.
+ *
+ * Returns null rather than guessing for anything that is not a URL into this
+ * project's bucket. Sessions migrated from Base44 carry image_url values
+ * pointing at Base44's storage, and the retention job must not attempt to
+ * delete those against Supabase and count the 404 as a job well done.
+ */
+export function storageKeyFromUrl(url, bucket) {
+  if (typeof url !== 'string' || !url) return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const at = url.indexOf(marker);
+  if (at === -1) return null;
+  const key = url.slice(at + marker.length).split('?')[0];
+  if (!key) return null;
+  try {
+    return decodeURIComponent(key);
+  } catch {
+    return null;
+  }
 }
 
 /**

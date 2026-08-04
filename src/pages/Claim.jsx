@@ -13,6 +13,7 @@ import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { rememberSplit } from "@/lib/splitHistory";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
+import { sessionPath } from '@/lib/sessionLinks';
 
 // Haptic feedback helper
 const haptic = (pattern) => {
@@ -837,7 +838,7 @@ export default function Claim() {
               all. */}
           {isHostOf(sessionId) && (
             <button
-              onClick={() => navigate(`/receipt-detail?id=${sessionId}`)}
+              onClick={() => navigate(sessionPath('/receipt-detail', sessionId))}
               className="w-full h-12 rounded-2xl font-semibold text-sm bg-white/[0.06] border border-white/12 text-foreground active:scale-[0.99] transition-all"
             >
               Who&apos;s paid? →

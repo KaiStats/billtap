@@ -30,8 +30,21 @@ import { serviceRole, backendName } from '../lib/data.js';
 import { appId } from '../lib/base44.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
-/** Everything worth restoring. Session and Receipt were the original two. */
-const ENTITIES = [
+/**
+ * Everything worth restoring. Session and Receipt were the original two.
+ *
+ * AuditLog was missing, and the header above claimed eight entities while this
+ * listed seven — which is how it went unnoticed. It is the append-only record
+ * of who confirmed which payment, it is the thing a payment dispute is settled
+ * from, and it was the one table in the database with no copy of it anywhere.
+ *
+ * It matters more now than it did. worker/routes/retention.js removes guest
+ * names and claim lists from a split thirty days on, so for anything older than
+ * that the audit log is not a second record of what happened — it is the only
+ * one. Backing up the sessions and not the log would mean restoring a month-old
+ * bill with no way left to say who paid it.
+ */
+export const ENTITIES = [
   'Session',
   'Receipt',
   'Restaurant',
@@ -39,7 +52,19 @@ const ENTITIES = [
   'GuestContact',
   'RestaurantLead',
   'Waitlist',
+  'AuditLog',
 ];
+
+/**
+ * How to page each entity.
+ *
+ * Everything here carries created_date except audit_log, which timestamps its
+ * rows in `at` — so ordering it by created_date asks Postgres for a column that
+ * does not exist and fails the entity outright. A backup that drops a table
+ * because of a column name is exactly the quiet kind of failure this file was
+ * rewritten to stop.
+ */
+const SORT_COLUMN = { AuditLog: '-at' };
 
 /** Base44's list() default. Anything larger has to be walked. */
 const PAGE = 200;
@@ -54,9 +79,10 @@ const MAX_PAGES = 200;
  */
 async function fetchAll(svc, name) {
   const entity = svc.entity(name);
+  const sort = SORT_COLUMN[name] || '-created_date';
   const all = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const rows = await entity.list('-created_date', PAGE, page * PAGE);
+    const rows = await entity.list(sort, PAGE, page * PAGE);
     if (!rows.length) break;
     all.push(...rows);
     if (rows.length < PAGE) break;

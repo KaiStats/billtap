@@ -130,7 +130,21 @@ function entityApi(env, authHeaders) {
         }
       }
       const qs = new URLSearchParams();
-      for (const [k, v] of Object.entries(query)) qs.set(k, String(v));
+      for (const [k, v] of Object.entries(query)) {
+        // db.js accepts `{ column: { gte: value } }` to narrow in the database.
+        // There is no equivalent here, and String({}) is "[object Object]" —
+        // which Base44 would answer with every row that matches nothing, i.e.
+        // an empty result that looks like a legitimate answer. Refuse instead:
+        // a caller reaching for an operator has to have a fallback that is
+        // correct without it, and a silent empty set is not that.
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          throw new Error(
+            `base44 filter cannot express an operator on "${k}". ` +
+            'Narrow in code after the read, or require DATA_BACKEND=supabase.',
+          );
+        }
+        qs.set(k, String(v));
+      }
       const rows = await call({ path: `/entities/${name}?${qs}` });
       return Array.isArray(rows) ? rows : [];
     },
@@ -172,12 +186,16 @@ function entityApi(env, authHeaders) {
 /** See the note on update() above: a PUT here cannot be made conditional. */
 export const CONDITIONAL_WRITES = false;
 
+/** See the note in filter() above: an operator here has no representation. */
+export const QUERY_OPERATORS = false;
+
 /** Acts as the app. Bypasses RLS — see the header note before using. */
 export function serviceRole(env) {
   const key = env.BASE44_MASTER_KEY;
   if (!key) throw new Error('BASE44_MASTER_KEY is not configured');
   return {
     conditionalWrites: CONDITIONAL_WRITES,
+    queryOperators: QUERY_OPERATORS,
     entity: entityApi(env, { Authorization: `Bearer ${key}` }),
   };
 }

@@ -770,12 +770,42 @@ const HANDLERS = {
       console.error('createSession: restaurant lookup failed', e?.message);
     }
 
-    // Guests are rate-limited per restaurant rather than per account. Skipping
-    // it would leave an unauthenticated endpoint minting rows without bound.
+    /**
+     * Guests are rate-limited per restaurant rather than per account. Skipping
+     * it would leave an unauthenticated endpoint minting rows without bound.
+     *
+     * ── This read had no bound of its own ─────────────────────────────────
+     *
+     * It asked for every session the restaurant had ever had — `select=*`, no
+     * limit, no time predicate — and then counted the last hour in JavaScript.
+     * On the guest critical path, on an endpoint that takes no credentials, on
+     * a table whose rows carry the whole items and participants arrays.
+     *
+     * A restaurant doing forty splits a night crosses ten thousand rows inside
+     * a year, and every one of them was pulled across the wire and parsed into
+     * a 128 MB isolate to answer a question about the previous sixty minutes.
+     * The index for exactly this query — sessions (restaurant_id, created_date
+     * desc) — has been in 0001 the whole time and nothing was using it.
+     *
+     * The count is what matters, so ask for the count: the hour as a predicate,
+     * two columns instead of forty, and one more row than the threshold so a
+     * busy restaurant reads 101 rows rather than its entire history.
+     *
+     * The JavaScript window filter stays. It is not redundant — base44.js
+     * cannot express an operator and answers `queryOperators: false`, so on
+     * that backend this still reads everything and the filter below is what
+     * makes the answer correct. It costs one pass over at most 101 rows when
+     * the database has already done the narrowing.
+     */
     if (!user && restaurantId) {
       try {
         const since = Date.now() - 60 * 60 * 1000;
-        const recent = await svc.entity('Session').filter({ restaurant_id: restaurantId });
+        const recent = svc.queryOperators
+          ? await svc.entity('Session').filter(
+              { restaurant_id: restaurantId, created_date: { gte: new Date(since).toISOString() } },
+              { select: 'id,created_date', limit: 101 },
+            )
+          : await svc.entity('Session').filter({ restaurant_id: restaurantId });
         const inWindow = recent.filter((s) => {
           const t = new Date(s.created_date).getTime();
           return !Number.isNaN(t) && t >= since;

@@ -10,6 +10,7 @@ import ReceiptDetailSkeleton from "@/components/ReceiptDetailSkeleton";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { getHostKey } from "@/lib/hostKey";
 import { useLiveSplit } from "@/hooks/useLiveSplit";
+import { sessionPath } from '@/lib/sessionLinks';
 
 /**
  * What each state means to a person, rather than what it is called in the
@@ -172,7 +173,7 @@ export default function ReceiptDetail() {
 
   const rightAction = isHost ? (
     <button
-      onClick={() => navigate(`/session-host?id=${sessionId}`)}
+      onClick={() => navigate(sessionPath('/session-host', sessionId))}
       className="w-11 h-11 flex items-center justify-center rounded-xl text-brand active:bg-brand-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       aria-label="Show QR code"
     >
