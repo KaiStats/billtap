@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
-import { supabase, authConfigured } from '@/lib/supabase';
+import { getSupabase, authConfigured, authPending } from '@/lib/supabase';
 
 /**
  * Who is signed in, if anyone.
@@ -80,40 +80,58 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!authConfigured) {
-      // No sign-in available. Guests are unaffected, which is the point — a
-      // missing key must not take the product down for people who never needed
-      // an account.
+    // The common case, and it costs one localStorage read: no stored session
+    // and no sign-in callback in the URL means nobody here has an account, so
+    // the 56 KB auth client is never fetched. See authPending() for why the URL
+    // half is not optional.
+    //
+    // !authConfigured lands here too — no sign-in available at all. Guests are
+    // unaffected either way, which is the point: a missing key must not take
+    // the product down for people who never needed an account.
+    if (!authConfigured || !authPending()) {
       setIsLoadingAuth(false);
       return undefined;
     }
 
     let cancelled = false;
+    let unsubscribe = null;
 
-    supabase.auth.getSession()
-      .then(({ data }) => {
-        if (!cancelled) applySession(data?.session);
+    getSupabase()
+      .then(async (client) => {
+        if (!client) {
+          if (!cancelled) setIsLoadingAuth(false);
+          return;
+        }
+
+        // Fires on sign-in, sign-out and every token refresh, including in
+        // another tab. Subscribed before the first read so a session arriving
+        // from a magic link in the URL — which supabase-js resolves
+        // asynchronously — is not missed between the two calls.
+        const { data } = client.auth.onAuthStateChange((_event, session) => {
+          if (cancelled) return;
+          applySession(session);
+          setIsLoadingAuth(false);
+        });
+        unsubscribe = () => data?.subscription?.unsubscribe();
+
+        const { data: current } = await client.auth.getSession();
+        if (!cancelled) {
+          applySession(current?.session);
+          setIsLoadingAuth(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) applySession(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingAuth(false);
+        if (!cancelled) {
+          applySession(null);
+          setIsLoadingAuth(false);
+        }
       });
-
-    // Fires on sign-in, sign-out and every token refresh, including in another
-    // tab. Without it, an operator who signs out in one tab stays "signed in"
-    // in the others until they reload.
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      applySession(session);
-      setIsLoadingAuth(false);
-    });
 
     return () => {
       cancelled = true;
-      // Unsubscribed on unmount, or the listener outlives the tree and fires
-      // setState against unmounted components on every token refresh.
-      subscription?.subscription?.unsubscribe();
+      // Or the listener outlives the tree and fires setState against unmounted
+      // components on every token refresh.
+      unsubscribe?.();
     };
   }, []);
 
@@ -124,7 +142,8 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     clearBillTapStorage();
     try {
-      if (supabase) await supabase.auth.signOut();
+      const client = await getSupabase();
+      if (client) await client.auth.signOut();
     } catch {
       // Already signed out server-side, or offline. Either way the local
       // session is gone, which is what was asked for.
@@ -143,7 +162,9 @@ export const AuthProvider = ({ children }) => {
   /** Kept for the callers that re-check after an action. */
   const checkAppState = async () => {
     if (!authConfigured) return;
-    const { data } = await supabase.auth.getSession();
+    const client = await getSupabase();
+    if (!client) return;
+    const { data } = await client.auth.getSession();
     applySession(data?.session);
   };
 

@@ -146,5 +146,35 @@ test('a build with no auth configured still serves the guest product', () => {
   // a restaurant its ability to split bills.
   const client = read('src/lib/supabase.js');
   assert.match(client, /export const authConfigured/);
-  assert.match(client, /authConfigured\s*\n?\s*\?\s*createClient/, 'the client must not be constructed unconditionally');
+  // getSupabase resolves to null rather than throwing when unconfigured. It is
+  // a dynamic import now — supabase-js is 56 KB gzipped and was in the entry
+  // chunk, so every diner downloaded the whole auth library before first paint
+  // to discover they are not signed in.
+  assert.match(client, /if \(!authConfigured\) return Promise\.resolve\(null\)/);
 });
+
+test('the auth client is fetched on demand, not on every page load', () => {
+  const client = read('src/lib/supabase.js');
+  assert.match(client, /import\('@supabase\/supabase-js'\)/, 'must be a dynamic import');
+  assert.ok(
+    !/^import .*from '@supabase\/supabase-js'/m.test(client),
+    'a static import puts 56 KB of auth client in the entry chunk, on the critical path of people who will never sign in',
+  );
+});
+
+test('asking for a token costs nothing when there is obviously no session', () => {
+  // accessToken() runs before every Worker call. Without the guard, the first
+  // split anyone created would pull down the auth client just to learn they are
+  // not signed in.
+  const client = read('src/lib/supabase.js');
+  const body = client.slice(client.indexOf('export async function accessToken'));
+  assert.match(body, /if \(!authPending\(\)\) return null/);
+});
+
+// The other half — that a sign-in link arriving in the URL still loads the
+// client — is asserted in scripts/ui.browser.mjs, against a real browser.
+//
+// It was a source grep here first, and a mutation test showed it was worthless:
+// blanking the URL check entirely still passed, because the words it looked for
+// also appear in the comment above the code. Reading a real navigation cannot
+// be fooled that way.

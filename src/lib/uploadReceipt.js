@@ -96,6 +96,7 @@ function randomId() {
  * is not pulled into this page's first chunk to store a photograph.
  */
 async function defaultStorage() {
-  const { supabase } = await import('./supabase.js');
-  return supabase?.storage ?? null;
+  const { getSupabase } = await import('./supabase.js');
+  const client = await getSupabase();
+  return client?.storage ?? null;
 }

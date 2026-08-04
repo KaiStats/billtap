@@ -39,8 +39,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Unit only. `npm test` now runs the browser suite too, and Chromium is
+      # not installed until further down — running it here would fail for a
+      # reason that has nothing to do with the code.
       - name: Test
-        run: npm test
+        run: npm run test:unit
 
       # The build has caught real breakage that lint and tests do not: a bad
       # import, a syntax error in a page that no test imports.
@@ -64,9 +67,14 @@ jobs:
       # screen is the total sent to the server, that nothing spills off a 390px
       # phone, that the receipt is readable rather than near-black on black.
       #
-      # It needs Chromium, which is why it is not in `npm test`. Installed here
-      # rather than in the fast path so a developer running the unit suite pays
-      # nothing for it.
+      # It needs Chromium, which is why it is installed here rather than assumed.
+      #
+      # It used to be excluded from `npm test` so the fast path stayed fast. That
+      # cost more than it saved: fifteen browser tests broke across two commits
+      # and nothing local said so, because `npm test` reported 422 passing and
+      # the suite that would have caught it was a separate command nobody ran.
+      # CI did catch it, on every commit for days, and nobody looked. `npm test`
+      # runs both now.
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 

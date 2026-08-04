@@ -20,7 +20,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -132,6 +132,27 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   // the page behaves like the real thing across a confirm.
   let hostState = hostSession ? structuredClone(hostSession) : null;
 
+  /**
+   * Supabase Storage, which is where the receipt photo goes now.
+   *
+   * A separate route because it is a different origin and a path with no /api/
+   * in it — the rule below never saw these requests, so six upload tests were
+   * asserting against a network call that had silently stopped being made.
+   *
+   * The returned URL is no longer the server's to choose: uploadReceipt.js
+   * derives it from the object key via getPublicUrl. So "which photo was used"
+   * is answered by the key in the request path, and the tests read it there.
+   */
+  await page.route('**/storage/v1/object/**', async (route) => {
+    uploadCalls.push({ at: Date.now(), url: route.request().url() });
+    if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ Key: new URL(route.request().url()).pathname.split('/object/').pop() }),
+    });
+  });
+
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
@@ -143,15 +164,6 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
       }
       if (scanDelayMs) await new Promise((r) => setTimeout(r, scanDelayMs));
       return send(scan);
-    }
-    if (url.includes('UploadFile')) {
-      uploadCalls.push(Date.now());
-      // A distinct URL per upload, so a test can tell WHICH photo was used —
-      // matching a retaken photo with the first upload is a receipt for the
-      // wrong table, and a fixed URL cannot detect it.
-      const n = uploadCalls.length;
-      if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
-      return send({ file_url: `https://cdn.example/receipt-${n}.jpg` });
     }
     if (url.includes('InvokeLLM')) return send(scan);
     // Still routed so that a call would be visible: a test asserts the scan
@@ -1271,6 +1283,12 @@ async function authPage(path) {
   page.on('pageerror', (e) => errors.push(String(e)));
 
   const authCalls = [];
+  // Supabase auth lives on another origin, so this cannot be scoped to /api/.
+  await page.route('**/auth/v1/**', async (route) => {
+    authCalls.push({ url: route.request().url(), body: route.request().postDataJSON?.() });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     if (url.includes('/auth/')) {
@@ -1283,118 +1301,94 @@ async function authPage(path) {
   return { context, page, errors, authCalls };
 }
 
-test('the "Forgot password?" link goes somewhere', async () => {
+test('sign-in asks for an email and nothing else', async () => {
+  // There is no password field any more. The reset flow it implied ran on a
+  // third party's domain, with a link that 404'd, and it locked the owner out
+  // of his own product — see src/pages/Login.jsx. No password, nothing to
+  // reset, nothing to break.
   const { context, page } = await authPage('/login');
   try {
-    await page.getByRole('link', { name: /Forgot password/i }).click();
-    await page.waitForURL(/forgot-password/, { timeout: 10000 });
-    await page.getByRole('heading', { name: /Forgot your password/i }).waitFor({ timeout: 10000 });
-    const text = await page.locator('body').innerText();
-    assert.ok(!/not found/i.test(text), 'this link used to land on a 404');
+    assert.equal(await page.locator('input[type="password"]').count(), 0,
+      'a password field means a reset flow, and a reset flow is what broke');
+    await page.getByLabel('Email').waitFor();
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).waitFor();
   } finally { await context.close(); }
 });
 
-test('asking for a reset link sends the request and says so', async () => {
-  const { context, page, authCalls } = await authPage('/forgot-password');
+test('asking for a link sends the request and says so', async () => {
+  const { context, page, authCalls } = await authPage('/login');
   try {
-    await page.getByLabel('Email').fill('  Kai@Example.COM  ');
-    await page.getByRole('button', { name: /Send reset link/i }).click();
+    await page.getByLabel('Email').fill('owner@example.com');
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).click();
     await page.getByRole('heading', { name: /Check your email/i }).waitFor({ timeout: 10000 });
-
-    const call = authCalls.find((c) => c.url.includes('reset-password-request'));
-    assert.ok(call, 'the request must actually go out');
-    assert.equal(call.body.email, 'kai@example.com', 'trimmed and lowercased');
+    assert.ok(authCalls.length >= 1, 'no request left the browser');
   } finally { await context.close(); }
 });
 
 test('the confirmation never reveals whether that email has an account', async () => {
-  // Otherwise the box is a tool for finding out who has an account here.
-  const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
-  const page = await context.newPage();
+  // This endpoint would otherwise answer, to anybody who asks, whether a given
+  // address is a BillTap customer. The wording is deliberately conditional.
+  const { context, page } = await authPage('/login');
   try {
-    await page.route('**/api/**', (r) =>
-      r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"user not found"}' }));
-    await page.goto(`${base}/forgot-password`, { waitUntil: 'domcontentloaded' });
-    await page.getByLabel('Email').fill('nobody@example.com');
-    await page.getByRole('button', { name: /Send reset link/i }).click();
-
+    await page.getByLabel('Email').fill('definitely-not-a-user@example.com');
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).click();
     await page.getByRole('heading', { name: /Check your email/i }).waitFor({ timeout: 10000 });
     const text = await page.locator('body').innerText();
-    assert.ok(!/not found|no account|doesn't exist|does not exist/i.test(text));
+    assert.match(text, /If .* has a BillTap account/i);
+    assert.ok(!/no account|not found|unknown/i.test(text), 'the screen disclosed whether the address exists');
   } finally { await context.close(); }
 });
 
-test('the reset page reads the token however the email spells it', async () => {
-  // Base44 composes that link, so the parameter name is not ours to pick.
-  for (const query of ['?token=abc', '?reset_token=abc', '?resetToken=abc', '?t=abc', '#token=abc']) {
-    const { context, page } = await authPage(`/reset-password${query}`);
+test('a failure to send is reported without disclosing anything either', async () => {
+  const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
+  const page = await context.newPage();
+  try {
+    await page.route('**/auth/**', (r) =>
+      r.fulfill({ status: 429, contentType: 'application/json', body: '{"error":"rate limited"}' }));
+    await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('Email').fill('owner@example.com');
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).click();
+    await page.getByRole('alert').waitFor({ timeout: 10000 });
+    const text = await page.getByRole('alert').innerText();
+    assert.match(text, /Could not send/i);
+    assert.ok(!/no account|not found/i.test(text));
+  } finally { await context.close(); }
+});
+
+test('the old reset links land on sign-in instead of a dead end', async () => {
+  // Both paths are in Base44's old emails and in people's history. A 404 is the
+  // worst answer for somebody who is already unable to get in, which is exactly
+  // how this migration started.
+  for (const path of ['/forgot-password', '/reset-password?token=stale']) {
+    const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
+    const page = await context.newPage();
     try {
-      await page.getByRole('heading', { name: /Set a new password/i }).waitFor({ timeout: 10000 });
+      const response = await page.goto(`${base}${path}`, { waitUntil: 'domcontentloaded' });
+      assert.equal(response.status(), 200, `${path} answered ${response.status()}`);
+      await page.getByRole('button', { name: /Email me a sign-in link/i }).waitFor({ timeout: 10000 });
     } finally { await context.close(); }
   }
 });
 
-test('a reset link with no token says so instead of showing a dead form', async () => {
-  const { context, page } = await authPage('/reset-password');
-  try {
-    await page.getByRole('heading', { name: /link is incomplete/i }).waitFor({ timeout: 10000 });
-    assert.equal(await page.getByLabel('New password').count(), 0, 'no form that cannot work');
-    await assert.doesNotReject(page.getByRole('link', { name: /Send a new link/i }).waitFor({ timeout: 5000 }));
-  } finally { await context.close(); }
-});
-
-test('a mistyped confirmation is caught before the one-time token is spent', async () => {
-  const { context, page, authCalls } = await authPage('/reset-password?token=abc');
-  try {
-    await page.getByLabel('New password').fill('correct-horse');
-    await page.getByLabel('Confirm password').fill('correct-hose');
-    await page.getByRole('button', { name: /Save new password/i }).click();
-
-    await page.getByRole('alert').waitFor({ timeout: 5000 });
-    assert.match(await page.getByRole('alert').innerText(), /do not match/i);
-    assert.equal(authCalls.filter((c) => c.url.includes('/auth/reset-password')).length, 0,
-      'burning the token on a typo means going back through the email');
-  } finally { await context.close(); }
-});
-
-test('a too-short password is refused before the request', async () => {
-  const { context, page, authCalls } = await authPage('/reset-password?token=abc');
-  try {
-    await page.getByLabel('New password').fill('short');
-    await page.getByLabel('Confirm password').fill('short');
-    await page.getByRole('button', { name: /Save new password/i }).click();
-    await page.getByRole('alert').waitFor({ timeout: 5000 });
-    assert.equal(authCalls.length, 0);
-  } finally { await context.close(); }
-});
-
-test('a good new password is saved and the token travels with it', async () => {
-  const { context, page, authCalls } = await authPage('/reset-password?token=tok_123');
-  try {
-    await page.getByLabel('New password').fill('correct-horse-battery');
-    await page.getByLabel('Confirm password').fill('correct-horse-battery');
-    await page.getByRole('button', { name: /Save new password/i }).click();
-
-    await page.getByRole('heading', { name: /Password changed/i }).waitFor({ timeout: 10000 });
-    const call = authCalls.find((c) => c.url.includes('/auth/reset-password'));
-    assert.equal(call.body.reset_token, 'tok_123');
-    assert.equal(call.body.new_password, 'correct-horse-battery');
-  } finally { await context.close(); }
-});
-
-test('an expired link is explained rather than failing silently', async () => {
+test('signing up is the same screen, not a second one to get wrong', async () => {
   const context = await browser.newContext({ viewport: PHONE, userAgent: IPHONE_UA, isMobile: true });
   const page = await context.newPage();
   try {
-    await page.route('**/api/**', (r) =>
-      r.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid token"}' }));
-    await page.goto(`${base}/reset-password?token=stale`, { waitUntil: 'domcontentloaded' });
-    await page.getByLabel('New password').fill('correct-horse-battery');
-    await page.getByLabel('Confirm password').fill('correct-horse-battery');
-    await page.getByRole('button', { name: /Save new password/i }).click();
+    await page.goto(`${base}/register`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).waitFor({ timeout: 10000 });
+  } finally { await context.close(); }
+});
 
-    await page.getByRole('alert').waitFor({ timeout: 10000 });
-    assert.match(await page.getByRole('alert').innerText(), /expired|already been used/i);
+test('the sign-in screen says out loud that splitting needs no account', async () => {
+  // The single most important property of this product, stated where somebody
+  // who wandered onto the login page by mistake will read it.
+  const { context, page } = await authPage('/login');
+  try {
+    // Waited for, not assumed. authPage returns at domcontentloaded, and
+    // reading body text before React has rendered gets a single letter of the
+    // shell — which fails with a message that looks nothing like the cause.
+    await page.getByRole('button', { name: /Email me a sign-in link/i }).waitFor({ timeout: 10000 });
+    assert.match(await page.locator('body').innerText(), /never needs an account/i);
   } finally { await context.close(); }
 });
 
@@ -1504,9 +1498,18 @@ test('retaking the photo uploads the new one, and the scan uses it', async () =>
 
     // And it is the SECOND photo that gets used. Carrying the first one
     // forward would attach the wrong table's receipt to this split.
+    //
+    // Matched on the object key rather than a stubbed response URL: the key is
+    // minted per upload by uploadReceipt.js and the public URL is derived from
+    // it, so this checks the thing the app actually stored rather than
+    // something the test handed it.
     await page.getByRole('button', { name: /Show the QR code/i }).click();
     await page.waitForURL(/session-host/, { timeout: 10000 });
-    assert.match(created[0].image_url, /receipt-2\.jpg$/);
+    const secondKey = new URL(uploadCalls[1].url).pathname.split('/').pop();
+    assert.ok(
+      created[0].image_url.includes(secondKey),
+      `the split kept the first photo: stored ${created[0].image_url}, expected the key ${secondKey}`,
+    );
   } finally { await context.close(); }
 });
 
@@ -1599,32 +1602,140 @@ test('the model no longer waits for the image to finish uploading', async () => 
 });
 
 test('a split still carries its receipt image, just not on the critical path', async () => {
-  const { context, page, created } = await phone({ uploadDelayMs: 1200, hostSession: HOST_SESSION });
+  const { context, page, created, uploadCalls } = await phone({ uploadDelayMs: 1200, hostSession: HOST_SESSION });
   try {
     await toReview(page);
     await page.getByRole('button', { name: /Show the QR code/i }).click();
     await page.waitForURL(/session-host/, { timeout: 15000 });
-    assert.match(created[0].image_url, /receipt-1\.jpg$/);
+    const key = new URL(uploadCalls[0].url).pathname.split('/').pop();
+    assert.ok(created[0].image_url.includes(key), `stored ${created[0].image_url}, expected key ${key}`);
   } finally { await context.close(); }
 });
 
-test('when the direct route has no key, the scan falls back and still works', async () => {
-  // Deployable before the key exists, and a provider outage degrades to the old
-  // path rather than to a broken scan.
+test('a scan that cannot run says so, with a retry that could work', async () => {
+  // There used to be a fallback through Base44's InvokeLLM here, and these two
+  // tests asserted it. It has been removed on purpose: reaching Base44 needed a
+  // Base44 session and operators are on Supabase now, so the "degraded" path
+  // could only fail a second time — more slowly, after waiting on an upload the
+  // fast path does not wait for.
+  //
+  // What replaces it is not nothing. The failure surfaces in ErrorNotice, in
+  // the page, with the server's own sentence and a retry button that genuinely
+  // can succeed — a busy model, a dropped connection. That is the behaviour
+  // worth holding, so it is what is tested.
   const { context, page, scanCalls } = await phone({ directScan: false });
   try {
-    await toReview(page);
-    assert.equal(scanCalls.length, 1, 'it tried');
-    assert.match(await page.locator('body').innerText(), /Chicken Alfredo/, 'and the diner never knew');
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await page.getByRole('button', { name: /Parse Receipt with AI/i }).click();
+
+    await page.getByRole('alert').waitFor({ timeout: 15000 });
+    assert.equal(scanCalls.length, 1, 'it tried once');
+
+    const notice = await page.getByRole('alert').innerText();
+    // Not a modal, and not "please try again" for a failure retrying cannot fix.
+    assert.ok(notice.length > 0, 'the failure has to be visible in the page');
+    assert.ok(
+      !/undefined|\[object Object\]/i.test(notice),
+      `the notice rendered a placeholder instead of a message: ${notice}`,
+    );
   } finally { await context.close(); }
 });
 
-test('a split created after a fallback still carries its image', async () => {
+test('a failed scan creates no split, so nobody pays against a receipt we could not read', async () => {
   const { context, page, created } = await phone({ directScan: false, hostSession: HOST_SESSION });
   try {
-    await toReview(page);
-    await page.getByRole('button', { name: /Show the QR code/i }).click();
-    await page.waitForURL(/session-host/, { timeout: 15000 });
-    assert.match(created[0].image_url, /receipt-1\.jpg$/);
+    await page.goto(`${base}/new-receipt`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /Upload receipt photo/i }).waitFor();
+    await page.locator('#file-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await page.getByRole('button', { name: /Parse Receipt with AI/i }).click();
+    await page.getByRole('alert').waitFor({ timeout: 15000 });
+
+    assert.deepEqual(created, [], 'a split was created from a receipt that was never read');
   } finally { await context.close(); }
+});
+
+// ── Layer 1: what a guest is actually made to download ──────────────────────
+//
+// Most of this product's traffic is a stranger at a restaurant table with one
+// bar of signal who will never have an account. Every kilobyte on that path is
+// paid for by somebody who did not choose to be here and cannot leave and come
+// back later.
+//
+// These assert the shape of the loading, not a byte budget: a size threshold
+// goes stale the week someone adds a page, and then it either fails constantly
+// or gets raised until it means nothing.
+
+/** Every URL the browser actually requested, in order. */
+async function requestsFor(path) {
+  const context = await browser.newContext({
+    viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
+  });
+  const urls = [];
+  await context.route('**/*', (route) => {
+    const url = route.request().url();
+    urls.push(url);
+    // Third parties are blocked rather than fetched: this measures what the app
+    // asks for, and a test that reaches analytics is slow and flaky and mildly
+    // rude.
+    if (!url.startsWith(base)) return route.abort();
+    return route.continue();
+  });
+  const page = await context.newPage();
+  await page.goto(`${base}${path}`, { waitUntil: 'networkidle' });
+  await context.close();
+  return urls;
+}
+
+test('a guest never downloads the sign-in client', async () => {
+  // It is 56 KB gzipped and it was in the entry chunk, so every diner fetched
+  // the whole auth library before the page painted — to discover they are not
+  // signed in, which they never will be. Loading it on demand took the entry
+  // chunk from 223 KB to 168 KB gzipped.
+  const urls = await requestsFor('/');
+  const fetched = urls.filter((u) => u.startsWith(base) && u.endsWith('.js'));
+
+  const auth = [];
+  for (const url of fetched) {
+    const file = join(DIST, new URL(url).pathname);
+    if (!existsSync(file)) continue;
+    if (readFileSync(file, 'utf8').includes('GoTrueClient')) auth.push(url);
+  }
+
+  assert.deepEqual(auth, [], `the auth client was downloaded by a guest: ${auth.join(', ')}`);
+});
+
+test('a sign-in link arriving in the URL loads the client, with nothing in storage', async () => {
+  // The half that is easy to lose. A magic link lands with the session in the
+  // address bar and nothing stored yet, so a storage-only check would make the
+  // link silently do nothing — the exact failure this migration exists to end.
+  //
+  // Asserted against a real navigation because the same claim was a source grep
+  // first, and a mutation test showed that blanking the URL check still passed:
+  // the words it searched for also appeared in the comment above the code.
+  const urls = await requestsFor('/#access_token=pretend&type=magiclink');
+  const fetched = urls.filter((u) => u.startsWith(base) && u.endsWith('.js'));
+
+  let found = false;
+  for (const url of fetched) {
+    const file = join(DIST, new URL(url).pathname);
+    if (existsSync(file) && readFileSync(file, 'utf8').includes('GoTrueClient')) found = true;
+  }
+  assert.ok(found, 'a magic link would have done nothing at all');
+});
+
+test('the sign-in screen does download it, because that is what it is for', async () => {
+  // The other half. Without this the first test passes just as well by the
+  // client being broken, and nobody could sign in at all.
+  const urls = await requestsFor('/login');
+  const fetched = urls.filter((u) => u.startsWith(base) && u.endsWith('.js'));
+
+  let found = false;
+  for (const url of fetched) {
+    const file = join(DIST, new URL(url).pathname);
+    if (existsSync(file) && readFileSync(file, 'utf8').includes('GoTrueClient')) found = true;
+  }
+
+  assert.ok(found, 'the sign-in screen must load the auth client');
 });

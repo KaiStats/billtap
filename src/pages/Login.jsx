@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { QrCode, Mail } from "lucide-react";
-import { supabase, authConfigured } from "@/lib/supabase";
+import { getSupabase, authConfigured } from "@/lib/supabase";
 
 /**
  * Sign in. Operators only — diners never see this screen.
@@ -25,6 +25,17 @@ export default function Login() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Fetch the auth client now rather than on the click.
+  //
+  // It is loaded on demand so that diners — who are most of the traffic and
+  // will never sign in — do not pay 56 KB for it. But somebody looking at this
+  // screen is about to sign in, so waiting until they press the button just
+  // moves the delay to the moment they are watching. Fire and forget: a failure
+  // here is retried by the click, which handles it.
+  useEffect(() => {
+    if (authConfigured) getSupabase();
+  }, []);
 
   /**
    * Where to land after the link is clicked.
@@ -50,7 +61,9 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const { error: sendError } = await supabase.auth.signInWithOtp({
+      const client = await getSupabase();
+      if (!client) throw new Error('auth unavailable');
+      const { error: sendError } = await client.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
         options: { emailRedirectTo: redirectTo() },
       });
@@ -69,7 +82,9 @@ export default function Login() {
   const handleGoogle = async () => {
     setError("");
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const client = await getSupabase();
+      if (!client) throw new Error('auth unavailable');
+      const { error: oauthError } = await client.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: redirectTo() },
       });

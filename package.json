@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
+    "test": "npm run test:unit && npm run test:ui",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
@@ -16,7 +16,8 @@
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy",
     "test:ui": "node --test --test-concurrency=2 scripts/ui.browser.mjs",
-    "check:env": "node scripts/check-env.mjs"
+    "check:env": "node scripts/check-env.mjs",
+    "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",
