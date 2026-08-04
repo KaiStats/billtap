@@ -18,17 +18,39 @@
  * ── Absent binding means no limiting ────────────────────────────────────────
  *
  * If API_RATE_LIMITER is not bound this returns null and the request proceeds.
- * That is deliberate: the binding is committed commented out in wrangler.jsonc,
- * so a deploy cannot fail on a feature that may not be enabled for this account
- * — after a day of deploys failing for surprising reasons, adding another way
- * to fail was not worth it. Uncommenting is the whole activation.
+ * That is deliberate: it means commenting the binding out of wrangler.jsonc is
+ * a safe way to switch limiting off in a hurry, and that a deploy cannot fail
+ * on a feature an account might not have.
+ *
+ * The binding is LIVE — see the block in wrangler.jsonc. This header used to
+ * say it was committed commented out, which was true when it was written and
+ * has not been since; a comment that describes a security control as off when
+ * it is on is worth correcting, because the next person reads it before they
+ * read the config.
  *
  * Application-level dedupe still stands regardless: rating-alert claims
  * GuestRating.alerted_at before sending, and createSession caps a restaurant at
  * 100 guest sessions an hour. This is the outer wall, not the only one.
  */
 
-/** Public POST endpoints that take no credentials. */
+/**
+ * Every /api endpoint metered here.
+ *
+ * It listed eight of the fourteen functions. Three of the six omissions are
+ * added below; the other three are omitted on purpose and that is written out
+ * underneath, because an unexplained gap in a list like this reads as an
+ * oversight and gets "fixed" into an outage.
+ *
+ * getPublicRestaurant is an anonymous read keyed on a restaurant slug, and
+ * slugs are public — they are in the URLs on the table tents — so this is the
+ * one endpoint here where an attacker needs to guess nothing at all.
+ * validateReceiptParse touches no database but runs arithmetic across a
+ * caller-supplied array, so it is metered for CPU rather than for rows.
+ * generateQRSignature mints an access grant and computes an HMAC.
+ *
+ * All three are called once per user action and never polled, so a per-address
+ * limit cannot collide with normal use the way it would below.
+ */
 const LIMITED = new Set([
   '/api/rating-alert',
   '/api/restaurant-lead',
@@ -38,6 +60,9 @@ const LIMITED = new Set([
   '/api/fn/submitGuestRating',
   '/api/fn/verifyQRToken',
   '/api/fn/getSplitStatus',
+  '/api/fn/getPublicRestaurant',
+  '/api/fn/validateReceiptParse',
+  '/api/fn/generateQRSignature',
   // Every call spends money at the model provider, so this is worth a limit —
   // but a table is one NAT, so it is keyed per participant below rather than
   // per address.
@@ -45,16 +70,46 @@ const LIMITED = new Set([
 ]);
 
 /**
- * Base44's own auth endpoints, reached through the /api/apps/** proxy.
+ * ── Deliberately NOT limited: getSessionAsHost, confirmPayment,
+ *    updateSplitSettings ─────────────────────────────────────────────────────
  *
- * These were not limited at all, and not by decision — worker/index.js hands
- * anything under /api/apps/ straight to the proxy and returns, so the check
- * below never ran for them. That left the two most worth protecting wide open:
- * reset-password-request sends an email to any address handed to it, which is a
- * way to bomb an inbox using this app's domain and its reputation, and
- * /auth/login is an unmetered guess-the-password endpoint.
+ * These are the host's endpoints, and the case for metering them is real: each
+ * loads a session row before it tests the host key, so a caller with no key can
+ * make the Worker do database work. They are still left open, for two reasons
+ * that outweigh it.
  *
- * Matched by pattern because the app id sits in the middle of the path.
+ * The work is bounded and the ids are not guessable. Without a valid session id
+ * the read is one primary-key lookup that returns nothing, and session ids are
+ * not enumerable — an attacker cannot turn this into volume without already
+ * knowing which bills to ask about.
+ *
+ * And metering them per address would break the product. src/hooks/useLiveSplit
+ * polls getSessionAsHost every 3 seconds while a host screen is open — 20 calls
+ * a minute, per host — and getSessionAsHost carries no participant id, so it
+ * would key on CF-Connecting-IP. A restaurant's wifi is one NAT: three tables
+ * with the host screen open exceed 60 a minute between them, doing nothing but
+ * watching who has paid. That is the precise failure this file was rewritten to
+ * avoid, and adding it back under the heading of hardening would be worse than
+ * the gap.
+ *
+ * What would let them be metered safely: a bucket key these calls can supply
+ * that is neither the address nor the host secret — a hash of the host key sent
+ * as its own header, the way X-BillTap-Participant works for the diner-side
+ * endpoints. Until that exists, this is the honest trade.
+ */
+
+/**
+ * Base44's own auth endpoints, once reached through the /api/apps/** proxy.
+ *
+ * Kept as a matcher rather than deleted, and it is important to be honest about
+ * why: the proxy is gone — worker/index.js answers everything under /api/ that
+ * it does not recognise with a JSON 404 — so nothing matches these today and
+ * they protect nothing. They stay because the patterns are the record of which
+ * paths were unmetered and why it mattered (reset-password-request emails any
+ * address handed to it; /auth/login is a password oracle), and because a
+ * matcher costs nothing while a rediscovered proxy route would cost plenty.
+ *
+ * If Base44 is ever fully removed, remove these with it.
  */
 const LIMITED_PATTERNS = [
   /^\/api\/apps\/[^/]+\/auth\/reset-password-request\/?$/,

@@ -683,9 +683,30 @@ test('an item has exactly one payer, so nobody is charged for it twice', async (
   };
   await withStub({ entities: { Session: [session] } }, async ({ env, store }) => {
     await join(env, { session_id: 's1', participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
-    const res = await join(env, { session_id: 's1', participant_id: BOB, name: 'Bob', items: [{ id: 'i1', claimed_by: [BOB] }] });
+
+    // Through onRequestPost rather than the handler directly, because the
+    // refusal is raised as an AppError from inside patchSession's mutate
+    // callback and it is the dispatcher that renders it. What a diner's phone
+    // receives is what this asserts, and that is unchanged: a 409 saying the
+    // item is taken.
+    const res = await onRequestPost({
+      request: new Request('https://billtap.app/api/fn/joinSession', {
+        method: 'POST',
+        body: JSON.stringify({
+          session_id: 's1', participant_id: BOB, name: 'Bob',
+          items: [{ id: 'i1', claimed_by: [BOB] }],
+        }),
+      }),
+      env,
+      name: 'joinSession',
+    });
 
     assert.equal(res.status, 409);
+    const payload = await res.json();
+    assert.match(payload.error, /already claimed/);
+    assert.equal(payload.code, 'item_claimed');
+    assert.ok(payload.request_id, 'traceable, like every other failure here');
+
     assert.deepEqual(store.Session[0].items[0].claimed_by, [ALICE]);
     assert.equal(store.Session[0].participants[0].amount_owed, 30, 'Alice owes all of it');
   });

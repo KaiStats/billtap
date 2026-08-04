@@ -166,25 +166,60 @@ function entityApi(env, authHeaders, apikey) {
         return Array.isArray(rows) ? rows[0] : rows;
       },
 
-      /** Returns the updated row. */
-      async update(id, data) {
+      /**
+       * Returns the updated row.
+       *
+       * `options.ifMatch` makes the write conditional: `{ version: 7 }` appends
+       * `&version=eq.7`, so Postgres evaluates the guard and the update in one
+       * statement. When the row has moved on, zero rows match, the
+       * representation comes back empty, and this returns null — which is the
+       * caller's signal that it lost a race, not that the row is gone.
+       *
+       * That distinction is the whole point. Without it every mutation on a
+       * session is a read-modify-write over two whole jsonb columns, and two
+       * diners acting at the same moment means the second write reinstates the
+       * first's stale snapshot. See supabase/migrations/0005_sessions_version.sql.
+       */
+      async update(id, data, { ifMatch } = {}) {
+        const params = new URLSearchParams();
+        params.append('id', `eq.${id}`);
+        if (ifMatch) {
+          for (const [column, value] of Object.entries(ifMatch)) {
+            params.append(column, `eq.${value}`);
+          }
+        }
         const rows = await call({
-          path: `/${from}?id=eq.${encodeURIComponent(id)}`,
+          path: `/${from}?${params}`,
           method: 'PATCH',
           body: data,
           prefer: 'return=representation',
         });
-        return Array.isArray(rows) ? rows[0] : rows;
+        if (Array.isArray(rows)) return rows.length ? rows[0] : null;
+        return rows;
       },
     };
   };
 }
 
+/**
+ * Whether `update()` here honours `options.ifMatch`.
+ *
+ * Read by patchSession in worker/routes/functions.js to decide between a real
+ * compare-and-swap and the weaker read-after-write it has to use on a backend
+ * that cannot express a conditional write. Advertised as a capability rather
+ * than assumed from the backend's name, so adding a third backend is a matter
+ * of answering this honestly.
+ */
+export const CONDITIONAL_WRITES = true;
+
 /** Acts as the app. Bypasses row level security — see the header before using. */
 export function serviceRole(env) {
   const key = env?.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
-  return { entity: entityApi(env, { Authorization: `Bearer ${key}` }, key) };
+  return {
+    conditionalWrites: CONDITIONAL_WRITES,
+    entity: entityApi(env, { Authorization: `Bearer ${key}` }, key),
+  };
 }
 
 /**

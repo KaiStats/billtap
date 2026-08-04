@@ -153,17 +153,33 @@ function entityApi(env, authHeaders) {
       return call({ path: `/entities/${name}`, method: 'POST', body: data });
     },
 
-    update(id, data) {
+    /**
+     * `options` is accepted and ignored.
+     *
+     * db.js supports options.ifMatch — a conditional write that refuses to land
+     * on a row that has moved. Base44's REST layer offers no equivalent: a PUT
+     * replaces the row unconditionally and there is no compare-and-swap to ask
+     * for. Silently dropping the guard would be the dangerous version of this,
+     * so CONDITIONAL_WRITES below says so and patchSession falls back to a
+     * weaker scheme rather than believing it has protection it does not have.
+     */
+    update(id, data, _options) {
       return call({ path: `/entities/${name}/${encodeURIComponent(id)}`, method: 'PUT', body: data });
     },
   });
 }
 
+/** See the note on update() above: a PUT here cannot be made conditional. */
+export const CONDITIONAL_WRITES = false;
+
 /** Acts as the app. Bypasses RLS — see the header note before using. */
 export function serviceRole(env) {
   const key = env.BASE44_MASTER_KEY;
   if (!key) throw new Error('BASE44_MASTER_KEY is not configured');
-  return { entity: entityApi(env, { Authorization: `Bearer ${key}` }) };
+  return {
+    conditionalWrites: CONDITIONAL_WRITES,
+    entity: entityApi(env, { Authorization: `Bearer ${key}` }),
+  };
 }
 
 /**

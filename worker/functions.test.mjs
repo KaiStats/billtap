@@ -118,14 +118,31 @@ test('a guest cannot claim an item someone else already holds', async () => {
   });
   const restore = installFetch(env.__store);
   try {
-    const res = await HANDLERS.joinSession({
-      env,
-      body: {
-        session_id: 's1', participant_id: BOB, name: 'Bob',
-        items: [{ id: 'i1', claimed_by: [BOB] }],
+    // Refusals from inside the claim merge throw an AppError rather than
+    // returning a Response, because the merge now runs inside patchSession's
+    // mutate callback and that callback has to hand back a patch or nothing.
+    // onRequestPost turns it into the same 409 the caller always got, plus the
+    // code and request id every other failure in this Worker carries — see the
+    // boundary test in worker/api.test.mjs, which asserts the HTTP response.
+    await assert.rejects(
+      () => HANDLERS.joinSession({
+        env,
+        body: {
+          session_id: 's1', participant_id: BOB, name: 'Bob',
+          items: [{ id: 'i1', claimed_by: [BOB] }],
+        },
+      }),
+      (error) => {
+        assert.equal(error.name, 'AppError');
+        assert.equal(error.status, 409);
+        assert.equal(error.code, 'item_claimed');
+        assert.match(error.message, /already claimed/);
+        return true;
       },
-    });
-    assert.equal(res.status, 409);
+    );
+
+    // And Bob's attempt changed nothing.
+    assert.deepEqual(env.__store.Session[0].items[0].claimed_by, [ALICE]);
   } finally {
     restore();
   }
@@ -190,6 +207,152 @@ test('a guest is not shown what anyone else owes', async () => {
     const bob = session.participants.find((p) => p.participant_id === BOB);
     assert.equal(alice.amount_owed, 20, 'the caller sees their own share');
     assert.equal(bob.amount_owed, undefined, "another diner's share is withheld");
+  } finally {
+    restore();
+  }
+});
+
+// ── Genuine concurrency ─────────────────────────────────────────────────────
+//
+// The claim test above runs Alice's call to completion before Bob's begins, so
+// what it proves is that a stale CLIENT array is ignored. It cannot see two
+// handlers interleaved on the server, which is the case that actually happens:
+// everyone at a table scans the same QR within the same fifteen seconds.
+//
+// Measured against the code before this suite existed, two concurrent joins
+// erased Alice outright — absent from participants, her item claim cleared, her
+// $20 of a $30 bill uncollected — while her phone was handed a 200.
+//
+// These use a PostgREST-shaped stub so that `version=eq.N` behaves the way
+// Postgres does: the guard and the update are one statement, and a writer whose
+// version has moved matches zero rows and is told so by an empty body. Without
+// that the compare-and-swap in patchSession is untested by anything.
+
+/**
+ * A Supabase-backed env whose reads snapshot before the latency, so two callers
+ * genuinely hold the same version of the row.
+ */
+function concurrentEnv(seed) {
+  const store = { sessions: [structuredClone(seed)] };
+  const original = globalThis.fetch;
+
+  globalThis.fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    const from = u.pathname.replace('/rest/v1/', '').split('?')[0];
+    const rows = store[from] || (store[from] = []);
+
+    const matches = (row) => {
+      for (const [key, value] of u.searchParams) {
+        if (['select', 'order', 'limit', 'offset'].includes(key)) continue;
+        if (!String(value).startsWith('eq.')) continue;
+        if (String(row[key]) !== String(value).slice(3)) return false;
+      }
+      return true;
+    };
+
+    if (init.method === 'PATCH') {
+      // Guard and update evaluated together. A stale version matches nothing.
+      const hit = rows.find(matches);
+      if (!hit) return new Response('[]', { status: 200 });
+      Object.assign(hit, JSON.parse(init.body));
+      return new Response(JSON.stringify([structuredClone(hit)]), { status: 200 });
+    }
+
+    const found = rows.filter(matches).map((r) => structuredClone(r));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return new Response(JSON.stringify(found), { status: 200 });
+  };
+
+  return {
+    env: {
+      DATA_BACKEND: 'supabase',
+      SUPABASE_URL: 'https://stub.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-key',
+    },
+    store,
+    restore: () => { globalThis.fetch = original; },
+  };
+}
+
+test('two diners joining at the same instant both survive', async () => {
+  const { env, store, restore } = concurrentEnv({ ...baseSession, version: 0 });
+  try {
+    await Promise.all([
+      HANDLERS.joinSession({
+        env,
+        body: {
+          session_id: 's1', participant_id: ALICE, name: 'Alice',
+          items: [{ id: 'i1', claimed_by: [ALICE] }, { id: 'i2', claimed_by: [] }],
+        },
+      }),
+      HANDLERS.joinSession({
+        env,
+        body: {
+          session_id: 's1', participant_id: BOB, name: 'Bob',
+          items: [{ id: 'i1', claimed_by: [] }, { id: 'i2', claimed_by: [BOB] }],
+        },
+      }),
+    ]);
+
+    const stored = store.sessions[0];
+    const names = stored.participants.map((p) => p.name).sort();
+    assert.deepEqual(names, ['Alice', 'Bob'], 'neither diner was erased');
+
+    const steak = stored.items.find((i) => i.id === 'i1').claimed_by;
+    const salad = stored.items.find((i) => i.id === 'i2').claimed_by;
+    assert.deepEqual(steak, [ALICE], 'Alice keeps the steak');
+    assert.deepEqual(salad, [BOB], 'Bob keeps the salad');
+
+    // The point of all of it: the table is still paying the whole bill.
+    const owed = stored.participants.reduce((sum, p) => sum + (p.amount_owed || 0), 0);
+    assert.equal(owed, 30, 'every dollar of the bill is assigned to somebody');
+
+    // Two successful writes, so the loser did retry rather than silently win.
+    assert.equal(stored.version, 2, 'both writes landed, each bumping the version');
+  } finally {
+    restore();
+  }
+});
+
+test('a self-report is not erased by the host confirming someone else at the same moment', async () => {
+  const { env, store, restore } = concurrentEnv({
+    ...baseSession,
+    version: 0,
+    split_mode: 'even',
+    status: 'claiming',
+    host_key_hash: null,
+    participants: [
+      { participant_id: ALICE, name: 'Alice', amount_owed: 15, payment_status: 'unpaid' },
+      { participant_id: BOB, name: 'Bob', amount_owed: 15, payment_status: 'unpaid' },
+    ],
+  });
+
+  // The host proves themselves with the secret; only its hash is stored.
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hostsecret'));
+  store.sessions[0].host_key_hash = [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  try {
+    await Promise.all([
+      HANDLERS.confirmPayment({
+        env,
+        request: new Request('https://billtap.app/api/fn/confirmPayment', { method: 'POST' }),
+        body: { session_id: 's1', participant_id: ALICE, host_key: 'hostsecret', action: 'confirm' },
+      }),
+      HANDLERS.markMePaid({ env, body: { session_id: 's1', participant_id: BOB } }),
+    ]);
+
+    const stored = store.sessions[0];
+    const alice = stored.participants.find((p) => p.participant_id === ALICE);
+    const bob = stored.participants.find((p) => p.participant_id === BOB);
+
+    assert.equal(alice.payment_status, 'paid', "the host's confirmation stands");
+    assert.equal(
+      bob.payment_status,
+      'pending_verification',
+      "Bob said he had sent it and the session still says so",
+    );
+    assert.equal(stored.version, 2, 'both writes landed');
   } finally {
     restore();
   }

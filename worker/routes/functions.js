@@ -110,11 +110,71 @@ function safeEqual(a, b) {
  * so both changes survive — the retry re-applies onto whatever landed rather
  * than onto the snapshot it started with.
  *
+ * ── It did not detect anything ──────────────────────────────────────────────
+ *
+ * This checked `settled()` against the value `update()` returned, and both
+ * backends issue their write with `return=representation` — Supabase PATCH,
+ * Base44 PUT — so that value is the row as THIS write left it. A loser's own
+ * change is by definition present in its own echo. `settled()` was true every
+ * time and the retry loop never ran once.
+ *
+ * Demonstrated with two handlers that both call this: the host confirms Alice
+ * while Bob taps "I've sent it", both reading before either writes. Bob's write
+ * lands, the host's stale array lands on top, and Bob is 'unpaid' having been
+ * told he succeeded. His audit row says he self-reported; the session says he
+ * never did.
+ *
+ * ── What it does now ────────────────────────────────────────────────────────
+ *
+ * A real compare-and-swap, where the backend can express one. Read `version`,
+ * write `version + 1`, and condition the write on the value that was read.
+ * Postgres evaluates the guard and the update as one statement, so of two
+ * racing writers exactly one matches; the other updates zero rows, gets null
+ * back, and loops to re-apply on top of the winner. Neither change is lost, and
+ * the loser finds out on the write itself rather than by guessing from a read.
+ *
+ * Requires supabase/migrations/0005_sessions_version.sql. If that has not been
+ * applied, worker/lib/db.js reports the undefined column, this falls back for
+ * the rest of the isolate's life, and the fallback below is what runs.
+ *
+ * ── The fallback, and what it is worth ──────────────────────────────────────
+ *
+ * Base44's REST layer has no conditional write, so on that backend this writes
+ * unconditionally and then does a GENUINE re-read — a `filter()`, not the
+ * write's echo — to see whether the change survived.
+ *
+ * Be clear about what that buys: it catches the case where the other write
+ * lands inside our write-then-read window, and misses the case where it lands
+ * after our re-read. It is a narrower window, not a closed one. It is the best
+ * available against a backend that only offers last-writer-wins, and it is the
+ * reason the Supabase path is the one worth being on.
+ *
  * `mutate(session)` returns the patch to write, or null to mean "nothing to do".
+ * It may throw an AppError to refuse outright — a claim that collided with
+ * someone else's is a 409, not something to retry into.
  * `settled(session)` says whether this call's intent is visible in a fresh read.
  */
+/**
+ * Set once if the database has no `version` column, i.e. migration 0005 has not
+ * been applied to whatever this Worker is pointed at.
+ *
+ * Module scope so one failed write teaches the whole isolate rather than every
+ * request rediscovering it. Deliberately fails open to the weaker scheme: a
+ * Worker that refused to write bills because a migration was outstanding would
+ * be a worse outage than the race it is guarding against.
+ */
+let conditionalWritesUnavailable = false;
+
+/** Does this failure mean "no such column", as opposed to a real write error? */
+function isUndefinedColumn(error) {
+  const body = error?.body;
+  if (body && typeof body === 'object' && body.code === '42703') return true;
+  return /42703|column .*version.* does not exist/i.test(String(error?.message || ''));
+}
+
 async function patchSession(svc, sessionId, mutate, settled, attempts = 3) {
   let latest = null;
+
   for (let attempt = 0; attempt < attempts; attempt++) {
     const rows = await svc.entity('Session').filter({ id: sessionId });
     latest = rows[0];
@@ -123,12 +183,53 @@ async function patchSession(svc, sessionId, mutate, settled, attempts = 3) {
     const patch = mutate(latest);
     if (!patch) return latest;
 
-    latest = await svc.entity('Session').update(sessionId, patch);
+    const canSwap =
+      svc.conditionalWrites &&
+      !conditionalWritesUnavailable &&
+      typeof latest.version === 'number';
+
+    if (canSwap) {
+      // Compare-and-swap. null means zero rows matched: somebody else's write
+      // moved the version between our read and now, so start over from theirs.
+      let written;
+      try {
+        written = await svc.entity('Session').update(
+          sessionId,
+          { ...patch, version: latest.version + 1 },
+          { ifMatch: { version: latest.version } },
+        );
+      } catch (error) {
+        if (!isUndefinedColumn(error)) throw error;
+        // Migration 0005 is outstanding. Say so once — loudly, because the
+        // fallback is the behaviour that loses a diner's claim — and carry on
+        // through the unconditional path below.
+        conditionalWritesUnavailable = true;
+        console.error(
+          JSON.stringify({
+            level: 'error',
+            code: 'sessions_version_missing',
+            message:
+              'sessions.version is absent, so writes cannot be conditional. Apply ' +
+              'supabase/migrations/0005_sessions_version.sql. Concurrent claims can be lost until then.',
+          }),
+        );
+        written = undefined;
+      }
+      if (written) return written;
+      if (!conditionalWritesUnavailable) continue;
+    }
+
+    await svc.entity('Session').update(sessionId, patch);
+
+    // A genuine read, not the update's return value — see above.
+    const after = await svc.entity('Session').filter({ id: sessionId });
+    latest = after[0] || latest;
     if (settled(latest)) return latest;
 
     // Someone else's save landed on top of ours. Loop: the next read sees their
     // version and our change is re-applied over it instead of under it.
   }
+
   return latest;
 }
 
@@ -338,12 +439,21 @@ const HANDLERS = {
       if (session.status !== 'completed') patch.status = 'claiming';
     }
 
-    if (custom_amounts !== undefined) {
-      if (!custom_amounts || typeof custom_amounts !== 'object') {
-        return json({ error: 'custom_amounts must be an object' }, 400);
-      }
-      const rows = session.participants || [];
-      const total = Number(session.total_amount) || 0;
+    /**
+     * Recomputes the participant rows for a set of custom amounts.
+     *
+     * Takes the session to work from, so it can run twice: once here against
+     * the row this request read, to produce the friendly 400/409 a host can act
+     * on, and again inside patchSession against whatever version the write
+     * actually lands on.
+     *
+     * Refusals are thrown, not returned, because the second call happens inside
+     * a mutate callback that can only hand back a patch. onRequestPost renders
+     * them as the same statuses and sentences either way.
+     */
+    const applyCustomAmounts = (from) => {
+      const rows = from.participants || [];
+      const total = Number(from.total_amount) || 0;
 
       // Say what is actually wrong. A host who retypes the amounts so they add
       // up to the bill, not realising one diner is already settled, would
@@ -356,9 +466,11 @@ const HANDLERS = {
       });
       if (frozen.length) {
         const names = frozen.map((p) => p.name || 'Someone').join(', ');
-        return json({
-          error: `${names} already paid, so that amount cannot change. Undo the confirmation first if it was wrong.`,
-        }, 409);
+        throw new AppError(
+          'already_paid',
+          `${names} already paid, so that amount cannot change. Undo the confirmation first if it was wrong.`,
+          409,
+        );
       }
 
       const next = rows.map((p) => {
@@ -379,18 +491,67 @@ const HANDLERS = {
       // a host noticing now and a host noticing when they are short.
       const sum = next.reduce((s, p) => s + (Number(p.amount_owed) || 0), 0);
       if (Math.abs(sum - total) > 0.05) {
-        return json({
-          error: `Those amounts add up to $${sum.toFixed(2)}, but the bill is $${total.toFixed(2)}.`,
-        }, 400);
+        throw new AppError(
+          'amounts_do_not_add_up',
+          `Those amounts add up to $${sum.toFixed(2)}, but the bill is $${total.toFixed(2)}.`,
+          400,
+        );
       }
 
-      patch.participants = next;
+      return next;
+    };
+
+    if (custom_amounts !== undefined) {
+      if (!custom_amounts || typeof custom_amounts !== 'object') {
+        return json({ error: 'custom_amounts must be an object' }, 400);
+      }
+      // Validated now so an unacceptable request is refused before anything is
+      // written; recomputed again below against the row being written onto.
+      applyCustomAmounts(session);
       patch.split_mode = 'custom';
     }
 
-    if (!Object.keys(patch).length) return json({ error: 'Nothing to change' }, 400);
+    if (!Object.keys(patch).length && custom_amounts === undefined) {
+      return json({ error: 'Nothing to change' }, 400);
+    }
 
-    const updated = await svc.entity('Session').update(session_id, patch);
+    /**
+     * Through patchSession, because this writes `participants` — the same whole
+     * array every other handler rewrites.
+     *
+     * A host setting custom amounts while a diner joins is not a rare shape: it
+     * is what a host does the moment they see the split is uneven, which is
+     * while people are still arriving. Written unconditionally, whichever
+     * landed second erased the other — either the new arrival vanished, or the
+     * host's amounts silently reverted with the screen still showing them.
+     */
+    const updated = await patchSession(
+      svc,
+      session_id,
+      (fresh) => ({
+        ...patch,
+        ...(custom_amounts !== undefined ? { participants: applyCustomAmounts(fresh) } : {}),
+        // Re-evaluated against the fresh row: confirmPayment may have completed
+        // the split while this was in flight, and reopening it then would undo
+        // a completion the host did not ask to undo.
+        ...(patch.status === 'claiming' && fresh.status === 'completed' ? { status: fresh.status } : {}),
+      }),
+      (fresh) => {
+        if (patch.host_payment_info) {
+          const stored = fresh.host_payment_info || {};
+          if (stored.handle !== patch.host_payment_info.handle) return false;
+        }
+        if (custom_amounts === undefined) return true;
+        // Every amount we asked for is the amount now stored.
+        return (fresh.participants || []).every((p) => {
+          const asked = Number(custom_amounts[p.participant_id]);
+          if (!Number.isFinite(asked) || p.payment_status === 'paid') return true;
+          return Math.abs((Number(p.amount_owed) || 0) - Math.round(asked * 100) / 100) < 0.005;
+        });
+      },
+    );
+
+    if (!updated) return json({ error: 'Session not found' }, 404);
 
     // "Someone changed my split after we agreed it" is a dispute between two
     // people at one table, and this row is the only witness to it. The previous
@@ -549,7 +710,41 @@ const HANDLERS = {
     if (taxVal < 0 || tipVal < 0) return json({ error: 'tax and tip cannot be negative' }, 400);
     if (taxVal > 10000 || tipVal > 10000) return json({ error: 'tax or tip value is unreasonably large' }, 400);
 
-    const list = Array.isArray(items) ? items : [];
+    /**
+     * The line items, normalised to the five fields the app actually uses.
+     *
+     * They were stored exactly as the client sent them: any length, any shape,
+     * any extra fields, any string size. This row is then handed back to every
+     * diner at the table on every poll, so an oversized items array is not just
+     * a large write — it is a large read repeated for the length of a meal.
+     *
+     * 200 is well past a real receipt. The longest genuine one seen here is a
+     * few dozen lines; the review screen makes a diner tap through each of them
+     * before the split is created, so nobody is arriving here with hundreds by
+     * accident.
+     *
+     * Field-by-field rather than a spread, so an unknown key from a crafted
+     * client cannot be persisted and served back to the table. `id` is kept as
+     * given because joinSession matches claims on it, and `claimed_by` because
+     * a split can be created with items already assigned — but both are
+     * constrained to the shapes the rest of the code assumes.
+     */
+    const rawList = Array.isArray(items) ? items : [];
+    if (rawList.length > 200) {
+      return json({ error: 'That receipt has too many line items.' }, 400);
+    }
+    const list = rawList
+      .filter((item) => item && typeof item === 'object')
+      .map((item, index) => ({
+        id: typeof item.id === 'string' && item.id ? item.id.slice(0, 64) : `item-${index}`,
+        name: clean(item.name, 120),
+        price: Number.isFinite(Number(item.price)) ? Number(item.price) : 0,
+        quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+        claimed_by: Array.isArray(item.claimed_by)
+          ? item.claimed_by.filter((pid) => typeof pid === 'string' && PARTICIPANT_RE.test(pid)).slice(0, 50)
+          : [],
+      }));
+
     const subtotal = list.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
     const total = mode === 'itemized'
       ? subtotal + taxVal + tipVal
@@ -819,6 +1014,25 @@ const HANDLERS = {
    * Now only the caller's own participant row and their own claim deltas are
    * applied, against the stored session rather than the one the browser
    * remembers.
+   *
+   * ── And now against a version of the row that is still current ─────────────
+   *
+   * Applying the deltas to stored data fixed a stale CLIENT snapshot. It did
+   * nothing about two of these handlers running at once on the server, and this
+   * was the only mutating handler that never went through patchSession — a
+   * plain read-modify-write, on the endpoint with by far the highest collision
+   * rate in the product. Everyone at a table joins within the same fifteen
+   * seconds; that is the moment the QR code is for.
+   *
+   * Measured: two concurrent joins, Alice's and Bob's, both reading before
+   * either writes. Alice was erased outright — gone from participants, her item
+   * claim cleared, her $40 of a $60 bill uncollected — and her phone was
+   * handed a 200. The existing regression test could not see it, because it
+   * awaits Alice's call fully before starting Bob's.
+   *
+   * Everything below now recomputes from `fresh` inside the mutate callback, so
+   * a retry re-applies onto whoever won rather than onto the snapshot this
+   * request started from.
    */
   async joinSession({ env, body, audit = NO_AUDIT }) {
     const { session_id, participant_id, name, items } = body;
@@ -849,89 +1063,137 @@ const HANDLERS = {
       return json({ error: 'Your payment is already settled for this split' }, 409);
     }
 
-    const splitMode = session.split_mode || 'itemized';
     const cleanName = clean(name, 40);
-    const storedItems = Array.isArray(session.items) ? session.items : [];
 
-    // Apply this caller's claim deltas to the STORED items, one item at a time.
-    let nextItems = storedItems;
-    if (splitMode === 'itemized' && Array.isArray(items)) {
-      const wanted = new Set(
-        items.filter((i) => (i.claimed_by || []).includes(participant_id)).map((i) => i.id),
-      );
-      const touched = new Set(items.map((i) => i.id));
+    /**
+     * What this caller is asking for, from the body alone.
+     *
+     * Derived once, outside the retry, because it is a statement of intent — it
+     * depends only on the request — while everything it is applied TO is read
+     * fresh on each attempt.
+     */
+    const requested = Array.isArray(items) ? items : [];
+    const wanted = new Set(
+      requested.filter((i) => (i.claimed_by || []).includes(participant_id)).map((i) => i.id),
+    );
+    const touched = new Set(requested.map((i) => i.id));
 
-      for (const item of items) {
-        const original = storedItems.find((i) => i.id === item.id);
-        if (!original) continue;
-        const originalClaimed = original.claimed_by || [];
-        const stealing =
-          wanted.has(item.id) &&
-          originalClaimed.length > 0 &&
-          !originalClaimed.includes(participant_id);
-        if (stealing) return json({ error: `Item "${original.name}" is already claimed` }, 409);
-      }
+    const updated = await patchSession(
+      svc,
+      session_id,
+      (fresh) => {
+        // Re-checked against the version being written onto, not the one this
+        // request opened with. A split that expired, filled up or was settled
+        // while we were deciding must not be joined on the retry.
+        if (fresh.expires_at && fresh.expires_at < Date.now()) {
+          throw new AppError('session_expired', 'Session has expired', 410);
+        }
+        const rows = fresh.participants || [];
+        const mine = rows.find((p) => p.participant_id === participant_id);
+        if (!mine && rows.length >= 50) {
+          throw new AppError('session_full', 'Session is full (max 50 participants)', 409);
+        }
+        if (mine?.payment_status === 'paid') {
+          throw new AppError('already_settled', 'Your payment is already settled for this split', 409);
+        }
 
-      // Everything except this caller's own membership is carried over from the
-      // stored row, so a concurrent claim by someone else survives.
-      nextItems = storedItems.map((stored) => {
-        if (!touched.has(stored.id)) return stored;
-        const others = (stored.claimed_by || []).filter((id) => id !== participant_id);
-        return { ...stored, claimed_by: wanted.has(stored.id) ? [...others, participant_id] : others };
-      });
-    }
+        const splitMode = fresh.split_mode || 'itemized';
+        const storedItems = Array.isArray(fresh.items) ? fresh.items : [];
 
-    const count = already ? current.length : current.length + 1;
-    const evenShare = count > 0 ? Math.round(((session.total_amount || 0) / count) * 100) / 100 : 0;
+        // Apply this caller's claim deltas to the STORED items, one at a time.
+        let nextItems = storedItems;
+        if (splitMode === 'itemized' && requested.length) {
+          for (const item of requested) {
+            const original = storedItems.find((i) => i.id === item.id);
+            if (!original) continue;
+            const originalClaimed = original.claimed_by || [];
+            const stealing =
+              wanted.has(item.id) &&
+              originalClaimed.length > 0 &&
+              !originalClaimed.includes(participant_id);
+            // A refusal, not a retry. Someone else holds this item and looping
+            // would only re-read the same answer.
+            if (stealing) {
+              throw new AppError('item_claimed', `Item "${original.name}" is already claimed`, 409);
+            }
+          }
 
-    /** This caller's share, recomputed from stored data — never taken from the body. */
-    const shareFor = (pid) => {
-      if (splitMode === 'even') return evenShare;
-      if (splitMode === 'custom') return current.find((p) => p.participant_id === pid)?.amount_owed || 0;
-      const claimed = nextItems.filter((i) => (i.claimed_by || []).includes(pid));
-      const sub = claimed.reduce((s, i) => {
-        const share = (i.claimed_by || []).length || 1;
-        return s + ((Number(i.price) || 0) * (Number(i.quantity) || 1)) / share;
-      }, 0);
-      const allSub = nextItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
-      const ratio = allSub > 0 ? sub / allSub : 0;
-      const extras = (Number(session.tax) || 0) + (Number(session.tip) || 0);
-      return Math.round((sub + extras * ratio) * 100) / 100;
-    };
+          // Everything except this caller's own membership is carried over from
+          // the stored row, so a concurrent claim by someone else survives.
+          nextItems = storedItems.map((stored) => {
+            if (!touched.has(stored.id)) return stored;
+            const others = (stored.claimed_by || []).filter((id) => id !== participant_id);
+            return { ...stored, claimed_by: wanted.has(stored.id) ? [...others, participant_id] : others };
+          });
+        }
 
-    let nextParticipants = already
-      ? current.map((p) =>
-          p.participant_id === participant_id
-            ? { ...p, ...(cleanName ? { name: cleanName } : {}) }
-            : p,
-        )
-      : [...current, {
-          participant_id,
-          name: cleanName || 'Anonymous',
-          amount_owed: 0,
-          payment_status: 'unpaid',
-        }];
+        const count = mine ? rows.length : rows.length + 1;
+        const evenShare = count > 0 ? Math.round(((fresh.total_amount || 0) / count) * 100) / 100 : 0;
 
-    // payment_status is never taken from the request: markMePaid owns it, and
-    // accepting it here would let one diner mark another as paid.
-    //
-    // A settled diner's amount is frozen. Every join recalculates what everyone
-    // owes, and in an even split that moves all of them — so a fifth person
-    // arriving after Alice's $30 was confirmed would quietly restate her share
-    // as $24 and leave her marked paid against a number she never sent. Her row
-    // stops moving once the host confirms it; the arithmetic for everyone still
-    // owing continues as before.
-    nextParticipants = nextParticipants.map((p) => (
-      p.payment_status === 'paid'
-        ? p
-        : { ...p, amount_owed: splitMode === 'even' ? evenShare : shareFor(p.participant_id) }
-    ));
+        /** This caller's share, recomputed from stored data — never taken from the body. */
+        const shareFor = (pid) => {
+          if (splitMode === 'even') return evenShare;
+          if (splitMode === 'custom') return rows.find((p) => p.participant_id === pid)?.amount_owed || 0;
+          const claimed = nextItems.filter((i) => (i.claimed_by || []).includes(pid));
+          const sub = claimed.reduce((s, i) => {
+            const share = (i.claimed_by || []).length || 1;
+            return s + ((Number(i.price) || 0) * (Number(i.quantity) || 1)) / share;
+          }, 0);
+          const allSub = nextItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+          const ratio = allSub > 0 ? sub / allSub : 0;
+          const extras = (Number(fresh.tax) || 0) + (Number(fresh.tip) || 0);
+          return Math.round((sub + extras * ratio) * 100) / 100;
+        };
 
-    const updated = await svc.entity('Session').update(session_id, {
-      participants: nextParticipants,
-      status: session.status === 'waiting' ? 'claiming' : session.status,
-      ...(splitMode === 'itemized' ? { items: nextItems } : {}),
-    });
+        let nextParticipants = mine
+          ? rows.map((p) =>
+              p.participant_id === participant_id
+                ? { ...p, ...(cleanName ? { name: cleanName } : {}) }
+                : p,
+            )
+          : [...rows, {
+              participant_id,
+              name: cleanName || 'Anonymous',
+              amount_owed: 0,
+              payment_status: 'unpaid',
+            }];
+
+        // payment_status is never taken from the request: markMePaid owns it,
+        // and accepting it here would let one diner mark another as paid.
+        //
+        // A settled diner's amount is frozen. Every join recalculates what
+        // everyone owes, and in an even split that moves all of them — so a
+        // fifth person arriving after Alice's $30 was confirmed would quietly
+        // restate her share as $24 and leave her marked paid against a number
+        // she never sent. Her row stops moving once the host confirms it; the
+        // arithmetic for everyone still owing continues as before.
+        nextParticipants = nextParticipants.map((p) => (
+          p.payment_status === 'paid'
+            ? p
+            : { ...p, amount_owed: splitMode === 'even' ? evenShare : shareFor(p.participant_id) }
+        ));
+
+        return {
+          participants: nextParticipants,
+          status: fresh.status === 'waiting' ? 'claiming' : fresh.status,
+          ...(splitMode === 'itemized' ? { items: nextItems } : {}),
+        };
+      },
+      // Our intent is visible when we are in the split and every item we asked
+      // for is recorded as ours. Membership alone is not enough: the write that
+      // erased Alice also erased her claim, and a diner listed as owing nothing
+      // is the same bug wearing a different number.
+      (fresh) => {
+        const rows = fresh.participants || [];
+        if (!rows.find((p) => p.participant_id === participant_id)) return false;
+        const freshItems = Array.isArray(fresh.items) ? fresh.items : [];
+        return [...wanted].every((id) =>
+          (freshItems.find((i) => i.id === id)?.claimed_by || []).includes(participant_id),
+        );
+      },
+    );
+
+    if (!updated) return json({ error: 'Session not found' }, 404);
 
     // Who claimed what, and what they were told they owe. The other half of a
     // "that was not my order" dispute — payment.self_reported says a diner sent
@@ -943,7 +1205,10 @@ const HANDLERS = {
       actorParticipantId: participant_id,
       detail: {
         amount: (updated.participants || []).find((p) => p.participant_id === participant_id)?.amount_owed ?? null,
-        split_mode: splitMode,
+        // From the row that was actually written, not the one this request
+        // opened with — a retry may have landed on a split whose mode changed
+        // underneath it, and the audit row has to describe what happened.
+        split_mode: updated.split_mode || 'itemized',
         participant_count: (updated.participants || []).length,
       },
     });
@@ -1085,12 +1350,53 @@ export async function onRequestPost({ request, env, ctx, name }) {
     );
   }
 
+  /**
+   * A ceiling on the body, before anything reads it.
+   *
+   * `request.text()` was unbounded. Nothing here needs a large body — the
+   * biggest legitimate one is a 50-item receipt with participants, a few tens
+   * of kilobytes — but an anonymous caller could hand this endpoint tens of
+   * megabytes and the Worker would buffer all of it and then JSON.parse it,
+   * inside a 128 MB isolate, before a single validation ran. That is a cheap
+   * way to burn CPU and memory on an endpoint that takes no credentials, and
+   * three of the fourteen functions here are reachable without any.
+   *
+   * 256 KB is roughly ten times the largest real payload. Checked against the
+   * declared length first so an oversized request is refused without reading
+   * it, and against the actual text too, because Content-Length is the
+   * client's claim and a chunked body carries none at all.
+   */
+  const MAX_BODY_BYTES = 256 * 1024;
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return errorResponse(
+      new AppError('body_too_large', 'That request is too large.', 413),
+      { id, route },
+    );
+  }
+
   let body = {};
   try {
     const raw = await request.text();
+    if (raw.length > MAX_BODY_BYTES) {
+      return errorResponse(
+        new AppError('body_too_large', 'That request is too large.', 413),
+        { id, route },
+      );
+    }
     if (raw) body = JSON.parse(raw);
   } catch {
     return errorResponse(new AppError('invalid_json', 'Invalid JSON', 400), { id, route });
+  }
+
+  // A JSON body that is not an object indexes nothing. Every handler destructures
+  // fields off `body`, and `null` — valid JSON — makes each of them throw a
+  // TypeError that surfaces as a 500 for what is plainly a bad request.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return errorResponse(
+      new AppError('invalid_json', 'Expected a JSON object', 400),
+      { id, route },
+    );
   }
 
   /**

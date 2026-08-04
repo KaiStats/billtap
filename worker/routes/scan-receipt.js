@@ -105,6 +105,16 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Send a JPEG, PNG, WebP or HEIC image.', code: 'bad_type' }, 415);
   }
 
+  // Refuse on the declared length before reading anything. The check below is
+  // the one that counts — Content-Length is the client's claim, and a chunked
+  // upload carries none — but without this the Worker buffers the entire body
+  // into a 128 MB isolate and only then decides it was too big. That is a free
+  // way to spend the memory of an endpoint that takes no credentials.
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BYTES) {
+    return json({ error: 'That image is too large.', code: 'too_large' }, 413);
+  }
+
   const buffer = await request.arrayBuffer();
   if (!buffer.byteLength) return json({ error: 'No image received.', code: 'empty' }, 400);
   if (buffer.byteLength > MAX_BYTES) {
