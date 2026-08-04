@@ -24,7 +24,7 @@ import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js'
 // Same origin helper the ported functions use. This file previously hard-coded
 // api.base44.com/v0, which 404s — every lookup here had been failing silently,
 // because the caller fires this best-effort and never reads the response.
-import { base44Origin } from '../lib/base44.js';
+import { serviceRole } from '../lib/data.js';
 
 const MAX_BODY_BYTES = 512;
 
@@ -44,39 +44,26 @@ export async function onRequestPost({ request, env }) {
   }
 
   try {
-    // Fetch rating as service role — this also validates it exists
-    const appId = env.BASE44_APP_ID || env.VITE_BASE44_APP_ID;
-    const { BASE44_MASTER_KEY } = env;
-    if (!appId || !BASE44_MASTER_KEY) {
-      // Name the missing binding. This is the only signal that exists — the
-      // caller ignores the response — so a log that just says "misconfigured"
-      // costs an operator the evening it takes to work out which one.
-      const missing = [
-        appId ? null : 'BASE44_APP_ID',
-        BASE44_MASTER_KEY ? null : 'BASE44_MASTER_KEY',
-      ].filter(Boolean).join(', ');
-      console.error(`rating-alert: cannot page the operator, missing binding(s): ${missing}`);
+    // Through the data layer, so this follows DATA_BACKEND like everything
+    // else. It used to build Base44 URLs by hand with the master key, which
+    // meant the cutover to Supabase would have left it reading a database with
+    // nothing in it — and because the caller fires this best-effort and never
+    // reads the response, nobody would have found out. That is the exact
+    // failure this file already had once: see the header of worker/lib/base44.js.
+    let svc;
+    try {
+      svc = serviceRole(env);
+    } catch (error) {
+      // Name the missing binding. This is the only signal that exists, so a log
+      // saying just "misconfigured" costs an operator the evening it takes to
+      // work out which one.
+      console.error(`rating-alert: cannot page the operator — ${error.message}`);
       return json({ error: 'Service misconfigured' }, 500);
     }
 
-    // Call Base44 API with service-role auth to fetch the rating
-    const ratingResp = await fetch(
-      `${base44Origin(env)}/api/apps/${appId}/entities/GuestRating/${ratingId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${BASE44_MASTER_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!ratingResp.ok) {
-      if (ratingResp.status === 404) return json({ error: 'Rating not found' }, 404);
-      console.error(`Rating fetch failed: ${ratingResp.status}`);
-      return json({ error: 'Service error' }, 500);
-    }
-
-    const { data: rating } = await ratingResp.json();
+    const ratings = await svc.entity('GuestRating').filter({ id: ratingId });
+    const rating = ratings[0];
+    if (!rating) return json({ error: 'Rating not found' }, 404);
 
     // Already paged for this rating — do not page again.
     //
@@ -93,24 +80,13 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Invalid rating' }, 400);
     }
 
-    // Fetch restaurant to get contact info
-    const restaurantResp = await fetch(
-      `${base44Origin(env)}/api/apps/${appId}/entities/Restaurant/${rating.restaurant_id}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${BASE44_MASTER_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!restaurantResp.ok) {
-      console.error(`Restaurant fetch failed: ${restaurantResp.status}`);
+    const restaurants = await svc.entity('Restaurant').filter({ id: rating.restaurant_id });
+    const restaurant = restaurants[0];
+    if (!restaurant) {
+      console.error(`rating-alert: restaurant ${rating.restaurant_id} not found`);
       return json({ error: 'Restaurant not found' }, 404);
     }
-
-    const { data: restaurant } = await restaurantResp.json();
-    if (!restaurant || !restaurant.alert_email) {
+    if (!restaurant.alert_email) {
       return json({ error: 'Restaurant has no alert contact' }, 400);
     }
 
@@ -167,7 +143,7 @@ export async function onRequestPost({ request, env }) {
     // Stamping afterwards leaves the whole send window open to a replay, and
     // two concurrent requests would both read alerted_at as empty and both
     // page. Claiming first means the loser of that race sends nothing.
-    const claimed = await stampAlerted(appId, BASE44_MASTER_KEY, ratingId);
+    const claimed = await stampAlerted(svc, ratingId);
     if (!claimed) {
       // Could not claim, so cannot guarantee this is not a duplicate. Refusing
       // is the safe direction when the failure mode is an unbounded phone bill.
@@ -195,7 +171,7 @@ export async function onRequestPost({ request, env }) {
     // is the documented behaviour, so only treat it as failed when the email
     // failed too.
     if (!emailResult.ok && !smsResult.ok) {
-      await stampAlerted(appId, BASE44_MASTER_KEY, ratingId, null);
+      await stampAlerted(svc, ratingId, null);
       console.error(
         `rating-alert: no channel delivered (email: ${emailResult.reason}, sms: ${smsResult.reason})`,
       );
@@ -225,20 +201,10 @@ export async function onRequestPost({ request, env }) {
  * send", because the whole point of the stamp is that it is the only thing
  * standing between an unauthenticated endpoint and an unbounded SMS bill.
  */
-async function stampAlerted(appId, masterKey, ratingId, value = Date.now()) {
+async function stampAlerted(svc, ratingId, value = Date.now()) {
   try {
-    const res = await fetch(
-      `${base44Origin(env)}/api/apps/${appId}/entities/GuestRating/${ratingId}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${masterKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ alerted_at: value }),
-      },
-    );
-    return res.ok;
+    await svc.entity('GuestRating').update(ratingId, { alerted_at: value });
+    return true;
   } catch (error) {
     console.error('rating-alert: alerted_at write failed:', error.message);
     return false;
