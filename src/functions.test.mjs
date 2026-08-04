@@ -125,7 +125,9 @@ test('no page imports a Base44 client, by any name', () => {
   const files = source.flatMap((dir) => walk(path(dir)));
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
-    assert.ok(!/from ['\"][^'\"]*base44[^'\"]*['\"]/i.test(text), `${file} still imports from Base44`);
+    // No backslashes before the double quotes: inside a regex literal they are
+    // already ordinary characters, and inside a character class doubly so.
+    assert.ok(!/from ['"][^'"]*base44[^'"]*['"]/i.test(text), `${file} still imports from Base44`);
   }
 });
 

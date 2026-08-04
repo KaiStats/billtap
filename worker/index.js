@@ -143,6 +143,22 @@ const HTML_SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
+  /**
+   * Permissions-Policy has exactly the frame-ancestors problem described above,
+   * and index.html has been carrying it as a <meta http-equiv> the whole time.
+   *
+   * No browser reads Permissions-Policy from a meta tag — it is defined as a
+   * response header and only ever parsed as one. So the camera, microphone and
+   * geolocation locks the app believed it had were not applied on any request
+   * ever served. Unlike the CSP next to it, nothing warned: the tag is simply
+   * ignored, and a scanner reading the HTML reports it as present.
+   *
+   * The value is a superset of the meta's. This app calls neither getUserMedia
+   * nor the geolocation API anywhere in src/ — verified, not assumed — so
+   * denying them costs nothing and means a future dependency cannot quietly
+   * start asking a diner for their camera at a restaurant table.
+   */
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
 };
 
 /** Returns a copy of `response` with the HTML security headers applied. */

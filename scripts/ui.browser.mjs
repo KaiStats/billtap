@@ -281,8 +281,10 @@ async function toReview(page) {
   await page.getByRole('heading', { name: 'Olive Garden' }).or(page.getByLabel('Where were you?')).waitFor({ timeout: 15000 });
 }
 
-/** Every dollar figure on the screen, in order. */
-const money = (page) => page.locator('body').innerText().then((t) => t.match(/\$[\d,]+\.\d{2}/g) || []);
+// A `money(page)` helper — every dollar figure on screen, in order — used to
+// live here and was called by nothing. It is in git if a test ever wants it;
+// what it was doing meanwhile was sitting inside a directory the old lint
+// config never looked at.
 
 /** The total in the receipt footer. */
 async function totalOnScreen(page) {

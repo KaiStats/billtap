@@ -7,7 +7,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
 import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
@@ -57,9 +57,24 @@ const PageLoader = () => (
 );
 
 const AnimatedPage = ({ children, direction }) => {
+  /**
+   * src/index.css has honoured `prefers-reduced-motion: reduce` since it was
+   * written — but only for CSS animations and transitions. Every page transition
+   * in this app is a framer-motion transform driven from JavaScript, which that
+   * media query cannot touch. So a diner who has switched motion off at the OS
+   * level, often because movement makes them ill, was still getting a 30px
+   * horizontal slide on every single navigation.
+   *
+   * useReducedMotion() reads the same media query and stays subscribed to it.
+   * Reduced means no travel — the cross-fade stays, because an instantaneous
+   * swap loses the "this is a new screen" cue that the movement was there to
+   * give, and a pure opacity change is not what the setting is asking to remove.
+   */
+  const reduceMotion = useReducedMotion();
+
   const xIn = direction === "back" ? -30 : direction === "tab" ? 0 : 30;
   const xOut = direction === "back" ? 30 : direction === "tab" ? 0 : -30;
-  const opacityOnly = direction === "tab";
+  const opacityOnly = direction === "tab" || reduceMotion;
 
   return (
     <motion.div
@@ -149,6 +164,34 @@ const AuthenticatedApp = () => {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/*
+        Skip link, and the <main> it points at.
+
+        Neither existed. Every route rendered as anonymous <div>s inside another
+        <div> — the only <main> element in the tree was in ui/sidebar.jsx, which
+        nothing imports. So a screen-reader user had no landmark to jump to and
+        no way to hear where the page content began, and a keyboard user hit
+        every item in BottomNav and every header control before reaching the
+        receipt they came to split. That is WCAG 2.4.1 (Bypass Blocks) and
+        1.3.1, and it applied to all 22 routes.
+
+        Done once here rather than page by page, because that is what puts it on
+        routes nobody remembers to update.
+
+        Visually hidden until focused: `sr-only` collapses it to a 1px clip,
+        `focus:not-sr-only` restores it, so a sighted keyboard user sees it on
+        the first Tab and a mouse user never does. tabIndex={-1} on <main> lets
+        it receive programmatic focus from the link without entering the tab
+        order itself.
+      */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:px-4 focus:py-2 focus:font-semibold"
+        style={{ background: '#00c896', color: '#0a0e1a' }}
+      >
+        Skip to main content
+      </a>
+      <main id="main-content" tabIndex={-1} className="w-full">
       <Suspense fallback={<PageLoader />}>
         <AnimatePresence mode="wait" onExitComplete={() => null}>
           <Routes location={location} key={location.pathname}>
@@ -246,6 +289,7 @@ const AuthenticatedApp = () => {
           </Routes>
         </AnimatePresence>
       </Suspense>
+      </main>
       <BottomNav />
       <PWAInstallPrompt />
       {/* Renders nothing in production. Everywhere else it is the only thing on

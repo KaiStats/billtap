@@ -27,11 +27,50 @@
       to script-src, which has no blob:, and the browser refuses the worker —
       replay then degrades to compressing on the main thread.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
+    <!--
+      Four directives added, none of which default-src covers.
+
+      base-uri is the one that matters most here. It does NOT fall back to
+      default-src, so without it a single injected <base href="//evil.example/">
+      silently repoints every relative URL on the page — including the module
+      scripts in /assets/ — at an attacker's origin, and script-src 'self' still
+      passes because the browser resolves 'self' against the *base*, not the
+      document. It is the cheapest way to turn one injected tag into full script
+      execution, and it was open.
+
+      form-action likewise does not inherit from default-src: it is what stops
+      an injected <form> from posting the sign-in fields to somebody else.
+
+      object-src 'none' retires <object>/<embed>/<applet>, a plugin surface this
+      app has no use for and which historically bypassed script-src.
+
+      frame-src 'none' is explicit rather than inherited so that adding an
+      embed later is a decision somebody makes, not something that quietly
+      starts working.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    <!--
+      X-XSS-Protection was here, set to "1; mode=block".
+
+      Removed rather than corrected. The header drives a reflected-XSS auditor
+      that Chrome deleted in 2019, Edge dropped when it moved to Chromium, and
+      Firefox never shipped — so on every browser this app actually runs in it
+      is inert. In the browsers that did honour it, mode=block was itself an
+      information-disclosure vector (it let an attacker selectively blank parts
+      of a cross-origin page to probe its contents), which is precisely why it
+      was removed upstream.
+
+      The CSP above is the real defence. Keeping a dead header alongside it only
+      makes a scanner report look longer than the protection is.
+    -->
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
-    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
+    <!--
+      Permissions-Policy is NOT here, for the same reason frame-ancestors is
+      not: browsers only parse it as a response header, so the <meta> version
+      that used to sit on this line was inert on every request ever served. It
+      now lives in HTML_SECURITY_HEADERS in worker/index.js, where it applies.
+    -->
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0b0d" />
