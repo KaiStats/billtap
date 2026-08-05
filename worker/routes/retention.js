@@ -60,6 +60,30 @@ import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 /** The bucket in supabase/migrations/0004_receipts_storage.sql. */
 const BUCKET = 'receipts';
 
+/**
+ * What this app actually mints: a uuid, a dot, an extension.
+ *
+ * Both minting paths produce it — receiptObjectKey in src/lib/uploadReceipt.js
+ * and createReceiptUpload in worker/routes/functions.js, which constrains the
+ * extension to an allow-list. Neither can emit a quote, a comma or a paren,
+ * which is the property the batched membership query below depends on.
+ *
+ * Anything in the bucket that does not match this was not created by this app.
+ * Until migration 0007 removes the anonymous insert policy, that is a thing a
+ * stranger can arrange.
+ */
+const MINTED_KEY =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{1,8}$/i;
+
+/**
+ * How many unrecognised keys get an individual query per run.
+ *
+ * In normal operation this is zero. The cap exists so that somebody uploading
+ * ten thousand oddly-named objects cannot make the sweep spend the whole
+ * invocation's subrequest budget looking at them.
+ */
+const UNMINTED_PER_RUN = 25;
+
 /** What the policy promises, in days. */
 export const RETENTION_DAYS = 30;
 
@@ -189,7 +213,7 @@ export async function sweepOrphans(env, svc, { limit = 200 } = {}) {
   if (!candidates.length) return summary;
 
   /**
-   * Which of these a session still claims — asked once, for the whole page.
+   * Which of these a session still claims.
    *
    * Ask the database rather than inferring. A session that still points at a
    * key is one whose own redaction has not run or did not finish, and deleting
@@ -201,17 +225,69 @@ export async function sweepOrphans(env, svc, { limit = 200 } = {}) {
    * and touched yesterday still displays a forty-day-old object. Checking only
    * old rows would delete the receipt out from under it.
    *
-   * The public URL is derived from the key, so this is one `in.(...)` against
-   * an equality — no LIKE, and no scan per candidate.
+   * ── Why the keys are sorted before they are asked about ───────────────────
+   *
+   * This built one `image_url=in.("url1","url2",...)` by interpolating every
+   * candidate's URL, and a candidate's URL contains the storage object's key.
+   * Migration 0004's insert policy is `with check (bucket_id = 'receipts')` —
+   * nothing constrains the key — so until 0007 is applied anyone can upload an
+   * object called whatever they like.
+   *
+   * An object named `x")--` closes the quoted list early. Everything after it
+   * stops being part of the list PostgREST parses, comes back absent from the
+   * "still claimed" answer, and is deleted. Demonstrated end to end: a live
+   * split, still open, lost the receipt image it was displaying, because
+   * somebody had uploaded a file with a punctuation mark in its name.
+   *
+   * So membership is only ever asked in list form about keys this app minted —
+   * a uuid and an extension, which cannot contain a quote, a comma or a paren.
+   * Anything else is asked about with a plain `eq.`, where the value is a
+   * single scalar that URLSearchParams percent-encodes whole and PostgREST
+   * never parses for structure.
    */
-  const quoted = candidates.map((c) => `"${c.url}"`).join(',');
-  const claimed = await svc.entity('Session').filter(
-    { image_url: { in: `(${quoted})` } },
-    { select: 'image_url' },
-  );
-  const stillReferenced = new Set(claimed.map((row) => row.image_url));
+  const minted = candidates.filter((c) => MINTED_KEY.test(c.key));
+  const unminted = candidates.filter((c) => !MINTED_KEY.test(c.key));
+  summary.unminted = unminted.length;
+
+  const stillReferenced = new Set();
+
+  if (minted.length) {
+    const quoted = minted.map((c) => `"${c.url}"`).join(',');
+    const claimed = await svc.entity('Session').filter(
+      { image_url: { in: `(${quoted})` } },
+      { select: 'image_url' },
+    );
+    for (const row of claimed) stillReferenced.add(row.image_url);
+  }
+
+  /**
+   * The rest, one at a time.
+   *
+   * A key this app did not mint should not exist, and in normal operation none
+   * do — so the cost of a query each is nothing, and the cap is only there so
+   * that somebody uploading ten thousand of them cannot spend the invocation's
+   * whole subrequest budget on the sweep.
+   *
+   * They are still checked rather than assumed orphaned. The reasoning that
+   * they cannot be referenced — image_url is always built from a minted key —
+   * is almost certainly true, and "almost certainly" is not the standard for
+   * deleting a restaurant's receipt.
+   */
+  for (const candidate of unminted.slice(0, UNMINTED_PER_RUN)) {
+    const rows = await svc.entity('Session').filter(
+      { image_url: candidate.url },
+      { select: 'image_url', limit: 1 },
+    );
+    if (rows.length) stillReferenced.add(candidate.url);
+  }
+  const checked = new Set([
+    ...minted.map((c) => c.url),
+    ...unminted.slice(0, UNMINTED_PER_RUN).map((c) => c.url),
+  ]);
 
   for (const candidate of candidates) {
+    // Never delete something this run did not get an answer about.
+    if (!checked.has(candidate.url)) continue;
     if (stillReferenced.has(candidate.url)) continue;
     try {
       await deleteObject(env, BUCKET, candidate.key);

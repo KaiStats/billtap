@@ -393,3 +393,127 @@ test('sweepOrphans can be driven on its own', async () => {
     restore();
   }
 });
+
+// ── An object key is attacker-controlled input ──────────────────────────────
+//
+// Migration 0004's insert policy is `with check (bucket_id = 'receipts')` —
+// nothing constrains the key — so until 0007 is applied, anyone can upload an
+// object named whatever they like. The sweep then interpolated every candidate
+// key into one `image_url=in.("...","...")`.
+//
+// A key of `x")--` closes that list early. Every candidate after it stops being
+// part of the list PostgREST parses, so it comes back absent from the "still
+// claimed" answer and is deleted — including receipts a live split is currently
+// displaying. Reproduced end to end before this was fixed.
+
+/** A PostgREST-shaped reader that parses in.(...) the way PostgREST does. */
+function injectionStub(sessions, objects) {
+  const deleted = [];
+  const original = globalThis.fetch;
+
+  globalThis.fetch = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === '/storage/v1/object/list/receipts') {
+      return new Response(JSON.stringify(objects), { status: 200 });
+    }
+    if (u.pathname.startsWith('/storage/v1/object/')) {
+      deleted.push(decodeURIComponent(u.pathname.replace('/storage/v1/object/receipts/', '')));
+      return new Response('{}', { status: 200 });
+    }
+
+    const raw = u.searchParams.get('image_url') || '';
+    let members = [];
+    if (raw.startsWith('in.')) {
+      const inner = raw.slice(3);
+      const close = inner.indexOf(')');            // the list ends at the first ')'
+      const body = inner.slice(1, close === -1 ? undefined : close);
+      members = body.split(',').map((v) => v.replace(/^"|"$/g, ''));
+    } else if (raw.startsWith('eq.')) {
+      members = [raw.slice(3)];                    // a scalar, never parsed for structure
+    }
+    const rows = sessions.filter((s) => members.includes(s.image_url));
+    return new Response(JSON.stringify(rows.map((s) => ({ image_url: s.image_url }))), { status: 200 });
+  };
+
+  return { deleted, restore: () => { globalThis.fetch = original; } };
+}
+
+const objectUrl = (key) => `${SUPABASE}/storage/v1/object/public/receipts/${key}`;
+const LIVE_KEY = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg';
+
+test('a crafted object name cannot get a live split\'s receipt deleted', async () => {
+  const live = { id: 'live', image_url: objectUrl(LIVE_KEY), updated_date: daysAgo(1) };
+  const { deleted, restore } = injectionStub([live], [
+    // Listed oldest first, so the crafted name lands ahead of the real receipt.
+    { name: 'x")--', created_at: daysAgo(RETENTION_DAYS + 50) },
+    { name: LIVE_KEY, created_at: daysAgo(RETENTION_DAYS + 10) },
+  ]);
+  try {
+    const summary = await sweepOrphans(env, serviceRole(env));
+    assert.ok(
+      !deleted.includes(LIVE_KEY),
+      'the receipt a live split is displaying was deleted by a neighbouring object\'s name',
+    );
+    assert.ok(deleted.includes('x")--'), 'and the planted object is still cleaned up');
+    assert.equal(summary.unminted, 1, 'the odd key is counted, so abuse is visible');
+  } finally {
+    restore();
+  }
+});
+
+test('only keys this app minted are asked about in list form', async () => {
+  // The property the batched query depends on: a uuid and an extension cannot
+  // contain a quote, a comma or a paren.
+  const queries = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === '/storage/v1/object/list/receipts') {
+      return new Response(JSON.stringify([
+        { name: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff.png', created_at: daysAgo(RETENTION_DAYS + 5) },
+        { name: 'not,a"uuid).txt', created_at: daysAgo(RETENTION_DAYS + 5) },
+      ]), { status: 200 });
+    }
+    if (u.pathname.startsWith('/storage/v1/object/')) return new Response('{}', { status: 200 });
+    queries.push(decodeURIComponent(u.searchParams.get('image_url') || ''));
+    return new Response('[]', { status: 200 });
+  };
+  try {
+    await sweepOrphans(env, serviceRole(env));
+    const listQueries = queries.filter((q) => q.startsWith('in.'));
+    assert.equal(listQueries.length, 1, 'one batched query');
+
+    // The whole list, structurally: quoted members separated by commas, and no
+    // member containing a quote, comma or paren of its own. That is the
+    // property the batching depends on, so it is the property to assert.
+    assert.match(
+      listQueries[0].slice(3),
+      /^\("[^",)]+"(,"[^",)]+")*\)$/,
+      `a list query contained a structural character from a key: ${listQueries[0]}`,
+    );
+    assert.ok(!listQueries[0].includes('not,a"uuid'), 'the odd key stayed out of the list');
+    assert.ok(
+      queries.some((q) => q.startsWith('eq.') && q.includes('not,a"uuid')),
+      'and was asked about as a scalar instead, which is never parsed for structure',
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('nothing is deleted without an answer about it', async () => {
+  // The cap on unrecognised keys bounds the subrequest spend. It must not turn
+  // into "unchecked, therefore delete".
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    name: `weird-${i}!`,
+    created_at: daysAgo(RETENTION_DAYS + 5),
+  }));
+  const { deleted, restore } = injectionStub([], many);
+  try {
+    const summary = await sweepOrphans(env, serviceRole(env));
+    assert.equal(summary.unminted, 40, 'all of them counted');
+    assert.ok(deleted.length <= 25, `deleted ${deleted.length} — more than were checked`);
+  } finally {
+    restore();
+  }
+});
