@@ -56,27 +56,45 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test:
+  # ── Two jobs, in parallel, because they were one and it timed out ──────────
+  #
+  # Everything used to run in a single job with timeout-minutes: 10, and the run
+  # that prompted this split was cancelled at exactly that. Measured locally:
+  # the static checks come to about 50 seconds together, the browser suite alone
+  # to 270, and a hosted runner is slower than the machine that measured it —
+  # plus `npm ci` and a Chromium download on top. Sequentially that is over ten
+  # minutes before anything is wrong.
+  #
+  # Split, the wall clock is the slower of the two rather than the sum, and each
+  # gets a limit that fits what it does. Neither number is padding: a job that
+  # hangs should still be killed, just not one that is merely working.
+
+  checks:
+    name: Lint, types, unit tests, config
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       # Pinned to a commit, not a tag.
       #
-      # `@v4` is a tag the action's own maintainers move, so what runs here is
-      # whatever they last pointed it at — and anyone who takes over that
-      # repository inherits the ability to change what executes in this job,
-      # retroactively, in every workflow that trusts the tag. A commit sha
+      # `@v7` is a tag the action's own maintainers move, so what runs here
+      # would be whatever they last pointed it at — and anyone who takes over
+      # that repository inherits the ability to change what executes in this
+      # job, retroactively, in every workflow that trusts the tag. A commit sha
       # cannot be moved.
       #
-      # These are v4.4.0 of each action, resolved from the tag at the time of
-      # writing and verified to match what `refs/tags/v4` pointed at. Update
-      # them the way any other dependency is updated: deliberately, with the
-      # version written next to the sha so the next person can tell what they
-      # are looking at.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # These were v4, which GitHub now reports as deprecated: "Node.js 20 is
+      # deprecated. The following actions target Node.js 20 but are being forced
+      # to run on Node.js 24." Forced onto a runtime they were not built for is
+      # not somewhere to leave them. v7/v7 target Node 24 natively.
+      #
+      # Each sha was resolved from its version tag and verified to match what
+      # the moving major tag currently points at. Update them the way any other
+      # dependency is updated: deliberately, with the version next to the sha so
+      # the next person can tell what they are looking at.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -100,9 +118,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Unit only. `npm test` now runs the browser suite too, and Chromium is
-      # not installed until further down — running it here would fail for a
-      # reason that has nothing to do with the code.
       - name: Test
         run: npm run test:unit
 
@@ -127,26 +142,45 @@ jobs:
       # 2560px hero variant that was never generated — invisible on an ordinary
       # display, and the hero art silently vanished on Retina screens.
       #
-      # Prerendering needs a real browser, which is a slow download, so CI skips
-      # it and verify-dist is told to expect that. The full gate still runs on
-      # every actual deploy via wrangler's build.command.
+      # Prerendering needs a real browser, which is a slow download, so this job
+      # skips it and verify-dist is told to expect that. The full gate still
+      # runs on every actual deploy via wrangler's build.command.
       - name: Verify referenced assets exist
         run: node scripts/verify-dist.mjs --assets-only
 
-      # The browser suite drives the built bundle through the guest journey —
-      # scan, review, correct, share — with the network stubbed. It is the only
-      # thing here that checks what a diner actually sees: that the total on
-      # screen is the total sent to the server, that nothing spills off a 390px
-      # phone, that the receipt is readable rather than near-black on black.
+  browser:
+    name: Browser suite
+    runs-on: ubuntu-latest
+    # 270 seconds locally, and a hosted runner is slower. Twenty is room for
+    # that plus the install, without being so loose that a genuine hang sits
+    # burning minutes.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The Chromium download is one to two minutes of the run and changes only
+      # when the playwright version does — which is recorded in the lockfile, so
+      # that is what the key is built from.
       #
-      # It needs Chromium, which is why it is installed here rather than assumed.
-      #
-      # It used to be excluded from `npm test` so the fast path stayed fast. That
-      # cost more than it saved: fifteen browser tests broke across two commits
-      # and nothing local said so, because `npm test` reported 422 passing and
-      # the suite that would have caught it was a separate command nobody ran.
-      # CI did catch it, on every commit for days, and nobody looked. `npm test`
-      # runs both now.
+      # System libraries are NOT cached: they are apt packages outside this
+      # path, which is why the install step below still runs --with-deps. On a
+      # cache hit it finds the browser already there and only does the apt work.
+      - name: Cache Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: playwright-${{ runner.os }}-
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
@@ -155,6 +189,12 @@ jobs:
       # previous step left, built from whatever .env.local existed, which is why
       # this suite passed on a laptop and failed here on the same commit for
       # days running.
+      #
+      # It drives the built bundle through the guest journey — scan, review,
+      # correct, share — with the network stubbed. It is the only thing here
+      # that checks what a diner actually sees: that the total on screen is the
+      # total sent to the server, that nothing spills off a 390px phone, that
+      # the receipt is readable rather than near-black on black.
       - name: Browser tests
         run: npm run test:ui
 
@@ -173,7 +213,8 @@ jobs:
 # rather than fixed here. In Settings → Branches, add a rule for `main`:
 #
 #   * Require a pull request before merging
-#   * Require status checks to pass — select this workflow's "test" job
+#   * Require status checks to pass — select BOTH jobs above, "checks" and
+#     "browser". Selecting one leaves the other advisory.
 #   * Require branches to be up to date before merging
 #   * Do not allow force pushes, and do not allow deletions
 #
