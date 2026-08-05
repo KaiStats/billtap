@@ -16,6 +16,7 @@ import { rememberHostKey } from "@/lib/hostKey";
 import { rememberSplit } from "@/lib/splitHistory";
 import { startScanTimer } from "@/lib/scanTiming";
 import ErrorNotice from "@/components/ErrorNotice";
+import { logClientError } from "@/lib/clientLog";
 import { validateReceiptParse, parseConfidence } from "../../shared/receipt-math";
 import { sessionPath } from '@/lib/sessionLinks';
 
@@ -283,8 +284,9 @@ export default function NewReceipt() {
         window.gtag('event', 'receipt_scanned', { items_count: (result.items || []).length });
       }
     } catch (err) {
-      console.error("Failed to parse receipt:", err);
-      Sentry.captureException(err, { tags: { feature: 'receipt_scan' } });
+      // Not console.error(err) — that printed the message and the stack into
+      // the devtools console of every phone at the table. See lib/clientLog.js.
+      logClientError('parse receipt', err, { feature: 'receipt_scan' });
       setFailure(err);
     } finally {
       setUploading(false);
@@ -364,8 +366,7 @@ export default function NewReceipt() {
       }
       await afterCreate(session.id);
     } catch (err) {
-      console.error("Failed to create session:", err);
-      Sentry.captureException(err, { tags: { feature: 'join_session' } });
+      logClientError('create session', err, { feature: 'join_session' });
       setFailure(err);
       setSaving(false);
     }
@@ -406,7 +407,7 @@ export default function NewReceipt() {
       trackDeviceAction('split_created');
       await afterCreate(res.data.session.id);
     } catch (err) {
-      Sentry.captureException(err);
+      logClientError('create an even split', err, { feature: 'quick_even' });
       setFailure(err);
       setSaving(false);
     }

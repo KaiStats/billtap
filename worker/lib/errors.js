@@ -26,6 +26,8 @@
  */
 
 import { reportError } from './report.js';
+import { recordError } from './error-log.js';
+import { redactPublic, GENERIC } from '../../shared/redact.js';
 
 /**
  * A short id for one request.
@@ -84,6 +86,44 @@ export const upstream = (code, message, options = {}) =>
   new AppError(code, message, 502, { retry: true, ...options });
 
 /**
+ * ── The last line between an internal detail and a stranger's screen ────────
+ *
+ * Everything above is careful about *which* message goes out. This is careful
+ * about what is *in* it, which is a different question and the one that gets
+ * lost: publicShape sends an AppError's message verbatim, and that message is a
+ * string a developer wrote months ago in a file nobody re-reads at review time.
+ *
+ * Two ways that goes wrong, neither hypothetical in a codebase this size. A
+ * message built by interpolation — `Could not reach ${url}` — publishes a
+ * hostname the moment somebody passes one. And publicShape's 5xx branch
+ * returned `error.message` for any AppError at or above 500, contradicting the
+ * rule at the top of this file ("a 5xx is ours, so say nothing beyond a request
+ * id"). Nothing exploited that yet; a latent leak in the error path is still
+ * the wrong thing to leave, because the error path is where the interesting
+ * strings are.
+ *
+ * The patterns live in shared/redact.js because the browser needs them too.
+ * src/lib/errors.js renders whatever arrives in `data.error`, and the Worker is
+ * not the only thing that can put a string there — a browser test found a live
+ * connection string reaching the screen through exactly that door.
+ */
+
+/**
+ * True when a message had to be withheld, so the developer who wrote it finds
+ * out. A leak caught silently is a leak that stays in the source.
+ */
+function noteRedaction(original, route) {
+  console.error(JSON.stringify({
+    level: 'error',
+    redacted_public_message: true,
+    route,
+    // The original goes to the log, which is the whole point of the split: the
+    // detail exists, it is simply not on the caller's screen.
+    original,
+  }));
+}
+
+/**
  * Whatever the caller is allowed to know about this failure.
  *
  * An AppError under 500 carries a message written to be read by a stranger. Any
@@ -92,17 +132,17 @@ export const upstream = (code, message, options = {}) =>
  * an unredacted upstream message is how a schema, a hostname or a customer's
  * email address ends up in somebody's browser console.
  */
-export function publicShape(error, id) {
-  if (error instanceof AppError && error.status < 500) {
-    return {
-      body: { error: error.message, code: error.code, request_id: id, ...(error.retry ? { retry: true } : {}) },
-      status: error.status,
-    };
-  }
+export function publicShape(error, id, route = 'unknown') {
   if (error instanceof AppError) {
+    // Applied to 4xx as much as 5xx. A 400 assembled by interpolation can
+    // publish a hostname just as easily as a 502 can, and the caller-facing
+    // sentence is the one place neither is ever acceptable.
+    const safe = redactPublic(error.message);
+    if (!safe && error.message) noteRedaction(error.message, route);
+
     return {
       body: {
-        error: error.message || 'Something went wrong on our end.',
+        error: safe || (error.status < 500 ? 'That request could not be completed.' : GENERIC),
         code: error.code,
         request_id: id,
         ...(error.retry ? { retry: true } : {}),
@@ -110,9 +150,14 @@ export function publicShape(error, id) {
       status: error.status,
     };
   }
+
+  // Anything that is not an AppError — a TypeError, a thrown string, a driver's
+  // complaint naming a column — is replaced wholesale and never inspected. Its
+  // message was not written for a stranger, so no amount of scanning makes it
+  // safe to show one.
   return {
     body: {
-      error: 'Something went wrong on our end. Nothing was charged or changed.',
+      error: GENERIC,
       code: 'internal',
       request_id: id,
       retry: true,
@@ -163,11 +208,25 @@ export function logError(error, { id, route, extra = {} }) {
  */
 export function errorResponse(
   error,
-  { id = requestId(), route = 'unknown', extra = {}, env = null, ctx = null } = {},
+  {
+    id = requestId(),
+    route = 'unknown',
+    extra = {},
+    env = null,
+    ctx = null,
+    request = null,
+    // Named for what it is rather than `body`, which is already the name of the
+    // response body destructured out of publicShape below.
+    requestBody = null,
+  } = {},
 ) {
   logError(error, { id, route, extra });
   reportError(env, ctx, error, { id, route, extra });
-  const { body, status } = publicShape(error, id);
+  // The durable, queryable half. Cloudflare keeps the line above for days and
+  // Sentry keeps the 5xx for months; this keeps everything for ninety and can
+  // be filtered by date, route and severity. See worker/lib/error-log.js.
+  recordError(env, ctx, error, { id, route, request, body: requestBody, method: request?.method });
+  const { body, status } = publicShape(error, id, route);
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -180,3 +239,6 @@ export function errorResponse(
     },
   });
 }
+
+// Re-exported so a caller does not have to know the list lives in shared/.
+export { redactPublic, GENERIC };

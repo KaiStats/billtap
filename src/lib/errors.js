@@ -32,6 +32,8 @@
  * server already wrote a good sentence, it wins; it has the amounts and the
  * names and this file does not.
  */
+import { redactPublic, GENERIC } from '../../shared/redact.js';
+
 const ADVICE = {
   // The one failure a diner can actually fix, and the fix is physical.
   scan_unreadable: 'Try again with more light, and get the whole receipt in frame.',
@@ -68,8 +70,26 @@ export function describeError(error) {
     };
   }
 
+  /**
+   * Redacted here as well as on the server, and this is not belt-and-braces
+   * ceremony — a browser test found a live leak through this exact line.
+   *
+   * With a boundary stubbed to answer 500 and a body full of internal detail,
+   * the receipt screen printed a connection string, because this renders
+   * whatever arrives in `data.error`. worker/lib/errors.js would never send
+   * that. It is not the only thing that answers on this origin: a Cloudflare
+   * error page, a proxy, or a future handler that returns without going through
+   * errorResponse can all put a string in that field.
+   *
+   * The two ends run the same list from shared/redact.js and defend against
+   * different mistakes — the server against what this codebase writes, the
+   * client against what arrives. See scripts/boundaries.e2e.mjs.
+   */
+  const offered = data.error || error?.message;
+  const safe = redactPublic(offered);
+
   return {
-    message: data.error || error?.message || 'Something went wrong.',
+    message: safe || (offered ? GENERIC : 'Something went wrong.'),
     code,
     requestId: data.request_id || null,
     // Absent means no. An unknown failure from an old deploy should not offer a

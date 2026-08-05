@@ -77,5 +77,36 @@ export async function onRequestPost({ request, env }) {
     replyTo: email,
   });
 
+  /**
+   * A lead that was not delivered is not a lead.
+   *
+   * This returned 200 with `notified: false` and a reason in the body. The
+   * header at the top of this file says the browser "checks the status it
+   * returns rather than firing and forgetting, because a failure here is now a
+   * restaurant that filled in the form and never heard back" — and
+   * src/pages/Restaurants.jsx checks `res.ok` and nothing else. So with the
+   * mail provider down, or with neither API key bound, the operator was shown
+   * a confirmation, the alert went nowhere, and the one thing this endpoint
+   * exists to do had silently not happened.
+   *
+   * 502 makes the failure reach the client's own error branch, which already
+   * offers to try again. Deliberate non-delivery stays 200: outside production
+   * the send is suppressed on purpose (see mayContactRealPeople), and a staging
+   * form that reports a gateway error every time is a false alarm somebody
+   * learns to ignore.
+   */
+  if (!result.ok && result.reason !== 'suppressed_outside_production') {
+    return json(
+      {
+        ok: false,
+        error: 'We could not pass that on right now. Please try again, or email hello@billtap.app.',
+        // The reason is a fixed identifier from lib/email.js, not an upstream
+        // message — a provider's rejection can name a sender domain.
+        reason: result.reason,
+      },
+      502,
+    );
+  }
+
   return json({ ok: true, notified: result.ok, ...(result.ok ? {} : { reason: result.reason }) });
 }

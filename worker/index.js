@@ -22,6 +22,7 @@ import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
 import { onRequestGet as health } from './routes/health.js';
+import { onRequestGet as errorLog } from './routes/error-log.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { scheduled as applyRetention } from './routes/retention.js';
 import { rateLimit } from './lib/rate-limit.js';
@@ -300,6 +301,46 @@ export default {
    * the insert or drop it.
    */
   async fetch(request, env, ctx) {
+    /**
+     * The outermost boundary, and it did not exist.
+     *
+     * Everything below this line was individually careful — the environment
+     * check has a catch, the POST table has a catch, invokeFunction has a catch
+     * — and nothing caught the gaps between them. `new URL(request.url)`,
+     * `rateLimit`, `Response.redirect` on a malformed target, and every
+     * `env.ASSETS.fetch` call sat outside all of it, so a throw from any of
+     * them left the Worker entirely.
+     *
+     * What a caller gets then is Cloudflare's 1101 page: no message, no request
+     * id, no structured log line, and — since Layer 12 — no Sentry event
+     * either, because every one of those is produced by errorResponse and
+     * errorResponse is what never ran. The most important failure in the
+     * application was the one it could say least about.
+     *
+     * One try, wrapping the whole handler, is the fix. Every inner catch stays:
+     * they produce better messages than this can, and this is the floor rather
+     * than the plan.
+     */
+    const outerId = requestId();
+    try {
+      return await serve(request, env, ctx, outerId);
+    } catch (error) {
+      return errorResponse(error, {
+        id: outerId,
+        route: `unhandled ${new URL(request.url).pathname}`,
+        env,
+        ctx,
+        request,
+      });
+    }
+  },
+};
+
+/**
+ * The handler proper. Split out so the boundary above is one unmissable line
+ * rather than an indentation change across four hundred lines of routing.
+ */
+async function serve(request, env, ctx, outerId) {
     // Before anything else: is this deployment allowed to touch the database it
     // has been handed? A non-production environment carrying production's app
     // id stops here rather than serving, because the alternative is a developer
@@ -352,6 +393,19 @@ export default {
       return health({ request, env });
     }
 
+    /**
+     * The error log, read back. Guarded by its own secret and 404 without one —
+     * see routes/error-log.js for why it is 404 rather than 401.
+     *
+     * Above the rate limiter's reach for the same reason /api/health is: an
+     * on-call engineer paging through failures during an incident is exactly
+     * the traffic a per-address limit would refuse.
+     */
+    if (path === '/api/error-log') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      return errorLog({ request, env });
+    }
+
     // There was a proxy here forwarding /api/apps/** to Base44, because the SDK
     // was built with serverUrl: '' and issued every entity, auth and function
     // call same-origin under that prefix. Nothing in the browser speaks to
@@ -377,14 +431,18 @@ export default {
       // wrapper is here for what they do not catch — a throw during parsing, an
       // exhausted subrequest budget — which previously surfaced as Cloudflare's
       // own 1101 page: no message, no id, nothing to search for.
-      const id = requestId();
+      // The id minted by the boundary above, not a second one. A request that
+      // fails has exactly one identifier whether it failed inside a handler or
+      // in the routing between them — otherwise the number a caller reads out
+      // depends on where it broke, which is the one thing they cannot know.
+      const id = outerId;
       try {
         const response = await handler({ request, env, ctx, requestId: id });
         const headers = new Headers(response.headers);
         headers.set('X-Request-Id', id);
         return new Response(response.body, { status: response.status, headers });
       } catch (error) {
-        return errorResponse(error, { id, route: path, env, ctx });
+        return errorResponse(error, { id, route: path, env, ctx, request });
       }
     }
 
@@ -428,5 +486,4 @@ export default {
     if (!known && response.status === 200) return withSecurityHeaders(response, 404);
 
     return withSecurityHeaders(response);
-  },
-};
+}

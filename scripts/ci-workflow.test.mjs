@@ -98,6 +98,8 @@ test('no gate has quietly gone missing', () => {
     ['scripts/check-wrangler.mjs', 'the check that staging cannot take billtap.app'],
     ['scripts/verify-dist.mjs', 'the check that every referenced image exists'],
     ['npm run test:ui', 'the browser suite — the only thing that checks what a diner sees'],
+    ['npm run test:boundaries', 'the Vitest boundary suite — every error boundary, made to fail'],
+    ['npm run test:e2e', 'the boundary suite in a browser, which is where the console leak was found'],
   ];
 
   for (const [command, why] of required) {

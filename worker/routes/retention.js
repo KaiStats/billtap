@@ -56,6 +56,7 @@
 import { serviceRole, backendName } from '../lib/data.js';
 import { deleteObject, storageKeyFromUrl, listObjects, publicObjectUrl } from '../lib/db.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
+import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 
 /** The bucket in supabase/migrations/0004_receipts_storage.sql. */
 const BUCKET = 'receipts';
@@ -379,5 +380,60 @@ export async function scheduled(env) {
     summary.orphans = { error: error?.message || String(error) };
   }
 
+  /**
+   * And finally the error log, which has its own, longer clock.
+   *
+   * Ninety days rather than the thirty above, and the difference is not an
+   * oversight: a session row holds what people ate and owed, so the sooner it
+   * is redacted the better, while an error row holds a stack trace and a route
+   * and is only useful in proportion to how far back it goes. The floor is
+   * enforced in the database — prune_error_log raises rather than obeys if it
+   * is ever called with less — so a well-meaning "clean this up" cannot quietly
+   * put the app out of policy.
+   *
+   * Isolated, like the sweep above and for the same reason: this is the least
+   * important thing the nightly job does and it must not be able to report the
+   * redaction as failed.
+   */
+  try {
+    summary.error_log_pruned = await pruneErrorLog(env);
+  } catch (error) {
+    summary.error_log_pruned = { error: error?.message || String(error) };
+  }
+
   return summary;
+}
+
+/** Days of error log kept. The database refuses anything lower. */
+export const ERROR_LOG_RETENTION_DAYS = 90;
+
+/**
+ * Calls the security-definer function rather than issuing a delete.
+ *
+ * A `delete` through PostgREST needs a filter, and a filter built here is a
+ * filter that can be got wrong — the orphan sweep above already produced one
+ * injection this way. The function takes an integer, checks it against the
+ * policy floor, and owns the predicate itself.
+ */
+export async function pruneErrorLog(env) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return { skipped: 'not_configured' };
+
+  const res = await fetchWithTimeout(
+    `${env.SUPABASE_URL}/rest/v1/rpc/prune_error_log`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ older_than_days: ERROR_LOG_RETENTION_DAYS }),
+    },
+    TIMEOUTS.database,
+  );
+
+  // Migration 0008 unapplied is the ordinary state of a fresh database, and it
+  // is not a reason to fail the night's redaction.
+  if (!res.ok) return { skipped: 'unavailable', status: res.status };
+  return { removed: await res.json() };
 }

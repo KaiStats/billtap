@@ -136,7 +136,9 @@ export async function shareDeepLink(screen, params = {}, title = 'BillTap') {
       await navigator.share({ title, url });
       return true;
     } catch (err) {
-      if (err.name !== 'AbortError') console.error('Share failed:', err);
+      // Message only. A share failure carries a URL and the browser's own
+      // internals, and this runs on a stranger's phone.
+      if (err.name !== 'AbortError') console.error('Share failed:', err?.name || 'error');
       return false;
     }
   }
@@ -146,7 +148,7 @@ export async function shareDeepLink(screen, params = {}, title = 'BillTap') {
     await navigator.clipboard.writeText(url);
     return true;
   } catch (err) {
-    console.error('Clipboard copy failed:', err);
+    console.error('Clipboard copy failed:', err?.name || 'error');
     return false;
   }
 }

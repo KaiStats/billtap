@@ -121,6 +121,14 @@ jobs:
       - name: Test
         run: npm run test:unit
 
+      # The boundary suite, on Vitest. It lives in its own runner and its own
+      # step deliberately — see vitest.config.js for why the other 644 tests
+      # stayed on node:test — and it is here rather than in the browser job
+      # because it needs no browser: it drives the Worker's handlers directly
+      # with each dependency made to fail.
+      - name: Boundary tests
+        run: npm run test:boundaries
+
       # The build has caught real breakage that lint and tests do not: a bad
       # import, a syntax error in a page that no test imports.
       - name: Build
@@ -197,6 +205,14 @@ jobs:
       # the receipt is readable rather than near-black on black.
       - name: Browser tests
         run: npm run test:ui
+
+      # The same boundaries as the Vitest step, seen from the other side of the
+      # glass: each one forced to fail in a real browser, asserting that a
+      # legible message appears and that no stack, path or hostname reaches the
+      # page OR the devtools console. The console half is not decoration — that
+      # is where this suite found a live connection string being printed.
+      - name: Boundary end-to-end tests
+        run: npm run test:e2e
 
 # ── What this workflow cannot do ────────────────────────────────────────────
 #

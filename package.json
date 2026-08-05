@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "npm run test:unit && npm run test:ui",
+    "test": "npm run test:unit && npm run test:boundaries && npm run test:ui && npm run test:e2e",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "lint:report": "eslint .",
@@ -20,6 +20,8 @@
     "rollback": "wrangler rollback",
     "test:ui": "npm run build:test && node --test --test-concurrency=2 scripts/ui.browser.mjs",
     "check:env": "node scripts/check-env.mjs",
+    "test:boundaries": "vitest run",
+    "test:e2e": "npm run build:test && node --test --test-concurrency=2 scripts/boundaries.e2e.mjs",
     "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
     "build:test": "node scripts/build-for-tests.mjs",
     "check:wrangler": "node scripts/check-wrangler.mjs"
@@ -67,6 +69,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^6.1.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.115.0"
   }
 }
