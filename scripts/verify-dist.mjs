@@ -67,7 +67,21 @@ async function referencedMedia() {
  * runs on every actual deploy through wrangler's build.command, so nothing is
  * weakened — this just lets CI check the half it can.
  */
-const ASSETS_ONLY = process.argv.includes('--assets-only');
+/**
+ * The env var exists for scripts/check-wrangler.mjs.
+ *
+ * That runs `wrangler deploy --dry-run`, and a dry run executes build.command —
+ * which is this file, with no arguments, deliberately, so a bare
+ * `npx wrangler deploy` cannot skip the full gate. There is no way to pass a
+ * flag through wrangler to it, and CI has no prerendered snapshots at the point
+ * the config check runs, so without this the wrangler check would fail for a
+ * reason that has nothing to do with wrangler.
+ *
+ * The real deploy path is unaffected: nothing sets this during `npm run deploy`
+ * or a hand-typed `wrangler deploy`, so both still demand a complete dist.
+ */
+const ASSETS_ONLY =
+  process.argv.includes('--assets-only') || process.env.VERIFY_DIST_ASSETS_ONLY === '1';
 
 const problems = [];
 let hint = null;

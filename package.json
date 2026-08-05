@@ -19,7 +19,8 @@
     "test:ui": "npm run build:test && node --test --test-concurrency=2 scripts/ui.browser.mjs",
     "check:env": "node scripts/check-env.mjs",
     "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
-    "build:test": "node scripts/build-for-tests.mjs"
+    "build:test": "node scripts/build-for-tests.mjs",
+    "check:wrangler": "node scripts/check-wrangler.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.3",

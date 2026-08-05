@@ -256,3 +256,76 @@ test('the Base44 checks still apply while Base44 is the database', () => {
     /must not share a database/,
   );
 });
+
+// ── A guard that cannot run must say so ─────────────────────────────────────
+//
+// Both isolation checks were written as `productionValue && matches`, so an
+// unset PRODUCTION_APP_ID or PRODUCTION_SUPABASE_URL meant the comparison was
+// skipped and the deployment served.
+//
+// That was not hypothetical. PRODUCTION_APP_ID is described twice in
+// wrangler.jsonc as committed and appears in no vars block, so the Base44 half
+// had never once been able to fire — and Base44 is the live backend while
+// DATA_BACKEND is unset. PRODUCTION_SUPABASE_URL was committed, but at the top
+// level only, and vars are not inherited by environments, so on staging and
+// development — the two deployments the check exists for — it was absent too.
+//
+// "Unable to check" now fails closed. A staging deploy that stops on a missing
+// variable is recoverable; one that writes into a restaurant's live bills is
+// not.
+
+test('a non-production deployment refuses to serve when it cannot check the Base44 app', () => {
+  assert.throws(
+    () => assertEnvironmentIsolated({
+      ENVIRONMENT: 'staging',
+      BASE44_APP_ID: 'some-staging-app',
+      // PRODUCTION_APP_ID deliberately absent — the state wrangler.jsonc was in.
+    }),
+    /PRODUCTION_APP_ID is not set/,
+    'an uncheckable guard must stop, not shrug',
+  );
+});
+
+test('a non-production deployment refuses to serve when it cannot check the Supabase project', () => {
+  assert.throws(
+    () => assertEnvironmentIsolated({
+      ENVIRONMENT: 'staging',
+      DATA_BACKEND: 'supabase',
+      SUPABASE_URL: 'https://staging.supabase.co',
+      // PRODUCTION_SUPABASE_URL absent — what non-inheritance produced.
+    }),
+    /PRODUCTION_SUPABASE_URL is not set/,
+  );
+});
+
+test('production is not asked to check itself against itself', () => {
+  // Production is allowed to be production. Failing closed there would take the
+  // live site down over a variable that only guards other environments.
+  assert.doesNotThrow(() => assertEnvironmentIsolated({
+    ENVIRONMENT: 'production',
+    DATA_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://prod.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-key',
+  }));
+  assert.doesNotThrow(() => assertEnvironmentIsolated({
+    ENVIRONMENT: 'production',
+    BASE44_APP_ID: 'prod-app',
+    BASE44_MASTER_KEY: 'master-key',
+  }));
+});
+
+test('a correctly configured staging deployment still serves', () => {
+  assert.doesNotThrow(() => assertEnvironmentIsolated({
+    ENVIRONMENT: 'staging',
+    DATA_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://staging.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'staging-key',
+    PRODUCTION_SUPABASE_URL: 'https://prod.supabase.co',
+  }));
+  assert.doesNotThrow(() => assertEnvironmentIsolated({
+    ENVIRONMENT: 'staging',
+    BASE44_APP_ID: 'staging-app',
+    BASE44_MASTER_KEY: 'staging-master',
+    PRODUCTION_APP_ID: 'prod-app',
+  }));
+});

@@ -94,7 +94,29 @@ export function assertEnvironmentIsolated(env) {
     }
 
     const productionAppId = normalise(env?.PRODUCTION_APP_ID);
-    if (name !== 'production' && productionAppId && appId === productionAppId) {
+    /**
+     * Unable to check is not the same as checked and fine.
+     *
+     * This read `productionAppId && appId === productionAppId`, so an unset
+     * PRODUCTION_APP_ID meant the comparison was skipped and the deployment
+     * served. And PRODUCTION_APP_ID was never set: wrangler.jsonc described it
+     * twice as committed and declared it nowhere, so on every non-production
+     * deployment this guard has silently waved through the exact configuration
+     * it exists to stop.
+     *
+     * A guard that cannot run must say so. Production is unaffected — it is
+     * allowed to be production — and a staging deploy that fails on a missing
+     * variable is recoverable in a way that a staging deploy writing into a
+     * restaurant's live bills is not.
+     */
+    if (name !== 'production' && !productionAppId) {
+      throw new Error(
+        `PRODUCTION_APP_ID is not set, so the ${name} environment cannot be checked ` +
+        'against the production Base44 app. Refusing to serve rather than guessing: ' +
+        'set it in wrangler.jsonc for this environment. App ids are not secrets.',
+      );
+    }
+    if (name !== 'production' && appId === productionAppId) {
       throw new Error(
         `The ${name} environment is pointed at the production Base44 app ` +
         `(${appId}). Development and production must not share a database. ` +
@@ -130,7 +152,29 @@ export function assertEnvironmentIsolated(env) {
       );
     }
     const productionUrl = projectUrl(env?.PRODUCTION_SUPABASE_URL);
-    if (name !== 'production' && productionUrl && url === productionUrl) {
+    /**
+     * Same failure, same fix, and this one had a mechanism behind it.
+     *
+     * PRODUCTION_SUPABASE_URL is committed at the top level of wrangler.jsonc —
+     * but `vars` is not inherited by environments, and the staging and
+     * development blocks did not repeat it. So the variable existed, the check
+     * was written, and on the two deployments it was written for it evaluated
+     * `productionUrl` as null and skipped itself. Wrangler prints a warning
+     * about exactly this on every dry run.
+     *
+     * The env blocks now declare it. This is the belt to that braces: if it
+     * goes missing again, the deployment stops instead of quietly rehearsing
+     * against a real restaurant's bills.
+     */
+    if (name !== 'production' && !productionUrl) {
+      throw new Error(
+        `PRODUCTION_SUPABASE_URL is not set, so the ${name} environment cannot be ` +
+        'checked against the production project. Refusing to serve rather than ' +
+        'guessing: add it to this environment\'s vars in wrangler.jsonc. Note that ' +
+        'vars are NOT inherited from the top level.',
+      );
+    }
+    if (name !== 'production' && url === productionUrl) {
       throw new Error(
         `The ${name} environment is pointed at the production Supabase project ` +
         `(${url}). Walking the flow by hand here would create splits and confirm ` +

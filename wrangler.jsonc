@@ -31,11 +31,24 @@
   // environments are declared under "env" below and inherit nothing dangerous:
   // no routes, no crons.
   //
-  // PRODUCTION_APP_ID is committed deliberately. App ids are not secrets — the
-  // frontend bundle has always shipped one in plain text — and recording it is
-  // what lets worker/lib/environment.js refuse to serve when a non-production
-  // deployment is pointed at the production database. Master keys are secrets
-  // and stay in `wrangler secret put`, per environment.
+  // PRODUCTION_APP_ID is NOT committed, and both this comment and the one below
+  // used to say it was.
+  //
+  // App ids are not secrets — the frontend bundle has always shipped one in
+  // plain text — and recording it is what would let worker/lib/environment.js
+  // refuse to serve when a non-production deployment is pointed at the
+  // production Base44 app. It appeared in two comments here as a settled fact
+  // and in no `vars` block, so that half of the check had never once been able
+  // to fire. DATA_BACKEND is unset, which means Base44 is the live database,
+  // which means it is the half that currently matters.
+  //
+  // It is not filled in here because the value is not in this repository to
+  // copy. Add it below, alongside PRODUCTION_SUPABASE_URL, and to each env's
+  // vars — assertEnvironmentIsolated now refuses to serve a non-production
+  // deployment that cannot perform the check, rather than passing quietly, so
+  // this is loud until it is done.
+  //
+  // Master keys are secrets and stay in `wrangler secret put`, per environment.
   //
   // BASE44_APP_ID is set per environment as a secret or a var; there is no
   // default anywhere, because the only sensible default would be production's.
@@ -50,23 +63,86 @@
     "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
   },
 
+  // ── Environments inherit more than the comment here used to claim ─────────
+  //
+  // Both blocks below said "no routes, no crons". Neither was true, and wrangler
+  // had been saying so on every dry run:
+  //
+  //   The "env.staging" environment inherits the top-level `routes`
+  //   configuration, which includes the custom domain(s): billtap.app.
+  //   Deploying this environment will reassign these custom domains away from
+  //   the top-level Worker.
+  //
+  // So `wrangler deploy --env staging` would have taken billtap.app off the
+  // production Worker and pointed it at staging. The paragraph above about
+  // never answering yes to the route-deletion prompt is about precisely this
+  // outcome — the apex domain going away and the printed table-tent QR codes
+  // going with it — and the env blocks were a second, quieter way to cause it.
+  //
+  // `routes` and `triggers` are inheritable in wrangler; `vars` and `unsafe`
+  // are not. That asymmetry is why the dangerous things arrived by default and
+  // the protective ones did not:
+  //
+  //   * PRODUCTION_SUPABASE_URL is what assertEnvironmentIsolated compares
+  //     against to refuse a non-production deployment pointed at production's
+  //     database. Not inherited, so it was absent, so the guard short-circuited
+  //     — inert in the only environments it exists for.
+  //   * The rate-limit binding is not inherited either, so staging had none.
+  //
+  // Everything below is now stated per environment rather than assumed. When
+  // adding an environment, copy this whole shape; do not trust inheritance to
+  // do the safe thing, because it does the opposite.
   "env": {
     // `wrangler deploy --env staging` / `wrangler dev --env staging`.
-    //
-    // No routes, so it publishes to a workers.dev subdomain and cannot answer
-    // for billtap.app. No crons, so it never runs the nightly backup — see
-    // worker/routes/nightly-backup.js, which refuses outside production anyway.
     "staging": {
+      // Empty, NOT absent. Absent means "inherit billtap.app".
+      "routes": [],
+      "workers_dev": true,
+      // Empty for the same reason: crons are inheritable, so staging was
+      // registering the 09:00 nightly job. worker/lib/environment.js refuses
+      // scheduled work outside production, so nothing ran — but a job that is
+      // scheduled and then declines is not the same as one that was never
+      // scheduled, and only one of them is what this file said.
+      "triggers": { "crons": [] },
       "vars": {
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        // Repeated deliberately. See assertEnvironmentIsolated: without this
+        // the "you are pointed at production" check cannot run at all.
+        "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
+      },
+      "unsafe": {
+        "bindings": [
+          {
+            "name": "API_RATE_LIMITER",
+            "type": "ratelimit",
+            // A different namespace from production's, or the two share
+            // buckets and a load test on staging throttles a real restaurant.
+            "namespace_id": "1002",
+            "simple": { "limit": 60, "period": 60 }
+          }
+        ]
       },
       "observability": { "enabled": true }
     },
 
     // Local work: `wrangler dev --env development`.
     "development": {
+      "routes": [],
+      "workers_dev": true,
+      "triggers": { "crons": [] },
       "vars": {
-        "ENVIRONMENT": "development"
+        "ENVIRONMENT": "development",
+        "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
+      },
+      "unsafe": {
+        "bindings": [
+          {
+            "name": "API_RATE_LIMITER",
+            "type": "ratelimit",
+            "namespace_id": "1003",
+            "simple": { "limit": 60, "period": 60 }
+          }
+        ]
       },
       "observability": { "enabled": true }
     }

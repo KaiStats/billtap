@@ -1,0 +1,54 @@
+# Cache policy for the static assets.
+#
+# ── Why this file exists ─────────────────────────────────────────────────────
+#
+# There was none, and Cloudflare's default for Workers static assets is
+# `Cache-Control: public, max-age=0, must-revalidate`. Correct for HTML and
+# wrong for everything else here: a returning diner revalidated every hashed
+# bundle, every icon and every image on every page load — a conditional request
+# per file, waiting on a 304 that says nothing changed, on a restaurant's wifi.
+#
+# It also quietly undercut the chunk split in vite.config.js. That exists so a
+# copy edit in App.jsx does not invalidate React, the router and framer-motion
+# for people who already have them — but "already have them" only helps if the
+# browser can use them without asking first. With must-revalidate it asked
+# anyway, so the win was in bytes transferred and not in round trips, which on a
+# phone at a table is the half that hurts.
+#
+# ── The rule ─────────────────────────────────────────────────────────────────
+#
+# Immutable only where the filename changes when the content does. Vite writes
+# /assets/index-D_aMljtz.js — a content hash — so a new build is a new URL and
+# the old one can be cached for a year with no way to go stale.
+#
+# Everything under /icons, /img and /video keeps its name across builds, so a
+# year would mean a replaced logo never arriving. A day, revalidated after, is
+# the compromise: fast for the visit, correct by tomorrow.
+#
+# HTML is deliberately absent. It carries the references to the hashed files, so
+# caching it is how a browser ends up asking for a bundle that no longer exists.
+# Cloudflare's default already revalidates it.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/icons/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/img/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/video/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+# The service worker decides when every other cached thing is replaced, so it
+# must never be the stale one. Browsers bypass the HTTP cache for the update
+# check on their own now; saying so as well costs nothing and does not depend on
+# which browser a diner brought.
+/service-worker.js
+  Cache-Control: no-cache
+
+# Small, read once at install, and the thing that decides the app's name and
+# icon on a home screen. Not worth caching past a revalidation.
+/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate

@@ -50,6 +50,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      # wrangler had been warning, on every dry run, that `--env staging`
+      # inherits the top-level routes and would reassign billtap.app away from
+      # the production Worker — and that the vars the environment isolation
+      # check depends on are not inherited, so that check could not run. Both
+      # were true, both were printed, and wrangler exits 0 while saying so.
+      #
+      # After Build, because a dry run resolves the assets directory and runs
+      # build.command, which verifies dist/.
+      - name: Check wrangler environments
+        run: node scripts/check-wrangler.mjs
+
       # Every /img/ and /video/ URL the build references must exist. This is the
       # check that catches the class of bug where landing-assets.js advertised a
       # 2560px hero variant that was never generated — invisible on an ordinary

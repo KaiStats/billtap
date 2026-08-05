@@ -304,3 +304,100 @@ test('wrangler.jsonc actually routes page requests through the Worker', () => {
     'the QR deep links (/r/<slug>, /restaurants) depend on the SPA fallback',
   );
 });
+
+// ── Environment isolation, as configured rather than as described ───────────
+//
+// wrangler.jsonc said of both non-production environments: "No routes, so it
+// publishes to a workers.dev subdomain and cannot answer for billtap.app. No
+// crons." Neither was true. `routes` and `triggers` are inheritable, so
+// `wrangler deploy --env staging` would have reassigned the apex custom domain
+// away from the production Worker — the same outcome the file spends a
+// paragraph warning about elsewhere, arrived at a quieter way.
+//
+// Meanwhile `vars` and `unsafe` are NOT inherited, so the two things that
+// protect a non-production deployment were the ones that went missing:
+// PRODUCTION_SUPABASE_URL, which assertEnvironmentIsolated compares against to
+// refuse a staging deploy pointed at production's database, and the rate-limit
+// binding.
+//
+// Wrangler prints all of this on every dry run. Nothing read it, so these
+// assert it instead.
+
+test('no non-production environment can take billtap.app', () => {
+  const config = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  const envs = config.env || {};
+  assert.ok(Object.keys(envs).length, 'expected staging and development to exist');
+
+  for (const [name, env] of Object.entries(envs)) {
+    assert.ok(
+      Array.isArray(env.routes),
+      `env.${name} must declare "routes" — omitting it INHERITS the top-level ` +
+      'routes, which include the billtap.app custom domain, and deploying it ' +
+      'reassigns the domain away from production',
+    );
+    assert.equal(
+      env.routes.length,
+      0,
+      `env.${name} must have no routes; the printed QR codes point at production`,
+    );
+  }
+});
+
+test('every environment can perform its own isolation check', () => {
+  // assertEnvironmentIsolated compares SUPABASE_URL against
+  // PRODUCTION_SUPABASE_URL. It cannot compare against a variable that is not
+  // there, and vars do not inherit — so a missing entry here does not weaken
+  // the guard, it removes it.
+  const config = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  const production = config.vars?.PRODUCTION_SUPABASE_URL;
+  assert.ok(production, 'the top level must record which project is production');
+
+  for (const [name, env] of Object.entries(config.env || {})) {
+    assert.equal(
+      env.vars?.PRODUCTION_SUPABASE_URL,
+      production,
+      `env.${name}.vars must repeat PRODUCTION_SUPABASE_URL — vars are not inherited, ` +
+      'and without it the "you are pointed at production" check silently passes',
+    );
+    assert.ok(env.vars?.ENVIRONMENT, `env.${name}.vars must name its own ENVIRONMENT`);
+  }
+});
+
+test('no non-production environment inherits the nightly cron', () => {
+  // Harmless in itself — worker/lib/environment.js refuses scheduled work
+  // outside production — but a job that is scheduled and then declines is not
+  // the same as one that was never scheduled, and only one of them is what the
+  // file claims.
+  const config = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  for (const [name, env] of Object.entries(config.env || {})) {
+    assert.ok(
+      Array.isArray(env.triggers?.crons),
+      `env.${name} must declare "triggers.crons" — it is inheritable`,
+    );
+    assert.equal(env.triggers.crons.length, 0, `env.${name} must not run production's crons`);
+  }
+});
+
+test('the rate limiter is declared per environment, on its own namespace', () => {
+  const config = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  const namespaces = new Set();
+
+  const limiterOf = (scope, label) => {
+    const binding = (scope.unsafe?.bindings || []).find((b) => b.name === 'API_RATE_LIMITER');
+    assert.ok(binding, `${label} has no API_RATE_LIMITER — "unsafe" is not inherited`);
+    return binding;
+  };
+
+  const top = limiterOf(config, 'the top level');
+  namespaces.add(top.namespace_id);
+
+  for (const [name, env] of Object.entries(config.env || {})) {
+    const binding = limiterOf(env, `env.${name}`);
+    assert.ok(
+      !namespaces.has(binding.namespace_id),
+      `env.${name} shares rate-limit namespace ${binding.namespace_id} with another ` +
+      'environment, so a load test on one throttles a real restaurant on the other',
+    );
+    namespaces.add(binding.namespace_id);
+  }
+});
