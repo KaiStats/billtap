@@ -279,6 +279,55 @@ function limiterFor(env, path) {
 }
 
 /**
+ * True the first time a key is seen in the current minute, false after that.
+ *
+ * Not a limit on requests — nothing is refused here. It is a coalescer for
+ * work that a polling client would otherwise repeat every three seconds, and
+ * it exists because of one call site: getSessionAsHost wrote a
+ * `split.host_access` audit row per invocation, and src/hooks/useLiveSplit
+ * polls that endpoint every three seconds for as long as a host screen is
+ * open. Twenty rows a minute, per open screen, into a table that is append-only
+ * by design — no update path, no delete path, no retention sweep — every one of
+ * them recording that the host looked at their own bill.
+ *
+ * A host leaves that screen up for the length of a meal. Ninety minutes is
+ * 1,800 rows for one table; a twenty-table Saturday is thirty-six thousand from
+ * one venue in one night. That is a storage problem, it is twenty extra
+ * subrequests a minute on the hottest path in the product, and AuditLog is the
+ * largest thing the nightly backup has to page through — but the reason it is
+ * worth fixing is that it destroys the signal. `split.host_access` is there to
+ * answer "who could see my table's bill", and an answer buried in poll noise is
+ * not an answer.
+ *
+ * Cloudflare's binding takes a period of 10 or 60 seconds and nothing else, so
+ * a minute is the coarsest window available. One row a minute still records
+ * that the host had the split open, and still records the first read the moment
+ * a screen opens.
+ *
+ * ── Fails open, and that direction is deliberate ────────────────────────────
+ *
+ * An unbound or throwing limiter returns true, so the row is written. Extra
+ * audit rows are noise and noise can be filtered later; a missing row is
+ * evidence that no longer exists, and the audit log is what a payment dispute
+ * is settled from. Noise is recoverable, loss is not.
+ *
+ * The binding is declared on every environment in wrangler.jsonc and
+ * scripts/check-wrangler.mjs will not let one inherit it by accident, so
+ * "unbound" means somebody removed it rather than somebody forgot.
+ */
+export async function firstInWindow(env, key) {
+  const limiter = env?.AUDIT_SAMPLER;
+  if (!limiter) return true;
+  try {
+    const { success } = await limiter.limit({ key });
+    return success;
+  } catch (error) {
+    console.error('audit sampler failed, recording anyway:', error?.message);
+    return true;
+  }
+}
+
+/**
  * Returns a 429 Response when the caller is over the limit, or null to proceed.
  *
  * A limiter that throws must not take the endpoint down with it — being unable

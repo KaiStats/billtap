@@ -26,6 +26,7 @@ import { createSignedUpload } from '../lib/db.js';
 import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
 import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
+import { firstInWindow } from '../lib/rate-limit.js';
 
 /**
  * The audit hook when nobody supplied one.
@@ -93,6 +94,54 @@ const PARTICIPANT_RE = /^p_\d+_[a-z0-9]+$/;
 // checked.
 
 const enc = new TextEncoder();
+
+/**
+ * A JSON response the caller can be told to skip re-reading.
+ *
+ * ── Why the polled reads get this and nothing else does ─────────────────────
+ *
+ * getSplitStatus and getSessionAsHost are the only endpoints in the product
+ * called on a timer. src/hooks/useLiveSplit polls one of them every three
+ * seconds on every phone at the table, so a five-person split with the host
+ * screen open is six callers at twenty calls a minute — 120 requests a minute,
+ * per table, each answered with the entire session: every item, every claim,
+ * every participant.
+ *
+ * Almost none of those responses differ from the one before. The client already
+ * knows this — it fingerprints what arrives and discards anything identical —
+ * so the bytes were crossing a restaurant's wifi, being parsed, hashed and
+ * thrown away, twenty times a minute per diner, for the length of a meal.
+ *
+ * The hash is taken over the exact bytes that would have been sent, which is
+ * what makes this safe rather than merely cheap: an unchanged ETag means a
+ * byte-identical body, so there is no state in which a diner is told "nothing
+ * changed" about a response that would have differed. In particular it hashes
+ * the *scoped* body, so a diner whose own amount moved gets a new tag even when
+ * the table's shared view did not.
+ *
+ * The database read still happens. This saves the response, not the query — the
+ * freshness of the answer is unchanged, and that is deliberate. A screen at a
+ * table showing a stale total is the one failure this product cannot have.
+ */
+async function etagJson(request, payload) {
+  const body = JSON.stringify(payload);
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(body));
+  const etag = `"${[...new Uint8Array(digest)].slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, '0')).join('')}"`;
+
+  const headers = { 'Cache-Control': 'no-store', ETag: etag };
+
+  if (request?.headers?.get('If-None-Match') === etag) {
+    // No body, by definition — a 304 carrying one is malformed, and the
+    // Response constructor refuses it.
+    return new Response(null, { status: 304, headers });
+  }
+
+  return new Response(body, {
+    status: 200,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+  });
+}
 
 function b64url(bytes) {
   let s = '';
@@ -373,7 +422,7 @@ const HANDLERS = {
    * change, host_key_hash with it. This returns the same scoped view
    * joinSession does: names, who has settled, your own share, nothing else.
    */
-  async getSplitStatus({ env, body }) {
+  async getSplitStatus({ env, request, body }) {
     const { session_id, participant_id, participant_key } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
@@ -407,7 +456,7 @@ const HANDLERS = {
     const claimed = participant_id ? rows.find((p) => p.participant_id === participant_id) : null;
     const asSelf = (await isParticipant(claimed, participant_key)) ? participant_id : null;
 
-    return json({ session: scopeForParticipant(session, asSelf || null) });
+    return etagJson(request, { session: scopeForParticipant(session, asSelf || null) });
   },
 
   /**
@@ -946,6 +995,16 @@ const HANDLERS = {
     }
 
     /**
+     * Guest splits one restaurant may start in an hour.
+     *
+     * Named rather than left inline so the number is findable. It is the only
+     * capacity ceiling in the product, and a venue busy enough to reach it
+     * legitimately is a venue whose diners are being turned away — which is why
+     * reaching it is logged.
+     */
+    const GUEST_SESSIONS_PER_HOUR = 100;
+
+    /**
      * Guests are rate-limited per restaurant rather than per account. Skipping
      * it would leave an unauthenticated endpoint minting rows without bound.
      *
@@ -985,7 +1044,25 @@ const HANDLERS = {
           const t = new Date(s.created_date).getTime();
           return !Number.isNaN(t) && t >= since;
         });
-        if (inWindow.length >= 100) {
+        if (inWindow.length >= GUEST_SESSIONS_PER_HOUR) {
+          /**
+           * Logged, because this is the one refusal in the product a restaurant
+           * can reach by being busy.
+           *
+           * It returned a 429 and recorded nothing anywhere. Abuse and success
+           * look identical from outside — a hundred splits in an hour is either
+           * somebody scripting the endpoint or a full room on a Saturday — and
+           * the difference matters enormously to the restaurant, who in the
+           * second case watches diners fail to start splits with no indication
+           * that a ceiling exists at all. This line is what makes it visible in
+           * the logs before it is visible as a support email.
+           */
+          console.warn(JSON.stringify({
+            guest_session_cap: true,
+            restaurant_id: restaurantId,
+            in_window: inWindow.length,
+            cap: GUEST_SESSIONS_PER_HOUR,
+          }));
           return json({ error: 'This restaurant has too many splits in progress. Try again shortly.' }, 429);
         }
       } catch (e) {
@@ -1069,17 +1146,31 @@ const HANDLERS = {
       throw new AppError('not_host', 'Not the host of this split.', 403);
     }
 
-    // "Who could see my table's bill?" This is the read that answers it — every
-    // name and every amount at that table, in one response.
-    await audit({
-      action: ACTIONS.SPLIT_HOST_ACCESS,
-      sessionId: session_id,
-      restaurantId: session.restaurant_id,
-      actorHostKey: host_key,
-      detail: { participant_count: (session.participants || []).length, status: session.status },
-    });
+    /**
+     * "Who could see my table's bill?" This is the read that answers it — every
+     * name and every amount at that table, in one response.
+     *
+     * At most one row a minute, because this endpoint is polled. Every host
+     * screen in the product runs src/hooks/useLiveSplit against it on a
+     * three-second interval, so the unguarded version wrote twenty rows a
+     * minute for as long as a host left the page up — 1,800 over a meal, from
+     * one table — into a table with no delete path and no retention sweep. The
+     * rejections below are NOT coalesced: a wrong host key is the security
+     * event, and nothing polls with one.
+     *
+     * See firstInWindow() for why an unavailable sampler writes the row anyway.
+     */
+    if (await firstInWindow(env, `host-access:${session_id}`)) {
+      await audit({
+        action: ACTIONS.SPLIT_HOST_ACCESS,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorHostKey: host_key,
+        detail: { participant_count: (session.participants || []).length, status: session.status },
+      });
+    }
 
-    return json({ session: publicSession(session) });
+    return etagJson(request, { session: publicSession(session) });
   },
 
   /**

@@ -30,7 +30,7 @@ async function loadInvoke({ token = null, response } = {}) {
     return response;
   };
   const { invoke } = await import('./api/functions.js?' + Math.random());
-  return { invoke: (name, body) => invoke(name, body), calls, token };
+  return { invoke: (name, body, options) => invoke(name, body, options), calls, token };
 }
 
 const jsonResponse = (data, status = 200) =>
@@ -39,9 +39,45 @@ const jsonResponse = (data, status = 200) =>
 test('a successful call resolves to { data }, which is what every caller destructures', async () => {
   const { invoke, calls } = await loadInvoke({ response: jsonResponse({ session: { id: 's1' } }) });
   const res = await invoke('getSplitStatus', { session_id: 's1' });
-  assert.deepEqual(res, { data: { session: { id: 's1' } } });
+  // `data` is the contract this test is named for, and it is unchanged. The two
+  // fields beside it are the conditional-read result — see etagJson() in the
+  // Worker — asserted rather than ignored so a caller that starts depending on
+  // them finds them described here.
+  assert.deepEqual(res.data, { session: { id: 's1' } });
+  assert.equal(res.notModified, false, 'a 200 is not a "nothing changed"');
+  assert.equal(res.etag, null, 'the response carried no tag, so none is reported');
   assert.equal(calls[0].url, '/api/fn/getSplitStatus');
   assert.equal(calls[0].init.method, 'POST');
+});
+
+test('a 304 resolves as "nothing changed" rather than throwing', async () => {
+  // The whole risk of the conditional read is one ordering. Response.ok is
+  // false for 304, so reaching the error branch would turn every unchanged poll
+  // into a rejection — which useLiveSplit counts as a failure and backs off on,
+  // doubling its interval up to thirty seconds. A working optimisation would
+  // have presented as a flaky network and a split that stopped updating.
+  const { invoke } = await loadInvoke({
+    response: new Response(null, { status: 304, headers: { ETag: '"abc123"' } }),
+  });
+  const res = await invoke('getSplitStatus', { session_id: 's1' });
+  assert.equal(res.notModified, true);
+  assert.equal(res.data, null, 'nothing was sent, so there is nothing to report');
+  assert.equal(res.etag, '"abc123"');
+});
+
+test('the tag goes back on the next call, and nothing goes when there is none', async () => {
+  const { invoke, calls } = await loadInvoke({
+    response: jsonResponse({ session: { id: 's1' } }),
+  });
+  await invoke('getSplitStatus', { session_id: 's1' }, { ifNoneMatch: '"abc123"' });
+  assert.equal(calls[0].init.headers['If-None-Match'], '"abc123"');
+
+  await invoke('getSplitStatus', { session_id: 's1' });
+  assert.equal(
+    calls[1].init.headers['If-None-Match'],
+    undefined,
+    'a caller holding no tag must not send an empty one',
+  );
 });
 
 test('a refused call rejects, because several screens catch rather than check', async () => {

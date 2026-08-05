@@ -125,6 +125,14 @@
             "type": "ratelimit",
             "namespace_id": "2002",
             "simple": { "limit": 10, "period": 60 }
+          },
+          {
+            // Its own namespace, like the two above: a staging host screen must
+            // not coalesce a real restaurant's audit rows away.
+            "name": "AUDIT_SAMPLER",
+            "type": "ratelimit",
+            "namespace_id": "3002",
+            "simple": { "limit": 1, "period": 60 }
           }
         ]
       },
@@ -153,6 +161,12 @@
             "type": "ratelimit",
             "namespace_id": "2003",
             "simple": { "limit": 10, "period": 60 }
+          },
+          {
+            "name": "AUDIT_SAMPLER",
+            "type": "ratelimit",
+            "namespace_id": "3003",
+            "simple": { "limit": 1, "period": 60 }
           }
         ]
       },
@@ -228,7 +242,23 @@
         "type": "ratelimit",
         "namespace_id": "2001",
         "simple": { "limit": 10, "period": 60 }
-      }
+      },
+          {
+            /**
+             * Not a rate limit — nothing is refused when this is exhausted.
+             *
+             * It coalesces the `split.host_access` audit row in
+             * getSessionAsHost, which is polled every three seconds by every
+             * open host screen. One row a minute per split instead of twenty.
+             * A period of 10 or 60 seconds is all the binding accepts, so a
+             * minute is the coarsest window available. See
+             * firstInWindow() in worker/lib/rate-limit.js.
+             */
+            "name": "AUDIT_SAMPLER",
+            "type": "ratelimit",
+            "namespace_id": "3001",
+            "simple": { "limit": 1, "period": 60 }
+          }
     ]
   },
 

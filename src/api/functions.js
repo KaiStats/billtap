@@ -23,7 +23,20 @@
 import { accessToken } from '../lib/supabase.js';
 import { getParticipantKey, rememberParticipantKey } from '../lib/participantKey.js';
 
-export async function invoke(name, body = {}) {
+/**
+ * @param {string} name
+ * @param {any} [body]
+ * @param {{ ifNoneMatch?: string|null }} [options]
+ *   `ifNoneMatch` makes this a conditional read: pass the `etag` from the
+ *   previous response and the Worker answers 304 with no body when nothing has
+ *   changed. Only the two polled reads support it — see etagJson() in
+ *   worker/routes/functions.js — and every other endpoint ignores it.
+ * @returns {Promise<{ data: any, etag: string|null, notModified: boolean }>}
+ *   `notModified` is the only new obligation on a caller: when it is true,
+ *   `data` is null because nothing was sent and the previous response still
+ *   stands. A caller that never passes `ifNoneMatch` never sees it.
+ */
+export async function invoke(name, body = {}, { ifNoneMatch = null } = {}) {
   /**
    * The diner's own secret, attached here rather than at each call site.
    *
@@ -66,11 +79,28 @@ export async function invoke(name, body = {}) {
   const token = await accessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  // The previous response's tag, when the caller kept one. See the doc
+  // comment above and etagJson() in the Worker.
+  if (ifNoneMatch) headers['If-None-Match'] = ifNoneMatch;
+
   const res = await fetch(`/api/fn/${name}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body ?? {}),
   });
+
+  const etag = res.headers.get('ETag');
+
+  /**
+   * Nothing changed since the tag the caller sent.
+   *
+   * Returned before the res.ok check below, and that ordering is the whole
+   * of the risk here: `ok` is false for 304, so reaching that branch would
+   * turn every unchanged poll into a thrown error — which useLiveSplit
+   * counts as a failure and backs off on. A working optimisation would have
+   * looked like a flaky network.
+   */
+  if (res.status === 304) return { data: null, etag, notModified: true };
 
   let data = null;
   try {
@@ -94,5 +124,5 @@ export async function invoke(name, body = {}) {
     rememberParticipantKey(body.session_id, body.participant_id, data.participant_key);
   }
 
-  return { data };
+  return { data, etag, notModified: false };
 }

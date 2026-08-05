@@ -85,7 +85,12 @@ test('the calls that actually poll are the ones carrying a participant id', () =
    * exhaust anything; a three-second poll can.
    */
   const poll = readFileSync(join(ROOT, 'src/hooks/useLiveSplit.js'), 'utf8');
-  const polled = [...poll.matchAll(/invoke\(\s*["'](\w+)["']\s*,\s*\{([\s\S]{0,300}?)\}\s*\)/g)];
+  // The trailing `[^)]*` tolerates a third argument. These calls acquired one —
+  // the conditional-read options that go with etagJson() in the Worker — and
+  // without it this matched nothing, which is the failure mode of every regex
+  // that reads source: the loop below does not go red, it goes empty. The
+  // assert.ok on `polled.length` is the line that caught it.
+  const polled = [...poll.matchAll(/invoke\(\s*["'](\w+)["']\s*,\s*\{([\s\S]{0,300}?)\}[^)]*\)/g)];
   assert.ok(polled.length, 'expected useLiveSplit to make the polled calls');
 
   for (const [, name, body] of polled) {

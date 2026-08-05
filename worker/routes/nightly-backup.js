@@ -69,23 +69,98 @@ const SORT_COLUMN = { AuditLog: '-at' };
 /** Base44's list() default. Anything larger has to be walked. */
 const PAGE = 200;
 
-/** Stop runaway paging; far above any plausible real count. */
+/**
+ * ── The three ceilings this job runs into, and what happens at each ─────────
+ *
+ * It paged past the 200-record default and stopped truncating, which was the
+ * bug it was written to fix. What it did not have was any idea how big the
+ * database could get before the *platform* stopped it, and all three limits it
+ * runs into were silent.
+ *
+ * 1. Subrequests. A Worker invocation gets 1,000 outbound requests, shared by
+ *    everything in the run. Eight entities at up to 200 pages each is 1,600
+ *    reads — so past roughly a thousand pages Cloudflare starts refusing, the
+ *    per-entity catch below records "FAILED", and the run carries on and writes
+ *    an object anyway. READ_BUDGET stops first, and throws.
+ *
+ * 2. Memory. An isolate has 128 MB, and every row of every entity was held in
+ *    one object and then serialised into one string beside it — peak usage is
+ *    roughly twice the whole database. The entities are written as separate
+ *    objects now, so the peak is the largest single entity rather than the sum,
+ *    and ENTITY_MAX_BYTES throws before the isolate is killed. An OOM kills the
+ *    invocation with no message and no object; an error says which entity.
+ *
+ * 3. Row count. MAX_PAGES simply ended the loop, so a table past 40,000 rows
+ *    was quietly backed up as its most recent 40,000 — the exact failure this
+ *    file's own header says it was rewritten to prevent, reintroduced one level
+ *    down. Hitting it is now an error.
+ *
+ * AuditLog is the entity that reaches all three first, and until this layer it
+ * was being fed twenty rows a minute per open host screen by a poll loop. See
+ * firstInWindow() in worker/lib/rate-limit.js.
+ *
+ * ── What this deliberately does not do ─────────────────────────────────────
+ *
+ * Stream each page into R2 as it arrives, which is what would make memory
+ * independent of table size altogether rather than merely bounded by the
+ * largest table. That is the right next step and it is not taken here, because
+ * it cannot be verified in this repo — there is no R2 binding to test against
+ * (the bucket does not exist yet; see the RUNBOOK) and this is the one job
+ * whose failure mode is discovered during an incident. A verified 8x
+ * improvement with loud limits beats an unverified rewrite of the disaster
+ * recovery path.
+ */
 const MAX_PAGES = 200;
+
+/** Leaves headroom under Cloudflare's 1,000 for the R2 writes and the reads back. */
+const READ_BUDGET = 800;
+
+/** ~40 MB serialised, well under the isolate's 128 MB, per entity. */
+const ENTITY_MAX_BYTES = 40 * 1024 * 1024;
+
+/** Counts reads across the whole run, not per entity. */
+function readBudget(limit = READ_BUDGET) {
+  let spent = 0;
+  return {
+    spend() {
+      spent += 1;
+      if (spent > limit) {
+        throw new Error(
+          `read budget of ${limit} exhausted — a Worker invocation gets 1,000 subrequests ` +
+          'and the remaining entities would have been recorded as failures against a ' +
+          'backup that still reported success. Split this job across more crons.',
+        );
+      }
+    },
+    get spent() { return spent; },
+  };
+}
 
 /**
  * Every row of one entity, walked page by page.
  *
  * The original called list('-created_date', 200) once and called it a backup.
+ * Everything that can stop it short now throws rather than returning what it
+ * managed to get, because a short backup is indistinguishable from a complete
+ * one once it is an object in a bucket with a plausible size.
  */
-async function fetchAll(svc, name) {
+async function fetchAll(svc, name, budget) {
   const entity = svc.entity(name);
   const sort = SORT_COLUMN[name] || '-created_date';
   const all = [];
-  for (let page = 0; page < MAX_PAGES; page += 1) {
+  let page = 0;
+  for (; page < MAX_PAGES; page += 1) {
+    budget.spend();
     const rows = await entity.list(sort, PAGE, page * PAGE);
     if (!rows.length) break;
     all.push(...rows);
     if (rows.length < PAGE) break;
+  }
+  if (page >= MAX_PAGES) {
+    throw new Error(
+      `${name} has more than ${MAX_PAGES * PAGE} rows — paging stopped at the cap, which ` +
+      'would have stored the most recent rows as if they were all of them',
+    );
   }
   return all;
 }
@@ -116,47 +191,85 @@ export async function runBackup(env) {
 
   const svc = serviceRole(env);
   const startedAt = new Date();
-  const snapshot = { exported_at: startedAt.toISOString(), entities: {} };
+  const exportedAt = startedAt.toISOString();
+  const day = exportedAt.slice(0, 10);
+  const prefix = `billtap-backup-${day}`;
+  const budget = readBudget();
   const summary = {};
   const failed = [];
+  const objects = [];
+  let bytes = 0;
 
+  /**
+   * One object per entity, written and released before the next one is read.
+   *
+   * It used to build a single `snapshot` holding every row of all eight
+   * entities and then JSON.stringify it alongside — peak memory around twice
+   * the whole database, in an isolate with 128 MB. Writing them separately
+   * makes the peak the largest single entity instead of the sum, which is the
+   * difference between "AuditLog is big" and "AuditLog plus everything else is
+   * big".
+   */
   for (const name of ENTITIES) {
+    const key = `${prefix}/${name}.json`;
     try {
-      const records = await fetchAll(svc, name);
-      snapshot.entities[name] = { count: records.length, records };
+      const records = await fetchAll(svc, name, budget);
+      const body = JSON.stringify({ exported_at: exportedAt, entity: name, count: records.length, records });
+
+      if (body.length > ENTITY_MAX_BYTES) {
+        throw new Error(
+          `${name} serialises to ${body.length} bytes, over the ${ENTITY_MAX_BYTES} ceiling — ` +
+          'an isolate that runs out of memory is killed with no error and no object',
+        );
+      }
+
+      await env.BACKUP_BUCKET.put(key, body, {
+        httpMetadata: { contentType: 'application/json' },
+        customMetadata: { exported_at: exportedAt, entity: name, count: String(records.length) },
+      });
+
+      // Prove it landed. A put() that resolves is not the same as an object
+      // that exists, and this is the one job where assuming is how you find out
+      // too late.
+      const stored = await env.BACKUP_BUCKET.head(key);
+      if (!stored) throw new Error(`Wrote ${key} but it is not readable back`);
+
+      objects.push(key);
+      bytes += stored.size;
       summary[name] = records.length;
     } catch (error) {
-      // Record the failure in the snapshot rather than aborting: a backup
-      // missing one entity beats no backup at all, but it must not be silent.
+      // Recorded rather than thrown here so the remaining entities are still
+      // attempted — a backup missing one table beats no backup at all. The run
+      // as a whole still fails at the end; see below.
       failed.push(name);
-      snapshot.entities[name] = { count: 0, records: [], error: String(error?.message) };
       summary[name] = `FAILED: ${error?.message}`;
     }
   }
 
-  const day = startedAt.toISOString().slice(0, 10);
-  const key = `billtap-backup-${day}.json`;
-  const body = JSON.stringify(snapshot);
-
-  await env.BACKUP_BUCKET.put(key, body, {
-    httpMetadata: { contentType: 'application/json' },
-    customMetadata: {
-      exported_at: snapshot.exported_at,
-      entities: String(ENTITIES.length),
-      failed: failed.join(',') || 'none',
+  /**
+   * The manifest, written last, listing what actually landed.
+   *
+   * A restore reads this first. Written even when entities failed, and naming
+   * them, because the thing that must never happen is a directory of objects
+   * that looks complete.
+   */
+  const manifestKey = `${prefix}/manifest.json`;
+  await env.BACKUP_BUCKET.put(
+    manifestKey,
+    JSON.stringify({ exported_at: exportedAt, entities: summary, objects, failed, complete: failed.length === 0 }),
+    {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { exported_at: exportedAt, complete: String(failed.length === 0) },
     },
-  });
-
-  // Prove it landed. A put() that resolves is not the same as an object that
-  // exists, and this is the one job where assuming is how you find out too late.
-  const stored = await env.BACKUP_BUCKET.head(key);
-  if (!stored) throw new Error(`Wrote ${key} but it is not readable back`);
+  );
 
   return {
-    key,
-    bytes: stored.size,
+    key: manifestKey,
+    objects,
+    bytes,
     entities: summary,
     failed,
+    reads: budget.spent,
     took_ms: Date.now() - startedAt.getTime(),
   };
 }
@@ -182,9 +295,26 @@ export async function scheduled(env) {
 
   try {
     const result = await runBackup(env);
-    console.log(`nightly-backup: wrote ${result.key} (${result.bytes} bytes) — ${JSON.stringify(result.entities)}`);
+    console.log(
+      `nightly-backup: wrote ${result.objects.length} objects (${result.bytes} bytes, ` +
+      `${result.reads} reads) — ${JSON.stringify(result.entities)}`,
+    );
+
+    /**
+     * A partial backup is a failed backup.
+     *
+     * This used to console.error the failed entities and return normally, so
+     * the invocation was marked successful. That is the shape of failure this
+     * whole file exists to prevent, one level up from where it was being
+     * guarded: the object is there, its size is plausible, its timestamp is
+     * last night, and six of the eight tables are missing from it. Nobody finds
+     * out until they are restoring.
+     */
     if (result.failed.length) {
-      console.error(`nightly-backup: entities that failed: ${result.failed.join(', ')}`);
+      throw new Error(
+        `entities that failed: ${result.failed.join(', ')} — ` +
+        `see ${result.key} for what did land`,
+      );
     }
   } catch (error) {
     console.error(`nightly-backup FAILED: ${error?.message}`);

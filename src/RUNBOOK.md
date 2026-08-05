@@ -161,8 +161,30 @@ hunt for a local snapshot.
 **The code is now written and waiting on one command.** The job moved to
 `worker/routes/nightly-backup.js`, on a Cloudflare cron at 09:00 UTC — it had to
 leave Base44, which blocks backend functions on this plan, so a nightly job
-there would never have run. It covers all seven entities, pages past the
-200-record cap, writes to R2, and reads the object back to confirm it landed.
+there would never have run. It covers all eight entities, pages past the
+200-record cap, writes to R2, and reads each object back to confirm it landed.
+
+It writes one object per entity under a dated prefix, plus a manifest:
+
+```
+billtap-backup-2026-08-05/manifest.json   <- read this first
+billtap-backup-2026-08-05/Session.json
+billtap-backup-2026-08-05/AuditLog.json
+...
+```
+
+The manifest carries `complete: true|false` and names any entity that failed.
+**A run with `complete: false` marks the cron invocation failed** — a backup
+missing tables must not report success, because the object is there, its size
+is plausible, its timestamp is last night, and nobody finds out until they are
+restoring.
+
+Separate objects rather than one snapshot because a Worker isolate has 128 MB
+and this job used to hold every row of every table in memory twice over. The
+same change added a read budget (it stops before Cloudflare's 1,000-subrequest
+limit does), a per-entity size ceiling, and an error rather than silence when a
+table has grown past what paging will walk. All three were previously silent,
+and all three would have been reached first by `AuditLog`.
 
 It does nothing until a bucket exists:
 
@@ -175,10 +197,11 @@ then the cron fires, throws `BACKUP_BUCKET is not bound`, and the invocation is
 marked failed — on purpose. The failure being designed against is a backup that
 reports success and stores nothing, so an unconfigured one has to be loud.
 
-**Delete this whole warning once the bucket is live and you have confirmed an
-object for today's date exists**, and replace it with the restore procedure —
-fetch the JSON from R2, then re-import per entity as service role. Do not write
-that procedure before you have restored from it once.
+**Delete this whole warning once the bucket is live and you have confirmed a
+prefix for today's date exists with `complete: true` in its manifest**, and
+replace it with the restore procedure — read the manifest, fetch each entity
+object it lists, then re-import per entity as service role. Do not write that
+procedure before you have restored from it once.
 
 ### Data Loss Triage Matrix
 | Scope | Likely Cause | Owner |

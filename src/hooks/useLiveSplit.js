@@ -63,6 +63,21 @@ export function useLiveSplit(sessionId, { participantId, hostKey, onUpdate, enab
     let failures = 0;
     let lastChangeAt = Date.now();
     let lastSeen = null;
+    /**
+     * The tag from the last full response.
+     *
+     * Sent back on the next poll so the Worker can answer 304 with no body when
+     * nothing has moved, which is what almost every poll here is: six phones at
+     * a table asking twenty times a minute each, for the length of a meal,
+     * about a split that changes a handful of times. The whole session — every
+     * item, every claim, every participant — was being sent, parsed and then
+     * discarded by the fingerprint below on nearly all of them.
+     *
+     * The fingerprint stays. It is what decides whether to re-render, it is
+     * still needed for the responses that do arrive, and it means this loop is
+     * correct whether or not the server sends a tag at all.
+     */
+    let lastEtag = null;
 
     /**
      * What counts as news.
@@ -90,12 +105,19 @@ export function useLiveSplit(sessionId, { participantId, hostKey, onUpdate, enab
       if (document.visibilityState === "hidden") return schedule();
 
       try {
+        const conditional = { ifNoneMatch: lastEtag };
         const res = hostKey
-          ? await invoke("getSessionAsHost", { session_id: sessionId, host_key: hostKey })
-          : await invoke("getSplitStatus", { session_id: sessionId, participant_id: participantId });
+          ? await invoke("getSessionAsHost", { session_id: sessionId, host_key: hostKey }, conditional)
+          : await invoke("getSplitStatus", { session_id: sessionId, participant_id: participantId }, conditional);
 
-        const session = res?.data?.session;
         failures = 0;
+
+        // Byte-identical to what this screen is already showing. Not news, and
+        // not a failure — the backoff below must not see it as either.
+        if (res?.notModified) return schedule();
+
+        if (res?.etag) lastEtag = res.etag;
+        const session = res?.data?.session;
 
         if (session) {
           const print = fingerprint(session);
