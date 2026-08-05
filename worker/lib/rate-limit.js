@@ -165,10 +165,45 @@ export function isLimited(path) {
 const PER_PARTICIPANT = new Set([
   '/api/fn/joinSession',
   '/api/fn/markMePaid',
-  '/api/fn/verifyQRToken',
   '/api/fn/getSplitStatus',
-  '/api/scan-receipt',
 ]);
+
+/**
+ * ── Two entries were removed from that list because they were never in it ───
+ *
+ * verifyQRToken and /api/scan-receipt were both listed above, and neither has
+ * ever been keyed per participant, because neither call sends the header that
+ * would make it possible:
+ *
+ *   verifyQRToken   src/pages/Claim.jsx sends { qr_token } and nothing else.
+ *   scan-receipt    src/pages/NewReceipt.jsx posts the image as the body with
+ *                   only a Content-Type; it does not go through invoke() at
+ *                   all, so the header logic there never runs.
+ *
+ * limitKey falls back to the address when the header is absent, so both have
+ * been address-keyed the whole time while this file said otherwise. The list
+ * was a statement of intent that the client never implemented.
+ *
+ * Corrected by moving them rather than by making the client send an id, because
+ * on inspection the address is the right key for both:
+ *
+ *   Neither can be per-participant at the point it is called. A diner verifies
+ *   a QR before they have joined anything, and the person photographing the
+ *   bill is the host before any participant exists. There is no id to send.
+ *
+ *   Both are better off on the address anyway. A participant id is minted in
+ *   the browser, so an attacker mints a fresh one per request and gets a fresh
+ *   bucket — which is an accepted trade for cheap database reads and a bad one
+ *   for scan-receipt, where every call spends money at the model provider.
+ *
+ * The NAT concern that drove per-participant keying does not apply to either:
+ * both are once-per-user-action, not polled. A table of six verifies six QR
+ * codes and photographs one bill, over the course of a meal.
+ *
+ * worker/api.test.mjs asserts this correspondence directly now — that every
+ * path claiming per-participant keying is one a client actually sends the
+ * header for — so the list cannot drift from the client again.
+ */
 
 /**
  * The caller's address.
@@ -196,6 +231,54 @@ function limitKey(request, path) {
 }
 
 /**
+ * Endpoints where a request costs money, not just a row.
+ *
+ * ── Why these get their own budget ─────────────────────────────────────────
+ *
+ * There was one limiter binding and therefore one bucket per key, shared by
+ * every metered path. That has a consequence nobody chose: a caller's sixty
+ * requests a minute are spent on whatever they ask for first. Sixty
+ * getPublicRestaurant reads and the next rating-alert from that address is
+ * refused — and the reverse, an address that has spent nothing on reads can
+ * still send sixty SMS in a minute.
+ *
+ * Sixty SMS a minute is the number that matters. worker/lib/email.js sends
+ * through Twilio against an account with no spend cap, and the header of this
+ * file has said so since it was written; the limit protecting it was the same
+ * sixty that a poll loop is expected to use.
+ *
+ * A second namespace gives them a budget of their own, so a busy reader cannot
+ * exhaust the money bucket and an attacker cannot reach the money bucket
+ * through reads. Ten a minute is far above real use: a rating alert fires once
+ * per low rating, a lead form once per submission, a receipt is photographed
+ * once per bill.
+ *
+ * scan-receipt is here rather than with the reads for the same reason — every
+ * call is a model invocation that is billed — and that is also why it is no
+ * longer claimed to be per-participant above: a fresh browser-minted id per
+ * request would be a fresh budget to spend from.
+ */
+const COSTLY = new Set([
+  // Sends an SMS, per call, against an account with no spend cap.
+  '/api/rating-alert',
+  // Sends email.
+  '/api/restaurant-lead',
+  // Writes a session row, and mints a host key.
+  '/api/fn/createSession',
+  // Spends at the model provider.
+  '/api/scan-receipt',
+  // Signs an upload, which is what permits an object to be created.
+  '/api/fn/createReceiptUpload',
+]);
+
+/** Which binding a path draws from. */
+function limiterFor(env, path) {
+  return COSTLY.has(path)
+    ? (env.API_RATE_LIMITER_COSTLY || env.API_RATE_LIMITER)
+    : env.API_RATE_LIMITER;
+}
+
+/**
  * Returns a 429 Response when the caller is over the limit, or null to proceed.
  *
  * A limiter that throws must not take the endpoint down with it — being unable
@@ -204,7 +287,7 @@ function limitKey(request, path) {
 export async function rateLimit(request, env, path) {
   if (!isLimited(path)) return null;
 
-  const limiter = env.API_RATE_LIMITER;
+  const limiter = limiterFor(env, path);
   if (!limiter) return null;
 
   try {
@@ -229,4 +312,4 @@ export async function rateLimit(request, env, path) {
   );
 }
 
-export { LIMITED, LIMITED_PATTERNS, PER_PARTICIPANT, limitKey };
+export { LIMITED, LIMITED_PATTERNS, PER_PARTICIPANT, COSTLY, limitKey, limiterFor };
