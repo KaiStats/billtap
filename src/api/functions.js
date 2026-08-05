@@ -81,8 +81,8 @@ export async function invoke(name, body = {}) {
 
   if (!res.ok) {
     const error = new Error(data?.error || `Function ${name} failed (${res.status})`);
-    error.status = res.status;
-    error.data = data;
+    /** @type {any} */ (error).status = res.status;
+    /** @type {any} */ (error).data = data;
     throw error;
   }
 

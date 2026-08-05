@@ -115,7 +115,7 @@ export async function compressImage(file) {
     const name = `${file.name.replace(/\.(jpe?g|hei[cf]|png|webp)$/i, '')}${extension}`;
     const out = new File([blob], name, { type, lastModified: Date.now() });
 
-    out.__compression = {
+    /** @type {any} */ (out).__compression = {
       ms: Date.now() - started,
       from_bytes: file.size,
       to_bytes: blob.size,

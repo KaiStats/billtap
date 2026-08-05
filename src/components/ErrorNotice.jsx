@@ -26,6 +26,7 @@ import { describeError } from "@/lib/errors";
  * thing that turns "the app said error" into one log query — see
  * worker/lib/errors.js.
  */
+/** @param {{ error?: any, onRetry?: any, onDismiss?: any, className?: any, [key: string]: any }} props */
 export default function ErrorNotice({ error, onRetry, onDismiss, className = "" }) {
   if (!error) return null;
   const { message, advice, requestId, retry } = describeError(error);

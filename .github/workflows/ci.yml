@@ -89,6 +89,17 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Was 153 errors and therefore not runnable here, which is the state a
+      # check ends up in when nothing forces it back to zero: a jsconfig whose
+      # `include` pointed at src/Layout.jsx and src/components/**/*.js — one
+      # deleted, the other matching nothing — plus untyped browser globals and
+      # shadcn components whose props inferred as `{}`.
+      #
+      # Now zero, over more files than it used to cover: all of src, not just
+      # pages. It stays zero because this line fails the build otherwise.
+      - name: Typecheck
+        run: npm run typecheck
+
       # Unit only. `npm test` now runs the browser suite too, and Chromium is
       # not installed until further down — running it here would fail for a
       # reason that has nothing to do with the code.

@@ -18,6 +18,7 @@ import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/
  * Under prefers-reduced-motion nothing plays on its own: the poster stands and
  * the controls appear, so the demo stays reachable by anyone who wants it.
  */
+/** @param {{ name?: any, className?: any, [key: string]: any }} props */
 function DemoVideo({ name, className = "" }) {
   const [reduced, setReduced] = useState(false);
   const src = video(name);
@@ -54,6 +55,7 @@ function DemoVideo({ name, className = "" }) {
  * Content image that fades up once decoded and removes itself on error, so the
  * gradient underneath becomes the design rather than a broken box.
  */
+/** @param {{ name?: any, alt?: any, className?: any, to?: any, eager?: any, position?: any, [key: string]: any }} props */
 function Img({ name, alt, className = "", to = 1, eager = false, position = "center" }) {
   const [loaded, setLoaded] = useState(false);
   const src = art(name);
@@ -74,7 +76,7 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
       onLoad={() => setLoaded(true)}
       onError={(e) => { e.currentTarget.style.display = "none"; }}
       className={`lp-img ${loaded ? "is-loaded" : ""} ${className}`}
-      style={{ "--to": to, objectPosition: position }}
+      style={/** @type {any} */ ({ "--to": to, objectPosition: position })}
     />
   );
 }
@@ -84,6 +86,7 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
  * opacity is baked into CSS rather than gated on a load event — a background
  * that fades in after the copy has already painted reads as a glitch.
  */
+/** @param {{ name?: any, opacity?: any, position?: any, className?: any, eager?: any, [key: string]: any }} props */
 function Wash({ name, opacity = 0.14, position = "center", className = "", eager = false }) {
   const src = art(name);
   if (!src) return null;
@@ -110,6 +113,7 @@ function Wash({ name, opacity = 0.14, position = "center", className = "", eager
  * The BillTap mark. Falls back to the lucide glyph if the render fails to load,
  * because a nav with no logo at all is worse than a generic one.
  */
+/** @param {{ size?: any, [key: string]: any }} props */
 function Logo({ size = 32 }) {
   const [failed, setFailed] = useState(false);
   const src = art("logo");

@@ -17,7 +17,8 @@ const statusConfig = {
   completed: { label: "Done",        cls: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" },
 };
 
-const SessionCard = memo(function SessionCard({ session, onClick }) {
+const SessionCard = memo(/** @param {{ session?: any, onClick?: any, [key: string]: any }} props */
+function SessionCard({ session, onClick }) {
   const paid  = (session.participants || []).filter(p => p.payment_status === "paid").length;
   const total = (session.participants || []).length;
   const { label, cls } = statusConfig[session.status] || statusConfig.waiting;

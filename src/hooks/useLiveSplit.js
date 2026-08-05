@@ -41,6 +41,14 @@ const MAX_BACKOFF_MS = 30000;
  * @param options.onUpdate       called with a fresh session, only when it changed
  * @param options.enabled        false to stand down entirely
  */
+/**
+ * @param {string|null|undefined} sessionId
+ * @param {object} [options]
+ * @param {string} [options.participantId]  the diner's id, for the guest view
+ * @param {string} [options.hostKey]        the host secret, for the host view
+ * @param {(session: any) => void} [options.onUpdate]
+ * @param {boolean} [options.enabled]       false pauses the poll entirely
+ */
 export function useLiveSplit(sessionId, { participantId, hostKey, onUpdate, enabled = true } = {}) {
   // Held in a ref so a caller can pass an inline function without restarting
   // the poll loop on every render.

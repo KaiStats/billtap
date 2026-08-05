@@ -9,6 +9,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const slugify = (s) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
+/** @param {{ label?: any, value?: any, hint?: any, accent?: any, [key: string]: any }} props */
 function Stat({ label, value, hint, accent }) {
   return (
     <div className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
@@ -464,7 +465,7 @@ export default function RestaurantDashboard() {
                   Alert me at or below
                 </label>
                 <select id="t" className={field} style={fieldStyle} value={form.rating_threshold}
-                  onChange={(e) => setForm({ ...form, rating_threshold: e.target.value })}>
+                  onChange={(e) => setForm({ ...form, rating_threshold: Number(e.target.value) })}>
                   {[1, 2, 3, 4].map((n) => (
                     <option key={n} value={n} style={{ background: "#0a0e1a" }}>{n} star{n > 1 ? "s" : ""}</option>
                   ))}

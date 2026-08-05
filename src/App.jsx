@@ -56,6 +56,7 @@ const PageLoader = () => (
   </div>
 );
 
+/** @param {{ children?: any, direction?: any, [key: string]: any }} props */
 const AnimatedPage = ({ children, direction }) => {
   /**
    * src/index.css has honoured `prefers-reduced-motion: reduce` since it was

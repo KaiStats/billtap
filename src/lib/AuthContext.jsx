@@ -88,8 +88,9 @@ function clearBillTapStorage() {
  * "tidies up" a prefix that is load-bearing.)
  */
 
-const AuthContext = createContext();
+const AuthContext = createContext(/** @type {any} */ (null));
 
+/** @param {{ children?: any, [key: string]: any }} props */
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);

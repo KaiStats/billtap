@@ -10,12 +10,17 @@
     "lib": ["esnext", "dom"],
     "target": "esnext",
     "checkJs": true,
+    // Do not type-check JavaScript inside dependencies. checkJs applies to any
+    // .js the compiler loads, and a package that ships untyped source — like
+    // canvas-confetti — then reports ITS errors as ours. skipLibCheck does not
+    // cover this; it only skips .d.ts files.
+    "maxNodeModuleJsDepth": 0,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": []
   },
-  "include": ["src/components/**/*.js", "src/pages/**/*.jsx", "src/Layout.jsx"],
-  "exclude": ["node_modules", "dist", "src/vite-plugins", "src/components/ui", "src/api", "src/lib"]
+  "include": ["src/**/*.js", "src/**/*.jsx", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.mjs"]
 } 

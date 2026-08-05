@@ -3,6 +3,7 @@ import { X, Download, Share2, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+/** @param {{ onDismiss?: any, [key: string]: any }} props */
 export default function PWAInstallPrompt({ onDismiss }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isIOS, setIsIOS] = useState(false);

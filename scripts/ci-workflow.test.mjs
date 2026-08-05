@@ -80,6 +80,7 @@ test('no gate has quietly gone missing', () => {
   const required = [
     ['npm run lint', 'the lint gate — it was checking almost nothing until the flat config was repaired'],
     ['npm run test:unit', 'the money-path suite, including the concurrent-claim and participant-key tests'],
+    ['npm run typecheck', 'the type gate — it sat at 153 errors and outside CI until it was driven to zero'],
     ['npm run build', 'the build, which catches bad imports no test imports'],
     ['scripts/check-wrangler.mjs', 'the check that staging cannot take billtap.app'],
     ['scripts/verify-dist.mjs', 'the check that every referenced image exists'],

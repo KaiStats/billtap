@@ -25,15 +25,16 @@ import { useEffect } from "react";
  * replaced with tokens first. Restoring the OS listener before that happens
  * just reintroduces the invisible text.
  */
-export default function ThemeProvider({ children }) {
+export default /** @param {{ children?: any, [key: string]: any }} props */
+function ThemeProvider({ children }) {
   useEffect(() => {
     document.documentElement.classList.add("dark");
 
     // iOS status bar. Translucent lets the page's own dark colour show through;
     // "default" would draw a light bar above a dark app.
-    let meta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    let meta = /** @type {HTMLMetaElement|null} */ (document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]'));
     if (!meta) {
-      meta = document.createElement("meta");
+      meta = /** @type {HTMLMetaElement} */ (document.createElement("meta"));
       meta.name = "apple-mobile-web-app-status-bar-style";
       document.head.appendChild(meta);
     }

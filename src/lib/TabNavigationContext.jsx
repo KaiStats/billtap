@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 const isAndroid = () => {
   return /Android/i.test(navigator.userAgent) || 
          typeof window.cordova !== 'undefined' ||
-         typeof window.phonegap !== 'undefined';
+         typeof /** @type {any} */ (window).phonegap !== 'undefined';
 };
 
 export const TAB_ROOTS = {
@@ -49,6 +49,7 @@ const DEFAULT_STACKS = {
 
 const TabNavContext = createContext(null);
 
+/** @param {{ children?: any, [key: string]: any }} props */
 export function TabNavigationProvider({ children }) {
   const navigate = useNavigate();
   const location = useLocation();

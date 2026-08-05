@@ -28,7 +28,7 @@
 // import.meta.env with a real object; node leaves it undefined, and reading a
 // property off that throws before any test can get to the thing it came to
 // check. Absent means unconfigured, which is a state this file already handles.
-const env = import.meta.env ?? {};
+const env = /** @type {ImportMetaEnv} */ (import.meta.env ?? {});
 
 const url = env.VITE_SUPABASE_URL;
 const anonKey = env.VITE_SUPABASE_ANON_KEY;

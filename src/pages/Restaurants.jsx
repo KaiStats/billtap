@@ -79,6 +79,7 @@ const STEPS = [
  * Image that fades up once decoded, and removes itself on error so the
  * gradient underneath becomes the design rather than a broken box.
  */
+/** @param {{ name?: any, alt?: any, className?: any, to?: any, eager?: any, position?: any, [key: string]: any }} props */
 function Img({ name, alt, className = "", to = 1, eager = false, position = "center" }) {
   const [loaded, setLoaded] = useState(false);
   const src = art(name);
@@ -101,11 +102,12 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
       onLoad={() => setLoaded(true)}
       onError={(e) => { e.currentTarget.style.display = "none"; }}
       className={`rst-img rst-grade ${loaded ? "is-loaded" : ""} ${className}`}
-      style={{ "--to": to, objectPosition: position }}
+      style={/** @type {any} */ ({ "--to": to, objectPosition: position })}
     />
   );
 }
 
+/** @param {{ children?: any, delay?: any, className?: any, [key: string]: any }} props */
 function Reveal({ children, delay = 0, className = "" }) {
   const reduced = useReducedMotion();
   if (reduced) return <div className={className}>{children}</div>;

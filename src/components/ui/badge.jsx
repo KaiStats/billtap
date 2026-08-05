@@ -23,12 +23,13 @@ const badgeVariants = cva(
   }
 )
 
+/** @param {{ className?: any, variant?: any, [key: string]: any }} props */
 function Badge({
   className,
   variant,
   ...props
 }) {
-  return (<div className={cn(badgeVariants({ variant }), className)} {...props} />);
+  return (<div className={cn(badgeVariants(/** @type {any} */ ({ variant })), className)} {...props} />);
 }
 
 export { Badge, badgeVariants }

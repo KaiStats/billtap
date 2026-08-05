@@ -14,7 +14,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *
  * Renders nothing unless the session belongs to a restaurant.
  */
-export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
+export default /** @param {{ restaurantId?: any, sessionId?: any, onDismiss?: any, [key: string]: any }} props */
+function RatingCapture({ restaurantId, sessionId, onDismiss }) {
   const [restaurant, setRestaurant] = useState(null);
   const [stars, setStars] = useState(0);
   const [hover, setHover] = useState(0);
@@ -81,7 +82,7 @@ export default function RatingCapture({ restaurantId, sessionId, onDismiss }) {
    * had to be open to everyone. The upsert now happens as service role inside
    * submitGuestRating, so the rules could be closed.
    */
-  const saveContact = async ({ comment: text } = {}) => {
+  const saveContact = async (/** @type {{ comment?: any }} */ { comment: text } = {}) => {
     const clean = email.trim().toLowerCase();
     const body = clean && EMAIL_RE.test(clean) ? { email: clean } : {};
     if (text) body.comment = text;

@@ -30,6 +30,7 @@ const RESTAURANT_SUGGESTIONS = [
 const isDesktop = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 /** One line of the receipt: what it was on the left, what it cost on the right. */
+/** @param {{ label?: any, amount?: any, muted?: any, [key: string]: any }} props */
 function MoneyRow({ label, amount, muted }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
@@ -172,8 +173,8 @@ export default function NewReceipt() {
     // rather than "something went wrong".
     const detail = await res.json().catch(() => ({}));
     const error = new Error(detail.error || `Couldn't read that receipt (${res.status})`);
-    error.status = res.status;
-    error.data = detail;
+    /** @type {any} */ (error).status = res.status;
+    /** @type {any} */ (error).data = detail;
     throw error;
   };
 

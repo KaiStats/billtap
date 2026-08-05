@@ -11,7 +11,8 @@ import { useScrollBehavior } from '@/hooks/useScrollBehavior';
  *   - children: page content
  *   - className: additional classes for container
  */
-export default function ListLayout({ onRefresh, children, className = '' }) {
+export default /** @param {{ onRefresh?: any, children?: any, className?: any, [key: string]: any }} props */
+function ListLayout({ onRefresh, children, className = '' }) {
   // Disable overscroll bounce
   useScrollBehavior();
 

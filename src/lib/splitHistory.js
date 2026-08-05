@@ -61,6 +61,16 @@ export function listSplits() {
  * to a guest in your own history, which would send you to the diner's screen
  * instead of the one with the confirm buttons.
  */
+/**
+ * @param {object} entry
+ * @param {string} entry.id                 the only required field
+ * @param {string} [entry.title]
+ * @param {number} [entry.total]
+ * @param {string} [entry.status]
+ * @param {string} [entry.role]             'host' or 'guest'
+ * @param {number} [entry.participants]
+ * @param {boolean} [entry.paid]
+ */
 export function rememberSplit({ id, title, total, status, role, participants, paid }) {
   if (!id) return;
   const entries = read();

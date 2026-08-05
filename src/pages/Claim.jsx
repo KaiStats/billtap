@@ -496,7 +496,7 @@ export default function Claim() {
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
               onBlur={handleNameBlur}
-              onKeyDown={e => e.key === "Enter" && e.target.blur()}
+              onKeyDown={e => e.key === "Enter" && /** @type {HTMLElement} */ (e.target).blur()}
               placeholder="optional"
               autoComplete="nickname"
               aria-label="Your name (optional)"

@@ -5,7 +5,8 @@ import { useTabNav } from "@/lib/TabNavigationContext";
 
 const ROOT_PATHS = ["/", "/home", "/Home", "/dashboard", "/Dashboard", "/new-receipt", "/NewReceipt", "/profile", "/Profile"];
 
-const AppHeader = memo(function AppHeader({ title, rightAction, forceBack, backTo }) {
+const AppHeader = memo(/** @param {{ title?: any, rightAction?: any, forceBack?: any, backTo?: any, [key: string]: any }} props */
+function AppHeader({ title, rightAction, forceBack, backTo }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { popScreen, canGoBack } = useTabNav();

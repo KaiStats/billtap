@@ -112,7 +112,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <button onClick={() => window.location.reload()} style={{ background: '#00c896', color: '#0a0e1a', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
         Refresh Page
       </button>
-      <p style={{ color: '#4a5068', fontSize: '12px' }}>Error: {error?.message}</p>
+      <p style={{ color: '#4a5068', fontSize: '12px' }}>Error: {/** @type {any} */ (error)?.message}</p>
     </div>
   )}>
     <ErrorBoundary>

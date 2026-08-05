@@ -43,7 +43,7 @@ export function parseCustomURI(uri) {
 
   if (!route) return null;
 
-  const params = Object.fromEntries(url.searchParams);
+  const params = Object.fromEntries(/** @type {any} */ (url.searchParams));
   return { route, params: { ...params, sessionId: id || params.sessionId } };
 }
 
@@ -58,7 +58,7 @@ export function parseWebURI(pathname, search) {
   const normalizedParams = {};
 
   // Normalize parameter names
-  for (const [key, value] of params) {
+  for (const [key, value] of /** @type {any} */ (params)) {
     const normalized = PARAM_MAP[key] || key;
     normalizedParams[normalized] = value;
   }
@@ -119,7 +119,7 @@ export function registerCustomURIHandler(callback) {
 
   // Listen for custom events that might be dispatched by native bridges
   window.addEventListener('billtap-uri', (event) => {
-    const parsed = parseCustomURI(event.detail.uri);
+    const parsed = parseCustomURI(/** @type {any} */ (event).detail.uri);
     if (parsed) callback(parsed);
   });
 }

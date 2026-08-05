@@ -3,7 +3,8 @@ import { Loader2 } from "lucide-react";
 
 const PULL_THRESHOLD = 70;
 
-const PullToRefresh = memo(function PullToRefresh({ onRefresh, children }) {
+const PullToRefresh = memo(/** @param {{ onRefresh?: any, children?: any, [key: string]: any }} props */
+function PullToRefresh({ onRefresh, children }) {
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const startY = useRef(null);

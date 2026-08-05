@@ -23,7 +23,7 @@ export function useMutationOptimistic(mutationFn, options = {}) {
   } = options;
 
   return useMutation({
-    mutationFn,
+    mutationFn: /** @type {any} */ (mutationFn),
     onMutate: (variables) => {
       // Capture snapshot for rollback
       return onOptimisticState?.(variables);
