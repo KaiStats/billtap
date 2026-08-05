@@ -41,6 +41,29 @@
 /video/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 
+# The two scripts index.html loads from the site root.
+#
+# They were split out of inline <script> blocks so the CSP could drop
+# script-src 'unsafe-inline', and in moving they landed at the root of public/ —
+# where no rule above matches them. So they fell through to the same
+# `max-age=0, must-revalidate` default this file exists to correct: two
+# conditional requests on every page load, on a restaurant's wifi, for two files
+# a returning phone already has byte-for-byte. Both are `defer`, so neither
+# holds up first paint — but fonts.js is what swaps the real typefaces in, so
+# the round trip is visible as the moment the page stops looking like fallback.
+#
+# Not `immutable`, because unlike /assets/* these names do not change when the
+# contents do — fonts.js has already shipped a bad version once, and a year of
+# immutable would have made that permanent on every phone that fetched it. An
+# hour fresh, then a day of serving the old copy while fetching the new one in
+# the background, which is the same bargain the icons get and for the same
+# reason.
+/analytics.js
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/fonts.js
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
 # The service worker decides when every other cached thing is replaced, so it
 # must never be the stale one. Browsers bypass the HTTP cache for the update
 # check on their own now; saying so as well costs nothing and does not depend on

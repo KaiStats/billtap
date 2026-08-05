@@ -325,11 +325,27 @@
     // Verified under `wrangler dev`: /restaurants and /junk go through the
     // Worker (security headers present, 404 rewritten), /assets/* does not.
     //
-    // Only ever exclude static directories. Excluding a page route would
-    // silently disable its redirect, 404 and headers — the test checks for that
-    // too. The tradeoff of excluding them: a missing file under these paths now
-    // returns the SPA shell with a 200 rather than a 404. Crawlers do not index
-    // hashed bundles, so that is an acceptable trade.
-    "run_worker_first": ["/*", "!/assets/*", "!/icons/*", "!/img/*", "!/video/*"]
+    // Only ever exclude static files and directories. Excluding a page route
+    // would silently disable its redirect, 404 and headers — the test checks
+    // for that too. The tradeoff of excluding them: a missing file under these
+    // paths now returns the SPA shell with a 200 rather than a 404. Crawlers do
+    // not index hashed bundles, so that is an acceptable trade.
+    //
+    // The two root-level scripts are named individually for the same reason the
+    // directories are. They are not page routes — nothing redirects to them,
+    // neither can be framed, and the Worker's only contribution was to proxy
+    // the assets binding's answer back unchanged. What that cost: index.html
+    // loads both on *every* page view, so leaving them in was two billable
+    // Worker invocations per view, sat in front of the two files whose entire
+    // job is to load quickly and get out of the way.
+    "run_worker_first": [
+      "/*",
+      "!/assets/*",
+      "!/icons/*",
+      "!/img/*",
+      "!/video/*",
+      "!/analytics.js",
+      "!/fonts.js"
+    ]
   }
 }

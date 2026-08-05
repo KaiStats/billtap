@@ -126,8 +126,25 @@
       />
     </noscript>
 
-    <!-- /restaurants loads 15 frames from this origin; warm the connection early. -->
-    <link rel="preconnect" href="https://d8j0ntlcm91z4.cloudfront.net" crossorigin />
+    <!--
+      There was a `<link rel="preconnect" crossorigin>` to a Higgsfield
+      CloudFront distribution here, with the note "/restaurants loads 15 frames
+      from this origin". It does not, and has not since SELF_HOSTED was flipped
+      in src/lib/restaurant-assets.js and src/lib/landing-assets.js — every
+      frame on both pages is re-encoded WebP served from /img/, on this origin,
+      under the cache rule in public/_headers.
+
+      A preconnect is neither free nor lazy: the browser opens DNS, TCP and TLS
+      to that host immediately, at the top of the document, competing with the
+      requests that are actually on the critical path. Warming a connection
+      nothing uses spends a diner's first round trips on a third party, and
+      tells that third party the page was loaded.
+
+      Nothing is preconnected in its place, deliberately. Everything the first
+      paint needs — the shell, the bundles, /fonts.js, the art — is same-origin,
+      and that connection is already open by the time this line is parsed.
+      src/caching.test.mjs keeps it that way.
+    -->
     <title>BillTap — Split Bills in 30 Seconds</title>
     <meta name="description" content="BillTap lets you split restaurant bills instantly. Scan a receipt, share a QR code, everyone pays their exact share. No math, no IOUs." />
     <!--
