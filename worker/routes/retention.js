@@ -54,7 +54,7 @@
  */
 
 import { serviceRole, backendName } from '../lib/data.js';
-import { deleteObject, storageKeyFromUrl } from '../lib/db.js';
+import { deleteObject, storageKeyFromUrl, listObjects, publicObjectUrl } from '../lib/db.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 /** The bucket in supabase/migrations/0004_receipts_storage.sql. */
@@ -138,6 +138,96 @@ export async function redactSession(env, svc, session) {
 }
 
 /**
+ * Receipt images that belong to no split at all.
+ *
+ * ── Why the session sweep cannot find these ────────────────────────────────
+ *
+ * NewReceipt starts the upload the moment the photo is chosen, so it has the
+ * whole review screen to finish rather than making the diner wait. If the split
+ * is then never created — the diner backs out, the scan is wrong, the tab is
+ * closed — the object stays in the bucket with no row anywhere referencing it.
+ * There is no foreign key from storage to sessions, so redacting sessions walks
+ * straight past it, however long it sits there.
+ *
+ * The only way to find one is from the other end: walk the bucket and ask the
+ * database whether anything claims each key. That is what this does.
+ *
+ * ── The age gate is the whole safety of it ─────────────────────────────────
+ *
+ * An object uploaded ninety seconds ago has no session referencing it either —
+ * because the diner is still on the review screen deciding. Deleting on
+ * "unreferenced" alone would race the product and delete the photograph out
+ * from under somebody mid-split.
+ *
+ * So an object is only a candidate once it is older than the retention window.
+ * By then it is either orphaned or it belonged to a session that has itself
+ * been redacted and had its image deleted already, and either way nothing that
+ * is still in use can be caught by it.
+ */
+export async function sweepOrphans(env, svc, { limit = 200 } = {}) {
+  const summary = { scanned: 0, candidates: 0, orphans_deleted: 0, failed: 0 };
+  const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  // Oldest first, so a page of recent uploads never crowds out the ones that
+  // are actually due.
+  const objects = await listObjects(env, BUCKET, { limit });
+  summary.scanned = objects.length;
+
+  const candidates = [];
+  for (const object of objects) {
+    const key = object?.name;
+    if (!key) continue;
+    const created = Date.parse(object.created_at || '');
+    // An object we cannot date is one we cannot prove is old. Skipping costs it
+    // a night; guessing costs somebody their receipt.
+    if (!Number.isFinite(created)) continue;
+    // Listed oldest first, so the first one inside the window ends the page.
+    if (created > cutoffMs) break;
+    candidates.push({ key, url: publicObjectUrl(env, BUCKET, key) });
+  }
+  summary.candidates = candidates.length;
+  if (!candidates.length) return summary;
+
+  /**
+   * Which of these a session still claims — asked once, for the whole page.
+   *
+   * Ask the database rather than inferring. A session that still points at a
+   * key is one whose own redaction has not run or did not finish, and deleting
+   * its image first would leave a split showing a broken thumbnail rather than
+   * no thumbnail.
+   *
+   * It has to be every session, not just the overdue ones: image_url is set at
+   * creation and updated_date moves forward, so a split created forty days ago
+   * and touched yesterday still displays a forty-day-old object. Checking only
+   * old rows would delete the receipt out from under it.
+   *
+   * The public URL is derived from the key, so this is one `in.(...)` against
+   * an equality — no LIKE, and no scan per candidate.
+   */
+  const quoted = candidates.map((c) => `"${c.url}"`).join(',');
+  const claimed = await svc.entity('Session').filter(
+    { image_url: { in: `(${quoted})` } },
+    { select: 'image_url' },
+  );
+  const stillReferenced = new Set(claimed.map((row) => row.image_url));
+
+  for (const candidate of candidates) {
+    if (stillReferenced.has(candidate.url)) continue;
+    try {
+      await deleteObject(env, BUCKET, candidate.key);
+      summary.orphans_deleted += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error(JSON.stringify({
+        job: 'retention', step: 'orphan', key: candidate.key, message: error?.message,
+      }));
+    }
+  }
+
+  return summary;
+}
+
+/**
  * The nightly pass. Called from the Worker's scheduled handler.
  *
  * Returns a summary rather than logging only, so the scheduled handler can put
@@ -193,6 +283,24 @@ export async function scheduled(env) {
     else summary.failed += 1;
     if (outcome.image === 'deleted') summary.images_deleted += 1;
     if (outcome.image === 'foreign') summary.images_foreign += 1;
+  }
+
+  /**
+   * Then the images no session ever claimed.
+   *
+   * After the session pass, not before: a split redacted a moment ago has just
+   * had its image_url cleared, and sweeping first would ask the database about
+   * keys the pass above is in the middle of releasing. Running second means
+   * those objects are already gone, deleted by the session that owned them.
+   *
+   * Isolated in its own catch. The sweep walks a bucket listing and the pass
+   * above rewrites guest names; a storage listing that fails must not be able
+   * to report the redaction as unsuccessful when it was not.
+   */
+  try {
+    summary.orphans = await sweepOrphans(env, svc);
+  } catch (error) {
+    summary.orphans = { error: error?.message || String(error) };
   }
 
   return summary;

@@ -65,10 +65,9 @@ export async function uploadReceipt(file, deps = {}) {
   const storage = deps.storage ?? (await defaultStorage());
   if (!storage) throw new Error('Receipt storage is not configured');
 
-  const key = receiptObjectKey(file, (deps.uuid ?? randomId)());
   const bucket = storage.from(BUCKET);
 
-  const { error } = await bucket.upload(key, file, {
+  const uploadOptions = {
     cacheControl: CACHE_CONTROL,
     // A random key never collides, so an upsert could only ever overwrite
     // somebody else's receipt — which is the one write this endpoint must not
@@ -78,13 +77,83 @@ export async function uploadReceipt(file, deps = {}) {
     // with no type at all, and the storage API's own fallback for that is
     // text/plain — which the browser then refuses to render as an image.
     contentType: file?.type || 'application/octet-stream',
-  });
-  if (error) throw error;
+  };
 
+  /**
+   * Ask the Worker for a ticket first.
+   *
+   * This upload used to go straight to storage under the anon key, which meant
+   * it never touched the Worker and the rate limiter never saw it — nothing
+   * anywhere bounded how many objects an anonymous caller could create. The
+   * ticket moves that decision back to the Worker without moving the bytes: the
+   * file still goes directly to storage, it just needs permission first.
+   *
+   * Still no session read, and there must never be one. The ticket endpoint is
+   * anonymous by design; requiring an account to photograph a receipt is the
+   * product gone, and src/upload.test.mjs holds that line.
+   */
+  const ticket = await (deps.ticket ?? requestTicket)(file);
+
+  if (ticket) {
+    const { error } = await bucket.uploadToSignedUrl(ticket.path, ticket.token, file, uploadOptions);
+    if (!error) return publicUrlFor(bucket, ticket.path);
+    // Fall through. A rejected ticket is a signing or storage problem, not a
+    // reason to lose the photograph — see the fallback note below.
+  }
+
+  /**
+   * The direct write, still here on purpose.
+   *
+   * Migration 0004's anon insert policy is what makes this work, and it is what
+   * 0007 removes — but only after the signed path has been seen to work against
+   * a real project, because nothing in this repo can test it: every suite stubs
+   * the storage client, so a mismatch with Supabase's actual API would surface
+   * at a restaurant table rather than in CI.
+   *
+   * Until 0007 is applied this is a live fallback and the hole is still open.
+   * After it, this path fails closed and the throw below is what NewReceipt
+   * already handles by creating the split without an image.
+   */
+  const key = receiptObjectKey(file, (deps.uuid ?? randomId)());
+  const { error } = await bucket.upload(key, file, uploadOptions);
+  if (error) throw error;
+  return publicUrlFor(bucket, key);
+}
+
+function publicUrlFor(bucket, key) {
   const { data } = bucket.getPublicUrl(key);
   const url = data?.publicUrl;
   if (!url) throw new Error('Receipt was stored but has no public URL');
   return url;
+}
+
+/**
+ * The Worker's answer, or null when it cannot give one.
+ *
+ * Never throws. Every failure here — offline, a 503 because the backend has no
+ * signed uploads, a 429 because somebody is minting tickets in a loop — has to
+ * leave the caller with a working upload path while the direct write still
+ * exists, and afterwards has to fail at the upload rather than here, so the
+ * error the caller sees is about storing the photograph.
+ */
+async function requestTicket(file) {
+  try {
+    const name = typeof file?.name === 'string' ? file.name : '';
+    const extension = (
+      name.match(/\.([a-z0-9]+)$/i)?.[1] ||
+      String(file?.type || '').match(/^image\/([a-z0-9]+)$/i)?.[1] ||
+      'jpg'
+    ).toLowerCase();
+
+    // Imported at call time for the same reason the storage client is: this
+    // module must not drag the API layer into the page's first chunk.
+    const { invoke } = await import('../api/functions.js');
+    const res = await invoke('createReceiptUpload', { extension });
+    const { path, token } = res?.data || {};
+    return path && token ? { path, token } : null;
+  } catch {
+    return null;
+  }
 }
 
 function randomId() {

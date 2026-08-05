@@ -1,0 +1,71 @@
+-- Close the anonymous write on the receipts bucket.
+--
+-- ⚠ DO NOT APPLY THIS UNTIL THE SIGNED PATH HAS BEEN SEEN TO WORK.
+--    Read the verification section at the bottom first. Applying it early
+--    breaks receipt photographs for every guest, which is the first thing the
+--    product does.
+--
+-- ── What was open ───────────────────────────────────────────────────────────
+--
+-- Migration 0004 grants anon insert on this bucket, and it had to: the person
+-- photographing the bill is a guest with no account, so there is no credential
+-- to demand. src/lib/uploadReceipt.js therefore posted straight from the
+-- browser to Supabase Storage.
+--
+-- The consequence was not the write itself, it was that the write never touched
+-- the Worker. worker/lib/rate-limit.js has never seen a single receipt upload,
+-- because none of them ever reached it. 0004's header argues the bucket's size
+-- limit means it "cannot be used as free unbounded storage" — that bounds each
+-- object at 10 MB and says nothing about how many, and nothing else bounded
+-- that either. An anonymous caller could create objects in a loop, forever, and
+-- the only signal would have been the storage bill.
+--
+-- ── What replaces it ────────────────────────────────────────────────────────
+--
+-- /api/fn/createReceiptUpload mints a signed upload URL. That call is metered
+-- like every other endpoint, the object key is generated on the server rather
+-- than chosen by the caller, and the token is scoped to that one key. The
+-- browser still uploads directly to storage, so the bytes do not round-trip
+-- through a Worker isolate on a restaurant's wifi — only the permission does.
+--
+-- A signed upload URL carries its own authorisation, so it does not need, and
+-- does not consult, the insert policy this migration drops.
+--
+-- ── Verification, before applying ───────────────────────────────────────────
+--
+-- Nothing in this repo can test the signed path. Every suite stubs the storage
+-- client — src/upload.test.mjs asserts which calls are made, the browser suite
+-- intercepts /storage/v1/object/** — so a mismatch with Supabase's actual API
+-- would surface at a restaurant table rather than in CI. That is why
+-- uploadReceipt still falls back to the direct write, and why this file is
+-- separate from the code that uses it.
+--
+-- Before applying, against a real project:
+--
+--   1. Deploy the Worker. Photograph a receipt as a guest, in a private window
+--      with no session.
+--   2. Confirm the network tab shows a call to /api/fn/createReceiptUpload
+--      followed by an upload to /storage/v1/object/upload/sign/receipts/...
+--      and NOT to /storage/v1/object/receipts/...
+--   3. Confirm the image renders on the review screen and on the claim screen.
+--
+-- Only then apply this. If step 2 shows the unsigned path, the fallback is
+-- carrying the upload and this migration would break it.
+--
+-- ── Rollback ────────────────────────────────────────────────────────────────
+--
+-- Re-run the policy from 0004. It is one statement and it is in that file:
+--
+--   create policy "receipt images are insertable by anyone"
+--     on storage.objects for insert
+--     to anon, authenticated
+--     with check (bucket_id = 'receipts');
+--
+-- The fallback in uploadReceipt.js starts working again the moment it exists,
+-- with no deploy.
+
+drop policy if exists "receipt images are insertable by anyone" on storage.objects;
+
+-- Reads are unaffected. The bucket stays public because the URL is shown to
+-- every diner at the table and none of them have an account to authorise a read
+-- with — see the header of 0004. The key remains the secret.

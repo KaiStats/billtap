@@ -18,7 +18,11 @@
  * preserved.
  */
 import { json } from '../lib/email.js';
-import { serviceRole, asCaller, currentUser, dataMisconfiguration } from '../lib/data.js';
+import { serviceRole, asCaller, currentUser, dataMisconfiguration, backendName } from '../lib/data.js';
+// Straight from db.js rather than through the backend switch: storage is
+// Supabase's and there is no Base44 equivalent to route to. createReceiptUpload
+// checks the backend itself before calling this.
+import { createSignedUpload } from '../lib/db.js';
 import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
 import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
@@ -33,6 +37,47 @@ import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
  * row rather than throwing on a missing dependency.
  */
 const NO_AUDIT = async () => {};
+
+/** One page of a dashboard read. */
+const DASHBOARD_PAGE = 1000;
+
+/**
+ * The ceiling on a dashboard read, across all pages.
+ *
+ * Chosen to be far past any real restaurant and still bounded. A room seating
+ * a hundred people, rated by every table, every night, takes years to reach it
+ * — and if one ever does, the response says so rather than the operator quietly
+ * receiving part of their list.
+ */
+const DASHBOARD_MAX = 20000;
+
+/**
+ * Every row for one restaurant, walked in pages, with a hard stop.
+ *
+ * `filter` with no limit is one unbounded query whose size is the restaurant's
+ * whole history. Paging does not make the payload smaller — the client needs
+ * all of it, because it averages the ratings and exports the contacts — but it
+ * does mean no single query is unbounded, and it gives a place to stop.
+ *
+ * Falls back to the single read on a backend that cannot express a limit, which
+ * is the behaviour that was there before.
+ */
+async function readAll(svc, entity, restaurantId) {
+  if (!svc.queryOperators) {
+    return { rows: await svc.entity(entity).filter({ restaurant_id: restaurantId }), truncated: false };
+  }
+
+  const rows = [];
+  for (let offset = 0; offset < DASHBOARD_MAX; offset += DASHBOARD_PAGE) {
+    const page = await svc.entity(entity).filter(
+      { restaurant_id: restaurantId },
+      { limit: DASHBOARD_PAGE, offset, order: 'created_date' },
+    );
+    rows.push(...page);
+    if (page.length < DASHBOARD_PAGE) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -292,6 +337,65 @@ const HANDLERS = {
     if (!session) return json({ error: 'Session not found' }, 404);
 
     return json({ session: scopeForParticipant(session, participant_id || null) });
+  },
+
+  /**
+   * A ticket to upload one receipt photograph.
+   *
+   * ── The hole this closes ──────────────────────────────────────────────────
+   *
+   * Migration 0004 grants anon insert on the receipts bucket, because the
+   * person photographing the bill is a guest with no account and there is no
+   * credential to demand. src/lib/uploadReceipt.js therefore posts straight
+   * from the browser to Supabase Storage — which means the upload never reaches
+   * this Worker, and the rate limiter has never seen one. 0004's header argues
+   * the bucket's size limit stops it being "free unbounded storage"; that
+   * bounds each object at 10 MB and says nothing at all about how many, and
+   * nothing else bounded that either.
+   *
+   * Minting a signed upload URL puts the decision back here without moving the
+   * bytes: this call is metered like every other, and the browser still uploads
+   * directly to storage, so a 10 MB photo does not round-trip through an
+   * isolate on a restaurant's wifi.
+   *
+   * ── Why the key is minted here ────────────────────────────────────────────
+   *
+   * The client used to choose it. The bucket is public and the key is the only
+   * thing standing between one table's bill and anyone who fancies looking, so
+   * who generates it is not a detail — a caller that picks its own key can pick
+   * a guessable one, or one that collides with a key it wants to learn about.
+   * The uuid is generated on this side and the caller only says what kind of
+   * image it is.
+   *
+   * Still anonymous, and it must stay that way: requiring a session here would
+   * mean photographing a receipt needs an account, which is the product gone.
+   */
+  async createReceiptUpload({ env, body }) {
+    if (backendName(env) !== 'supabase') {
+      // The bucket is Supabase's. On the Base44 backend there is nothing to
+      // sign, and the client falls back to its direct upload.
+      return json({ error: 'Signed uploads are not available.', code: 'not_configured' }, 503);
+    }
+
+    // Matches ALLOWED_TYPES in worker/routes/scan-receipt.js, plus jpg for the
+    // extension form. The extension decides how the object is served back, so
+    // it is an allow-list rather than whatever the caller sent.
+    const ALLOWED = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']);
+    const raw = typeof body?.extension === 'string' ? body.extension.toLowerCase() : '';
+    const extension = ALLOWED.has(raw) ? raw : 'jpg';
+
+    const key = `${crypto.randomUUID()}.${extension}`;
+
+    try {
+      const { path, token } = await createSignedUpload(env, 'receipts', key);
+      return json({ path, token, bucket: 'receipts' });
+    } catch (error) {
+      // Not fatal to the caller: uploadReceipt falls back to the direct write
+      // that has always worked, so a signing outage costs metering rather than
+      // the ability to photograph a bill.
+      console.error('createReceiptUpload: signing failed', error?.message);
+      return json({ error: 'Could not prepare the upload.', code: 'sign_failed' }, 503);
+    }
   },
 
   /** Guest-visible restaurant fields, and nothing else. */
@@ -1319,7 +1423,11 @@ const HANDLERS = {
     return json({ session: scopeForParticipant(updated, participant_id) });
   },
 
-  /** The operator's own ratings and contacts. Ownership from their identity. */
+  /**
+   * The operator's own ratings and contacts. Ownership from their identity.
+   *
+   * See readAll below for why these are paged rather than limited.
+   */
   async getRestaurantDashboardData({ env, request, audit = NO_AUDIT }) {
     const user = await currentUser(env, request);
     if (!user) return json({ error: 'Unauthorized' }, 401);
@@ -1329,9 +1437,26 @@ const HANDLERS = {
     const restaurant = owned[0];
     if (!restaurant) return json({ restaurant: null, ratings: [], contacts: [] });
 
+    /**
+     * Both lists, read in pages rather than in one unbounded query.
+     *
+     * These were two `select=*` reads with no limit, growing with the
+     * restaurant forever. The obvious fix — put a limit on them — is the wrong
+     * one, and worth writing down so nobody applies it later: the client
+     * computes the average rating over everything returned, shows
+     * `contacts.length` as "Guest emails", and its CSV button exports exactly
+     * the array it was given. A limit would not slow anything down; it would
+     * quietly make the average wrong, the count wrong, and an operator's export
+     * of their own guest list silently short. A truncated export that says
+     * nothing is worse than a slow one.
+     *
+     * So: page it, cap it, and say so when the cap is hit. Every number stays
+     * exact up to the ceiling, no single response is unbounded, and past the
+     * ceiling the client is told rather than misled.
+     */
     const [ratings, contacts] = await Promise.all([
-      svc.entity('GuestRating').filter({ restaurant_id: restaurant.id }),
-      svc.entity('GuestContact').filter({ restaurant_id: restaurant.id }),
+      readAll(svc, 'GuestRating', restaurant.id),
+      readAll(svc, 'GuestContact', restaurant.id),
     ]);
 
     // Every guest email this restaurant holds, in one response. That is the
@@ -1341,10 +1466,26 @@ const HANDLERS = {
       action: ACTIONS.GUESTS_EXPORTED,
       restaurantId: restaurant.id,
       actorUserId: user.id,
-      detail: { row_count: contacts.length },
+      detail: { row_count: contacts.rows.length },
     });
 
-    return json({ restaurant_id: restaurant.id, ratings, contacts });
+    return json({
+      restaurant_id: restaurant.id,
+      ratings: ratings.rows,
+      contacts: contacts.rows,
+      // Only present when a list actually hit the ceiling, so the ordinary
+      // response is byte-for-byte what it was. A client that ignores this is no
+      // worse off than before; one that reads it can stop claiming a number is
+      // the whole picture when it is not.
+      ...(ratings.truncated || contacts.truncated
+        ? {
+          truncated: {
+            ...(ratings.truncated ? { ratings: DASHBOARD_MAX } : {}),
+            ...(contacts.truncated ? { contacts: DASHBOARD_MAX } : {}),
+          },
+        }
+        : {}),
+    });
   },
 };
 

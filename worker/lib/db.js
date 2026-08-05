@@ -153,7 +153,7 @@ function entityApi(env, authHeaders, apikey) {
        * PostgREST parses them, so there is no injection surface here; keep it
        * that way if this ever grows an or/like clause.
        */
-      async filter(query = {}, { select = '*', limit, order: orderSpec } = {}) {
+      async filter(query = {}, { select = '*', limit, offset, order: orderSpec } = {}) {
         const params = new URLSearchParams({ select });
         for (const [column, value] of Object.entries(query)) {
           if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -167,6 +167,9 @@ function entityApi(env, authHeaders, apikey) {
         const ordering = order(orderSpec);
         if (ordering) params.set('order', ordering);
         if (limit) params.set('limit', String(limit));
+        // Paged reads need a stable order to page through, which is why the
+        // caller supplying `offset` is expected to supply `order` too.
+        if (offset) params.set('offset', String(offset));
         const rows = await call({ path: `/${from}?${params}` });
         return Array.isArray(rows) ? rows : [];
       },
@@ -292,6 +295,115 @@ export async function deleteObject(env, bucket, key) {
 
   if (res.ok || res.status === 404) return true;
   throw new DbError(res.status, await res.text());
+}
+
+/**
+ * The public URL an object key is served at.
+ *
+ * Deterministic, which is what lets the orphan sweep ask about a whole page of
+ * keys in one query instead of running a LIKE against sessions.image_url per
+ * candidate — an unindexed column, so that would have been one sequential scan
+ * each. Must stay in step with what supabase-js `getPublicUrl` produces, since
+ * that is what src/lib/uploadReceipt.js stores.
+ */
+export function publicObjectUrl(env, bucket, key) {
+  return `${supabaseUrl(env)}/storage/v1/object/public/${bucket}/${key}`;
+}
+
+/**
+ * One page of objects in a bucket, oldest first.
+ *
+ * Storage has no foreign key to sessions, so an object whose split was never
+ * created is unreachable from any row — there is nothing to join to. The only
+ * way to find one is to walk the bucket and ask the database about each key,
+ * which is what the orphan sweep in worker/routes/retention.js does.
+ */
+export async function listObjects(env, bucket, { limit = 100, offset = 0 } = {}) {
+  const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+
+  const res = await fetch(`${supabaseUrl(env)}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prefix: '',
+      limit,
+      offset,
+      sortBy: { column: 'created_at', order: 'asc' },
+    }),
+  });
+
+  if (!res.ok) throw new DbError(res.status, await res.text());
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+/**
+ * A one-shot ticket to upload one object to one key.
+ *
+ * ── Why this exists ─────────────────────────────────────────────────────────
+ *
+ * src/lib/uploadReceipt.js posts straight from the browser to Supabase Storage
+ * under the anon key, because migration 0004 grants anon insert on the bucket —
+ * and it has to grant something, since the person photographing the receipt is
+ * a guest with no account.
+ *
+ * The consequence is that the upload never touches the Worker, so the rate
+ * limiter in worker/lib/rate-limit.js has never seen a single one of them.
+ * 0004's header says the bucket's size limit means it "cannot be used as free
+ * unbounded storage"; that bounds each object at 10 MB and says nothing about
+ * how many, and nothing anywhere bounds how many.
+ *
+ * A signed upload URL moves the authorisation decision back to us without
+ * moving the bytes: the Worker mints a token — metered, rate-limited, and
+ * refusable — and the browser still uploads directly to storage, so a 10 MB
+ * photo does not make a round trip through a Worker isolate.
+ *
+ * The token is scoped to the single key it was minted for and is short-lived,
+ * so it cannot be replayed against a different object or hoarded.
+ */
+export async function createSignedUpload(env, bucket, key) {
+  const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+
+  const path = key.split('/').map(encodeURIComponent).join('/');
+  const res = await fetch(
+    `${supabaseUrl(env)}/storage/v1/object/upload/sign/${encodeURIComponent(bucket)}/${path}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const text = await res.text();
+  if (!res.ok) throw new DbError(res.status, text);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new DbError(res.status, text);
+  }
+
+  // Supabase answers { url: "/object/upload/sign/<bucket>/<key>?token=..." }.
+  // The token is the part supabase-js wants for uploadToSignedUrl; pull it out
+  // here so the browser is never handed a URL it has to parse.
+  const signed = String(parsed?.url || '');
+  const token = signed.includes('token=')
+    ? signed.slice(signed.indexOf('token=') + 'token='.length).split('&')[0]
+    : null;
+  if (!token) throw new DbError(res.status, 'signed upload response carried no token');
+
+  return { path: key, token };
 }
 
 /**

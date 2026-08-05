@@ -155,3 +155,112 @@ test('the bucket lets an account-less guest write to it', () => {
   // Insert only. An uploaded receipt must not be replaceable afterwards.
   assert.ok(!/for (update|delete)/.test(migration), 'anon must not be able to change what it uploaded');
 });
+
+// ── The ticket ──────────────────────────────────────────────────────────────
+//
+// The upload used to go browser-to-storage under the anon key, so it never
+// touched the Worker and worker/lib/rate-limit.js never saw one — nothing
+// anywhere bounded how many objects an anonymous caller could create. It now
+// asks the Worker for a signed upload ticket first, which is what makes an
+// upload countable, while the bytes still go straight to storage so a 10 MB
+// photo does not round-trip through an isolate on a restaurant's wifi.
+
+/** A storage stand-in that records both upload routes separately. */
+function ticketStorage({ signedError = null, directError = null } = {}) {
+  const calls = { signed: [], direct: [], publicUrls: [] };
+  return {
+    calls,
+    from() {
+      return {
+        uploadToSignedUrl(path, token, file, options) {
+          calls.signed.push({ path, token, file, options });
+          return Promise.resolve({ data: signedError ? null : { path }, error: signedError });
+        },
+        upload(key, file, options) {
+          calls.direct.push({ key, file, options });
+          return Promise.resolve({ data: directError ? null : { path: key }, error: directError });
+        },
+        getPublicUrl(key) {
+          calls.publicUrls.push(key);
+          return { data: { publicUrl: `https://cdn.example/receipts/${key}` } };
+        },
+      };
+    },
+  };
+}
+
+test('a ticket is used when the Worker issues one, and the direct write is skipped', async () => {
+  const storage = ticketStorage();
+  const url = await uploadReceipt(file(), {
+    storage,
+    ticket: async () => ({ path: 'server-chosen.webp', token: 'tok_1' }),
+  });
+
+  assert.equal(storage.calls.signed.length, 1);
+  assert.equal(storage.calls.signed[0].path, 'server-chosen.webp');
+  assert.equal(storage.calls.signed[0].token, 'tok_1');
+  assert.deepEqual(storage.calls.direct, [], 'the unmetered path is not taken');
+  assert.match(url, /server-chosen\.webp$/);
+});
+
+test('the key comes from the server, not from the file', async () => {
+  // The bucket is public, so the key is the only thing between one table's bill
+  // and anybody who fancies looking. A caller that picks its own key can pick a
+  // guessable one.
+  const storage = ticketStorage();
+  await uploadReceipt(file(), {
+    storage,
+    uuid: () => 'client-would-have-chosen-this',
+    ticket: async () => ({ path: 'a1b2c3.jpg', token: 'tok' }),
+  });
+  assert.equal(storage.calls.signed[0].path, 'a1b2c3.jpg');
+});
+
+test('no ticket still uploads, because a guest with a bill in front of them comes first', async () => {
+  // Offline, a 429, a backend with no signed uploads. Until migration 0007
+  // removes the anon insert policy this falls back and the photograph is kept.
+  const storage = ticketStorage();
+  const url = await uploadReceipt(file(), {
+    storage,
+    uuid: () => 'abc',
+    ticket: async () => null,
+  });
+  assert.deepEqual(storage.calls.signed, []);
+  assert.equal(storage.calls.direct.length, 1);
+  assert.match(url, /abc\./);
+});
+
+test('a rejected ticket falls back rather than losing the receipt', async () => {
+  const storage = ticketStorage({ signedError: new Error('signature expired') });
+  const url = await uploadReceipt(file(), {
+    storage,
+    uuid: () => 'abc',
+    ticket: async () => ({ path: 'x.jpg', token: 'stale' }),
+  });
+  assert.equal(storage.calls.signed.length, 1, 'it tried');
+  assert.equal(storage.calls.direct.length, 1, 'and then did not give up');
+  assert.match(url, /abc\./);
+});
+
+test('both upload routes send the same options', async () => {
+  // upsert:false above all. A random key never collides, so an upsert could
+  // only ever overwrite somebody else's receipt.
+  const storage = ticketStorage({ signedError: new Error('nope') });
+  await uploadReceipt(file(), {
+    storage,
+    uuid: () => 'abc',
+    ticket: async () => ({ path: 'x.jpg', token: 't' }),
+  });
+  assert.equal(storage.calls.signed[0].options.upsert, false);
+  assert.equal(storage.calls.direct[0].options.upsert, false);
+  assert.deepEqual(storage.calls.signed[0].options, storage.calls.direct[0].options);
+});
+
+test('asking for a ticket still reads no auth session', () => {
+  const source = read('src/lib/uploadReceipt.js');
+  assert.doesNotMatch(
+    source,
+    /getSession|currentUser|auth\./,
+    'the ticket endpoint is anonymous by design — needing an account to photograph a receipt is the product gone',
+  );
+});

@@ -63,6 +63,21 @@ const LIMITED = new Set([
   '/api/fn/getPublicRestaurant',
   '/api/fn/validateReceiptParse',
   '/api/fn/generateQRSignature',
+  /**
+   * The whole point of that endpoint. Receipt uploads went browser-to-storage
+   * and so were never metered by anything at all; minting the ticket here is
+   * what makes an upload countable.
+   *
+   * Keyed on the address, and deliberately not added to PER_PARTICIPANT below.
+   * It is called from the review screen before any split exists, so there is no
+   * participant id to send and the participant key would silently fall back to
+   * the address anyway — a listing there would claim a protection it does not
+   * have. The address is the right key regardless: one call per bill
+   * photographed is a handful an hour even for a busy room, nowhere near the
+   * limit, while an attacker minting tickets in a loop is exactly what this is
+   * for.
+   */
+  '/api/fn/createReceiptUpload',
   // Every call spends money at the model provider, so this is worth a limit —
   // but a table is one NAT, so it is keyed per participant below rather than
   // per address.

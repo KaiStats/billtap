@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { scheduled, redactSession, REMOVED, RETENTION_DAYS } from './routes/retention.js';
+import { scheduled, redactSession, sweepOrphans, REMOVED, RETENTION_DAYS } from './routes/retention.js';
 import { serviceRole, storageKeyFromUrl } from './lib/db.js';
 
 const SUPABASE = 'https://stub.supabase.co';
@@ -30,13 +30,22 @@ const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOStrin
  * the storage endpoint for the images — and records the deletes, since a
  * receipt image that was never actually deleted is the failure worth catching.
  */
-function stub(sessions, { storageFails = false } = {}) {
+function stub(sessions, { storageFails = false, objects = [] } = {}) {
   const store = { sessions: sessions.map((s) => structuredClone(s)) };
   const deleted = [];
   const original = globalThis.fetch;
 
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
+
+    // The bucket listing the orphan sweep walks. Oldest first, as the real API
+    // is asked to.
+    if (u.pathname === '/storage/v1/object/list/receipts') {
+      assert.equal(init.method, 'POST');
+      const { limit = 100 } = JSON.parse(init.body || '{}');
+      const sorted = [...objects].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      return new Response(JSON.stringify(sorted.slice(0, limit)), { status: 200 });
+    }
 
     if (u.pathname.startsWith('/storage/v1/object/')) {
       assert.equal(init.method, 'DELETE');
@@ -66,6 +75,11 @@ function stub(sessions, { storageFails = false } = {}) {
         if (op === 'is' && operand === 'null' && row[key] != null) return false;
         if (op === 'eq' && String(row[key]) !== operand) return false;
         if (op === 'gte' && !(row[key] >= operand)) return false;
+        if (op === 'in') {
+          // in.("a","b") — the form the orphan sweep asks a whole page with.
+          const members = operand.replace(/^\(|\)$/g, '').split(',').map((v) => v.replace(/^"|"$/g, ''));
+          if (!members.includes(String(row[key]))) return false;
+        }
       }
       return true;
     });
@@ -242,6 +256,139 @@ test('redactSession reports rather than throws, so a batch can survive a row', a
     assert.equal(outcome.image, 'failed');
     assert.equal(outcome.row, 'pending');
     assert.ok(outcome.error, 'and says why');
+  } finally {
+    restore();
+  }
+});
+
+// ── Orphaned images ─────────────────────────────────────────────────────────
+//
+// NewReceipt starts the upload the moment the photo is chosen, so it has the
+// whole review screen to finish rather than making the diner wait. If the split
+// is then never created — backed out, bad scan, tab closed — the object sits in
+// the bucket with no row referencing it. There is no foreign key from storage
+// to sessions, so the session pass walks straight past it forever.
+//
+// The first version of this audit flagged that as unfixable from the row side
+// and left it. It is fixable from the other side: walk the bucket and ask the
+// database whether anything claims each key.
+
+const objectAged = (name, days) => ({ name, created_at: daysAgo(days) });
+
+test('an image no session ever claimed is deleted', async () => {
+  const { deleted, restore } = stub([], {
+    objects: [objectAged('orphan-1.jpg', RETENTION_DAYS + 10)],
+  });
+  try {
+    const summary = await scheduled(env);
+    assert.deepEqual(deleted, ['orphan-1.jpg']);
+    assert.equal(summary.orphans.orphans_deleted, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('an image a live split still displays is left alone', async () => {
+  // The case that matters most. image_url is set at creation and updated_date
+  // moves forward, so a split created forty days ago and touched yesterday
+  // still shows a forty-day-old object. Deleting on age alone would take the
+  // receipt out from under a bill somebody is still looking at.
+  const live = {
+    ...structuredClone(overdue),
+    id: 'live',
+    updated_date: daysAgo(1),
+    image_url: `${SUPABASE}/storage/v1/object/public/receipts/still-in-use.jpg`,
+  };
+  const { deleted, restore } = stub([live], {
+    objects: [objectAged('still-in-use.jpg', RETENTION_DAYS + 10)],
+  });
+  try {
+    const summary = await scheduled(env);
+    assert.deepEqual(deleted, [], 'the live split keeps its receipt');
+    assert.equal(summary.orphans.candidates, 1, 'it was considered');
+    assert.equal(summary.orphans.orphans_deleted, 0, 'and spared');
+  } finally {
+    restore();
+  }
+});
+
+test('a freshly uploaded image is never a candidate', async () => {
+  // Ninety seconds old and unreferenced is not an orphan — it is a diner still
+  // on the review screen. Deleting on "unreferenced" alone races the product.
+  const { deleted, restore } = stub([], {
+    objects: [objectAged('just-uploaded.jpg', 0)],
+  });
+  try {
+    const summary = await scheduled(env);
+    assert.deepEqual(deleted, []);
+    assert.equal(summary.orphans.candidates, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('the sweep stops at the first object inside the window', async () => {
+  // Listed oldest first, so one recent object ends the page rather than costing
+  // a query for every file in a large bucket.
+  const { deleted, restore } = stub([], {
+    objects: [
+      objectAged('old-a.jpg', RETENTION_DAYS + 20),
+      objectAged('old-b.jpg', RETENTION_DAYS + 10),
+      objectAged('recent.jpg', 2),
+    ],
+  });
+  try {
+    const summary = await scheduled(env);
+    assert.deepEqual(deleted.sort(), ['old-a.jpg', 'old-b.jpg']);
+    assert.equal(summary.orphans.candidates, 2);
+  } finally {
+    restore();
+  }
+});
+
+test('an undateable object is skipped rather than guessed at', async () => {
+  const { deleted, restore } = stub([], {
+    objects: [{ name: 'no-timestamp.jpg', created_at: null }],
+  });
+  try {
+    const summary = await scheduled(env);
+    assert.deepEqual(deleted, [], 'an object we cannot prove is old waits a night');
+    assert.equal(summary.orphans.candidates, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('a failing bucket listing does not report the session pass as failed', async () => {
+  // Separate catch on purpose. A storage listing that breaks must not be able
+  // to make a successful redaction look unsuccessful.
+  const original = globalThis.fetch;
+  const { store, restore } = stub([overdue], { objects: [] });
+  const wrapped = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (new URL(url).pathname === '/storage/v1/object/list/receipts') {
+      return new Response('boom', { status: 500 });
+    }
+    return wrapped(url, init);
+  };
+  try {
+    const summary = await scheduled(env);
+    assert.equal(summary.redacted, 1, 'the session pass still succeeded');
+    assert.equal(store.sessions[0].participants[0].name, REMOVED);
+    assert.ok(summary.orphans.error, 'and the sweep reported its own failure');
+  } finally {
+    globalThis.fetch = original;
+    restore();
+  }
+});
+
+test('sweepOrphans can be driven on its own', async () => {
+  const { deleted, restore } = stub([], { objects: [objectAged('x.jpg', RETENTION_DAYS + 1)] });
+  try {
+    const summary = await sweepOrphans(env, serviceRole(env));
+    assert.equal(summary.scanned, 1);
+    assert.equal(summary.orphans_deleted, 1);
+    assert.deepEqual(deleted, ['x.jpg']);
   } finally {
     restore();
   }
