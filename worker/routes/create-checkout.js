@@ -12,6 +12,8 @@
  */
 import { json, clean, EMAIL_RE } from '../lib/email.js';
 
+import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+
 export async function onRequestPost({ request, env }) {
   let body;
   try {
@@ -68,14 +70,14 @@ export async function onRequestPost({ request, env }) {
   if (EMAIL_RE.test(email)) params.set('customer_email', email);
 
   try {
-    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    const res = await fetchWithTimeout('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: params,
-    });
+    }, TIMEOUTS.payment);
 
     const data = await res.json();
     if (!res.ok) {

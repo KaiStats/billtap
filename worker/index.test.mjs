@@ -401,3 +401,58 @@ test('the rate limiter is declared per environment, on its own namespace', () =>
     namespaces.add(binding.namespace_id);
   }
 });
+
+// ── Scheduled work ──────────────────────────────────────────────────────────
+//
+// The backup and the retention pass used to run from one 09:00 firing, back to
+// back through waitUntil. That is one Worker invocation and therefore one
+// subrequest budget shared between two jobs that both spend in bulk — the
+// backup pages every entity, retention writes and deletes per session. Whichever
+// ran second would be the one that ran out, overnight, unobserved.
+//
+// They have their own schedules now, and the handler dispatches on event.cron.
+// A typo in either place means the retention job silently never runs while the
+// backup runs twice, so these compare the two.
+
+test('the retention schedule the handler looks for is one wrangler actually fires', async () => {
+  const { RETENTION_CRON } = await import('../worker/index.js');
+  const { triggers } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  assert.ok(Array.isArray(triggers?.crons), 'wrangler.jsonc must declare triggers.crons');
+  assert.ok(
+    triggers.crons.includes(RETENTION_CRON),
+    `worker/index.js dispatches retention on "${RETENTION_CRON}", which is not in ` +
+    `triggers.crons (${JSON.stringify(triggers.crons)}) — the job would never run`,
+  );
+});
+
+test('the backup and the retention pass do not share an invocation', () => {
+  const { triggers } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  assert.ok(
+    triggers.crons.length >= 2,
+    'both jobs on one schedule means one subrequest budget between them',
+  );
+  assert.equal(
+    new Set(triggers.crons).size,
+    triggers.crons.length,
+    'duplicate schedules would fire the same invocation twice, not give it more budget',
+  );
+});
+
+test('each scheduled firing runs exactly one job', async () => {
+  const { RETENTION_CRON, default: worker } = await import('../worker/index.js');
+  const ran = [];
+  const ctx = { waitUntil: (p) => { ran.push(p); return p; } };
+  // No bindings: both jobs decline early and neither throws out of the handler.
+  const env = { ENVIRONMENT: 'development' };
+
+  await worker.scheduled({ cron: RETENTION_CRON }, env, ctx);
+  assert.equal(ran.length, 1, 'the retention firing starts one job');
+
+  ran.length = 0;
+  await worker.scheduled({ cron: '0 9 * * *' }, env, ctx);
+  assert.equal(ran.length, 1, 'the backup firing starts one job');
+
+  // Whatever those promises do, they must not reject out of the handler — a
+  // rejection marks the invocation failed and loses the log line that says why.
+  await Promise.allSettled(ran);
+});

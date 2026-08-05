@@ -230,12 +230,31 @@
     "enabled": true
   },
 
-  // Nightly backup. Runs worker/routes/nightly-backup.js.
+  // Two schedules, and the separation is not cosmetic.
   //
   // 09:00 UTC — after close in America/Los_Angeles, so a day's sessions are
   // complete when the snapshot is taken.
+  //
+  // ── Why the retention pass gets its own ─────────────────────────────────
+  //
+  // Both jobs used to run from the single 09:00 invocation, one after the other
+  // through waitUntil. That put them in one Worker invocation, which means one
+  // subrequest budget between them — and both are the kind of job that spends
+  // it in bulk. The backup pages every entity (up to 200 pages each, eight
+  // entities), and the retention pass does a write and a storage delete per
+  // session plus the orphan sweep's deletes. Whichever ran second would be the
+  // one that hit the ceiling, silently, in the middle of a night nobody was
+  // watching — and "silently" is the whole complaint about the backup this
+  // replaced.
+  //
+  // Separate schedules mean separate invocations and separate budgets. The
+  // handler in worker/index.js dispatches on event.cron.
+  //
+  // 09:00 backup first, 09:30 retention second, deliberately in that order: a
+  // restore taken from the night's snapshot holds the data as it was BEFORE the
+  // names were removed, not after.
   "triggers": {
-    "crons": ["0 9 * * *"]
+    "crons": ["0 9 * * *", "30 9 * * *"]
   },
 
   // The bucket the backup writes to.

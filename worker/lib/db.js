@@ -33,6 +33,8 @@
  * to be careless. Do not be.
  */
 
+import { fetchWithTimeout, TIMEOUTS } from './http.js';
+
 /** Base44 entity names to Postgres tables. */
 const TABLES = {
   Session: 'sessions',
@@ -94,7 +96,7 @@ function order(spec) {
 async function request(env, { path, method = 'GET', body, headers = {}, prefer, apikey }) {
   const url = `${supabaseUrl(env)}/rest/v1${path}`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -282,7 +284,7 @@ export async function deleteObject(env, bucket, key) {
   const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${supabaseUrl(env)}/storage/v1/object/${encodeURIComponent(bucket)}/${key
       .split('/')
       .map(encodeURIComponent)
@@ -291,6 +293,7 @@ export async function deleteObject(env, bucket, key) {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
     },
+    TIMEOUTS.storage,
   );
 
   if (res.ok || res.status === 404) return true;
@@ -322,7 +325,7 @@ export async function listObjects(env, bucket, { limit = 100, offset = 0 } = {})
   const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
 
-  const res = await fetch(`${supabaseUrl(env)}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+  const res = await fetchWithTimeout(`${supabaseUrl(env)}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${serviceKey}`,
@@ -371,7 +374,7 @@ export async function createSignedUpload(env, bucket, key) {
   if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
 
   const path = key.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${supabaseUrl(env)}/storage/v1/object/upload/sign/${encodeURIComponent(bucket)}/${path}`,
     {
       method: 'POST',
@@ -382,6 +385,7 @@ export async function createSignedUpload(env, bucket, key) {
       },
       body: JSON.stringify({}),
     },
+    TIMEOUTS.storage,
   );
 
   const text = await res.text();
@@ -460,9 +464,11 @@ export async function currentUser(env, request_) {
   if (!auth) return null;
 
   try {
-    const res = await fetch(`${supabaseUrl(env)}/auth/v1/user`, {
-      headers: { Authorization: auth, apikey: env?.SUPABASE_ANON_KEY || '' },
-    });
+    const res = await fetchWithTimeout(
+      `${supabaseUrl(env)}/auth/v1/user`,
+      { headers: { Authorization: auth, apikey: env?.SUPABASE_ANON_KEY || '' } },
+      TIMEOUTS.auth,
+    );
     if (!res.ok) return null;
     const user = await res.json();
     return user?.id ? user : null;

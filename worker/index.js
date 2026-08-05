@@ -30,6 +30,16 @@ import { errorResponse, requestId } from './lib/errors.js';
 /** Where the app's own functions answer. */
 const FN_PREFIX = '/api/fn/';
 
+/**
+ * The schedule that runs the retention pass rather than the backup.
+ *
+ * Must match an entry in wrangler.jsonc's triggers.crons exactly — Cloudflare
+ * hands the scheduled handler the schedule string it fired for, and a typo here
+ * means the retention job never runs while the backup quietly runs twice.
+ * worker/index.test.mjs checks the two against each other.
+ */
+export const RETENTION_CRON = '30 9 * * *';
+
 /** POST-only endpoints owned by this app. */
 const POST_ROUTES = {
   '/api/restaurant-lead': restaurantLead,
@@ -194,38 +204,47 @@ export default {
    * which is part of why the previous one had not.
    */
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(nightlyBackup(env));
-
     /**
-     * The retention schedule in src/pages/Privacy.jsx, applied.
+     * One job per invocation, dispatched on which schedule fired.
      *
-     * Separately waitUntil'd rather than chained onto the backup, because the
-     * two have opposite failure postures and must not share one. The backup
-     * throws when it cannot do its job — a backup that reports success and
-     * stores nothing is the thing it is designed against — and chaining would
-     * mean a missing R2 binding silently stops guest names being removed.
+     * They both used to run from the 09:00 firing, back to back through
+     * waitUntil. That is one Worker invocation, and a Worker invocation has one
+     * subrequest budget — so the two jobs were spending from the same pot. Both
+     * spend in bulk: the backup pages every entity, and the retention pass does
+     * a write and a storage delete per session plus the orphan sweep. Whichever
+     * ran second would be the one that ran out, at 09:00, with nobody watching.
      *
-     * Order still matters within the night: the backup runs first, so a
-     * restore taken from it holds the data as it was before redaction rather
-     * than after. Both start here; nothing depends on which finishes.
+     * Separate schedules in wrangler.jsonc give them separate invocations and
+     * separate budgets. 09:00 backup, 09:30 retention — in that order so a
+     * restore taken from the night's snapshot holds the data as it was before
+     * the guest names were removed.
+     *
+     * An unrecognised cron runs the backup. A schedule added to wrangler.jsonc
+     * and not wired up here should not silently do nothing, and the backup is
+     * the safe thing to do twice.
      */
-    ctx.waitUntil(
-      applyRetention(env)
-        .then((summary) => {
-          console.log(JSON.stringify({ at: new Date().toISOString(), job: 'retention', ...summary }));
-        })
-        .catch((error) => {
-          // Logged, never rethrown. An exception out of a scheduled handler
-          // fails the whole invocation, and taking the backup down with it is
-          // the one outcome worse than a night of unredacted names.
-          console.error(JSON.stringify({
-            at: new Date().toISOString(),
-            job: 'retention',
-            level: 'error',
-            message: error?.message || String(error),
-          }));
-        }),
-    );
+    if (event?.cron === RETENTION_CRON) {
+      ctx.waitUntil(
+        applyRetention(env)
+          .then((summary) => {
+            console.log(JSON.stringify({ at: new Date().toISOString(), job: 'retention', ...summary }));
+          })
+          .catch((error) => {
+            // Logged, never rethrown. An exception out of a scheduled handler
+            // marks the whole invocation failed, and the useful half of that
+            // signal is already in this line.
+            console.error(JSON.stringify({
+              at: new Date().toISOString(),
+              job: 'retention',
+              level: 'error',
+              message: error?.message || String(error),
+            }));
+          }),
+      );
+      return;
+    }
+
+    ctx.waitUntil(nightlyBackup(env));
   },
 
   /**

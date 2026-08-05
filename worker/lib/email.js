@@ -7,6 +7,8 @@
 
 import { mayContactRealPeople, environmentName } from './environment.js';
 
+import { fetchWithTimeout, TIMEOUTS } from './http.js';
+
 export const JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
@@ -109,7 +111,7 @@ export async function sendEmail(env, { to, subject, html, text, replyTo }) {
       };
 
   try {
-    const res = await fetch(request.url, request.init);
+    const res = await fetchWithTimeout(request.url, request.init, TIMEOUTS.email);
     if (!res.ok) {
       console.error(`email: ${request.name} rejected the send`, res.status, await res.text());
       return { ok: false, reason: 'email_send_failed' };
@@ -153,14 +155,16 @@ export async function sendSms(env, { to, body }) {
   if (!e164) return { ok: false, reason: 'bad_phone_number' };
 
   try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    const res = await fetchWithTimeout(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({ To: e164, From: from, Body: body.slice(0, 320) }),
-    });
+      // Bounded because this spends money on send against an account with no
+      // spend cap, and a hang is the thing most likely to be retried.
+    }, TIMEOUTS.sms);
     if (!res.ok) {
       console.error('sms: Twilio rejected the send', res.status, await res.text());
       return { ok: false, reason: 'sms_send_failed' };

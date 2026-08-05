@@ -22,6 +22,8 @@ import { json, clean } from '../lib/email.js';
 import { audit, ACTIONS } from '../lib/audit.js';
 import { serviceRole } from '../lib/data.js';
 
+import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+
 export async function onRequestPost({ request, env, ctx, requestId = null }) {
   let body;
   try {
@@ -42,9 +44,10 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
   }
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription&expand[]=customer`,
-      { headers: { Authorization: `Bearer ${key}` } }
+      { headers: { Authorization: `Bearer ${key}` } },
+      TIMEOUTS.payment,
     );
     const data = await res.json();
 

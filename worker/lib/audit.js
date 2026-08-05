@@ -39,6 +39,8 @@
  * actually verified, and they are marked as such.
  */
 
+import { fetchWithTimeout, TIMEOUTS } from './http.js';
+
 const enc = new TextEncoder();
 
 /** Actions worth being able to answer questions about, months later. */
@@ -201,7 +203,7 @@ async function writeRow(env, row) {
   if (!url || !key) return;
 
   try {
-    const res = await fetch(`${String(url).replace(/\/+$/, '')}/rest/v1/audit_log`, {
+    const res = await fetchWithTimeout(`${String(url).replace(/\/+$/, '')}/rest/v1/audit_log`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -210,7 +212,7 @@ async function writeRow(env, row) {
         Prefer: 'return=minimal',
       },
       body: JSON.stringify(row),
-    });
+    }, TIMEOUTS.audit);
     if (!res.ok) {
       console.error(JSON.stringify({ audit_failed: true, status: res.status, body: (await res.text()).slice(0, 200) }));
     }

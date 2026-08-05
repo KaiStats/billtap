@@ -32,6 +32,8 @@
  * "the server did this as you".
  */
 
+import { fetchWithTimeout, TIMEOUTS } from './http.js';
+
 /**
  * Where Base44 actually answers: `https://base44.app/api/apps/<id>/…`.
  *
@@ -87,11 +89,11 @@ async function request(env, { path, method = 'GET', body, headers = {} }) {
   const id = appId(env);
   if (!id) throw new Error('BASE44_APP_ID is not configured');
 
-  const res = await fetch(`${base44Origin(env)}/api/apps/${id}${path}`, {
+  const res = await fetchWithTimeout(`${base44Origin(env)}/api/apps/${id}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  }, TIMEOUTS.database);
 
   const text = await res.text();
   let parsed = null;
