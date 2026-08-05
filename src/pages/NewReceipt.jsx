@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import * as Sentry from "@sentry/react";
 import { invoke } from "@/api/functions";
 import { useNavigate } from "react-router-dom";
@@ -81,6 +81,27 @@ export default function NewReceipt() {
    * by itself below when the parse is known to be shaky.
    */
   const [editing, setEditing] = useState(false);
+
+  /**
+   * The even-split panel, so a failed scan can put it in front of somebody.
+   *
+   * Opening it without scrolling to it changes something below the fold, which
+   * on a phone is indistinguishable from nothing happening.
+   *
+   * Scrolled from an effect and not from the click handler, because the panel
+   * is conditionally rendered: at the moment setShowQuickEven(true) runs, the
+   * element this ref points at does not exist yet and scrollIntoView is called
+   * on null — a fallback that quietly does nothing, which is worse than not
+   * offering one.
+   */
+  const quickEvenRef = useRef(null);
+  const scrollToQuickEven = useRef(false);
+
+  useEffect(() => {
+    if (!showQuickEven || !scrollToQuickEven.current) return;
+    scrollToQuickEven.current = false;
+    quickEvenRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [showQuickEven]);
 
   /**
    * The upload, started the moment a photo is chosen.
@@ -438,9 +459,38 @@ export default function NewReceipt() {
           reasons a second attempt genuinely fixes — a slow network, a busy
           model. Re-submitting a rejected form would produce the same rejection.
         */}
+        {/*
+          And the way round, when the scan is what failed.
+
+          Reading the receipt is the one step in this product that depends on a
+          third party — /api/scan-receipt calls a model, and a model that is
+          down stays down for the length of the outage. The retry above is right
+          for a slow network and useless against that: it fails again, more
+          slowly, and the table gives up on the app.
+
+          The even split needs no model. It is `handleQuickEvenCreate` — type a
+          total, share a QR — and it was already on this screen, collapsed
+          behind "Skip setup", never mentioned at the moment it became the only
+          thing that worked. The incident runbook made the opposite mistake and
+          pointed at a "manual mode" that has never existed, which is how an
+          operator concludes the product is down when it is not.
+
+          Offered only for a failed scan on step 1. A rejected file type or an
+          oversized image is not an outage, and sending somebody to a different
+          flow because they picked a PDF would be answering a question they did
+          not ask.
+        */}
         <ErrorNotice
           error={failure}
           onRetry={step === 1 && imageFile ? handleParseReceipt : null}
+          fallback={step === 1 && failure?.status >= 500 ? {
+            label: "Split evenly instead",
+            onSelect: () => {
+              setFailure(null);
+              scrollToQuickEven.current = true;
+              setShowQuickEven(true);
+            },
+          } : null}
           onDismiss={() => setFailure(null)}
         />
 
@@ -495,7 +545,7 @@ export default function NewReceipt() {
           </button>
 
           {showQuickEven && (
-            <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.15)' }}>
+            <div ref={quickEvenRef} className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.15)' }}>
               <div className="space-y-2">
                 <Label htmlFor="quick-name" className="text-xs text-white/50">Restaurant / occasion name</Label>
                 <Input id="quick-name" value={title} onChange={e => handleTitleChange(e.target.value)} placeholder="e.g. Dinner at Chipotle" className="rounded-xl" />

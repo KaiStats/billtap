@@ -67,6 +67,31 @@ Three things to know before you rely on it during an incident:
   not happen — the write is fire-and-forget so that it can never fail a payment
   confirmation. Treat absence as weak evidence and presence as strong.
 
+## What is still not set up
+
+Written here rather than left implicit, because the gap between "the code
+supports this" and "somebody is watching" is where availability actually lives.
+
+- **Nothing polls the health check.** `GET /api/health` exists and answers 200
+  or 503, but no uptime service is pointed at it, so an outage is still detected
+  by a restaurant emailing. Point any monitor at
+  `https://billtap.app/api/health` on a 60-second interval and alert on a
+  non-200. Do **not** point it at `?deep=1` — that costs a database query per
+  poll and becomes its own load.
+- **No alert fires on a failed cron.** The nightly backup marks its invocation
+  failed and now also reports to Sentry, but only if `SENTRY_DSN` is bound. A
+  backup that has been failing for three weeks and one that ran last night look
+  identical until somebody looks.
+- **The backup bucket does not exist yet.** See Incident 3. Until
+  `billtap-backups` is created and the `r2_buckets` block uncommented, the
+  nightly job throws every night on purpose.
+- **`main` is unprotected**, so CI is advisory. See the bottom of
+  `.github/workflows/ci.yml`.
+- **Point-in-time recovery is unconfirmed.** Supabase dashboard → Database →
+  Backups. Check it now; the answer changes what Incident 3 can promise.
+
+---
+
 ## How to Use This Runbook
 
 1. Identify the incident type below.  
@@ -76,34 +101,90 @@ Three things to know before you rely on it during an incident:
 
 ---
 
-## Incident 1 — AI API Outage (Receipt Parsing Fails)
+## Incident 0 — The site is down, or a deploy broke it
 
-**Symptoms:** Users cannot upload receipts; `validateReceiptParse` returns errors; "parsing failed" shown in UI.
+**This is the first thing to try and it was not written down anywhere.**
 
-**Impact:** New sessions cannot be created. Existing sessions unaffected.
+Deploys are a person running `npm run deploy`. Cloudflare keeps every previous
+version of the Worker, so undoing a bad one takes seconds and needs no build,
+no git operation and no working local checkout:
+
+```bash
+npm run versions          # wrangler versions list — most recent first
+npm run rollback          # to the previous version, with a confirmation prompt
+npx wrangler rollback <version-id>   # to a specific one
+```
+
+Roll back first and diagnose afterwards. The version that was serving ten
+minutes ago is known to work, and the alternative — reading logs while a
+restaurant's dinner service cannot split bills — is how a five-minute incident
+becomes an hour.
+
+**What a rollback does not undo:** a database migration. `supabase/migrations/`
+is applied separately and the Worker rolls back without it, so a version that
+predates a migration may be running against a schema it does not expect. Check
+which migrations went out with the deploy before rolling back across one.
+
+**Static assets go with it.** The Worker and the assets in `dist/` deploy and
+roll back as one version, so a rollback also restores the previous bundle —
+which is why a diner mid-split gets a working page rather than an HTML shell
+asking for chunks that no longer exist.
+
+---
+
+## Incident 1 — Receipt Scanning Fails (model provider outage)
+
+**Symptoms:** "Couldn't read that receipt" on the review screen; `/api/scan-receipt`
+returning 502 or timing out.
+
+**Impact:** Itemized splits cannot be started from a photo. **Even splits still
+work and need no model at all** — see Mitigation. Existing splits are unaffected;
+nothing in a live session touches the provider.
+
+> This section used to describe Base44 function logs, a `validateReceiptParse`
+> AI call, `status.openai.com`, and a "manual mode" in `NewReceipt.jsx`. None of
+> those are real. The provider is Gemini, reached from
+> `worker/routes/scan-receipt.js`; `validateReceiptParse` is arithmetic in
+> `shared/receipt-math.js` and calls nothing; and the fallback that does exist
+> is the even split, which no version of this page had ever mentioned. Read the
+> commands below rather than remembering the old ones.
 
 ### Detection
-- User reports or monitoring alert on `validateReceiptParse` error rate > 10% over 5 min.
-- Check Base44 function logs → Dashboard → Code → `validateReceiptParse`.
+- `GET https://billtap.app/api/health` — 200 means the edge is serving.
+  `?deep=1` also checks the database. Neither covers the model provider; a
+  scanning outage shows up as 502s on `/api/scan-receipt`, not here.
+- Cloudflare dashboard → Workers → Logs, or:
+
+```bash
+npx wrangler tail --format json | grep scan-receipt
+```
+
+- Sentry, if `SENTRY_DSN` is bound: filter `route:api/scan-receipt`.
 
 ### Triage (< 5 min)
-1. Open Base44 function logs and confirm error type (timeout vs. auth vs. rate-limit).
-2. Check AI provider status page (status.openai.com or equivalent).
-3. Confirm it is the provider, not a bad API key: test a direct curl with the key from Secrets.
+1. Read the logged `code` and `status`. A 502 with `retry: true` is upstream;
+   a 401/403 from the provider is the key.
+2. Check the provider's status page for Gemini / Google AI.
+3. Confirm it is the provider and not the key — the key is a Worker secret:
+
+```bash
+npx wrangler secret list          # names only; values are not readable back
+npx wrangler secret put GEMINI_API_KEY
+```
 
 ### Mitigation
 | Cause | Action |
 |---|---|
-| Provider outage | Display "Receipt scanning is temporarily unavailable — please enter items manually." Enable manual-entry fallback in UI (see `NewReceipt.jsx` manual mode). |
-| Expired / rotated API key | Rotate key in Base44 Dashboard → Settings → Environment Variables. Redeploy. |
-| Rate limit hit | Add exponential backoff in `validateReceiptParse`. Throttle new session creation via `checkSessionRateLimit`. |
-| Provider-side model error | Pin to a stable model version in function code. |
+| Provider outage | Nothing to deploy. The even split already works: on a failed scan the error notice offers **"Split evenly instead"**, which opens the panel on the same screen. Tell restaurants that scanning is down and splitting evenly is not. |
+| Expired / rotated key | `npx wrangler secret put GEMINI_API_KEY`, then `npm run deploy`. |
+| Rate limit hit | `/api/scan-receipt` is already on the tighter limiter budget (10/min per address — `COSTLY` in `worker/lib/rate-limit.js`). Raising it means raising the provider's quota first. |
+| Provider-side model error | `GEMINI_MODEL` is a var, not a hard-coded string, precisely so a bad model release can be pinned without a code change. |
 
 ### Recovery
-1. Confirm provider reports resolution.
-2. Run a test receipt parse end-to-end.
-3. Re-enable automatic parsing if it was disabled.
-4. Check for any sessions stuck in `waiting` status — notify affected hosts.
+1. Confirm the provider reports resolution.
+2. Scan one real receipt end to end.
+3. Check for splits left in `waiting` — they are ordinary rows, nothing needs
+   unsticking.
 
 ### Post-Incident
 - [ ] Write incident report (date, duration, root cause, fix).
@@ -156,13 +237,30 @@ Three things to know before you rely on it during an incident:
 
 ### Detection
 - User reports: "my sessions are gone."
-- Confirm via Base44 entity explorer (Dashboard → Data) that records are missing.
-- Check if it is a display bug first (filter reset, auth issue) before declaring data loss.
+- Confirm in the Supabase dashboard → Table Editor, or:
+
+```bash
+curl -s "$SUPABASE_URL/rest/v1/sessions?select=id&limit=1" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+```
+
+- Check it is not a display bug first — a filter reset, an auth issue, or RLS
+  denying a read that the row survives perfectly well behind. `?deep=1` on
+  `/api/health` distinguishes "database unreachable" from "database says no".
 
 ### Immediate Actions (First 15 min)
-1. **Stop writes** — if loss is ongoing, temporarily disable session creation by returning a maintenance error in `checkSessionRateLimit`.
-2. **Do not run any delete/cleanup jobs** — pause `cleanupExpiredSessions` automation immediately (Base44 Dashboard → Automations → toggle off).
-3. **Contact Base44 support** at support@base44.com with: app ID, entity names, approximate time of loss, and a description.
+1. **Stop the scheduled deletes.** `worker/routes/retention.js` runs at 09:30
+   UTC and removes guest names and claim lists from splits over 30 days old, and
+   sweeps orphaned receipt images. During suspected data loss it is the one job
+   in the system that deletes on purpose. Comment the `"30 9 * * *"` entry out of
+   `triggers.crons` in `wrangler.jsonc` and `npm run deploy` — or, faster,
+   disable the cron trigger in the Cloudflare dashboard.
+2. **Stop writes if loss is ongoing.** There is no maintenance flag; the blunt
+   instrument is to roll the Worker back to a version predating the suspected
+   cause (Incident 0), which takes seconds.
+3. **Escalate to Supabase** with the project ref, the table names, and the
+   approximate time. Point-in-time recovery is a paid-plan feature — confirm
+   whether this project has it **before** you need it, not during.
 ### ⚠️ There is no restorable backup. Do not spend incident time looking for one.
 
 The Base44 `nightlyBackup` this section was written about never produced a
@@ -180,15 +278,23 @@ procedure could never have worked. The danger was not the missing backup so much
 as the confident instructions for restoring from it, which read as reassurance
 during exactly the incident where someone needs the truth quickly.
 
-**The real position: Base44 holds the only copy of production data.** If data is
-lost, recovery depends entirely on Base44 support and whatever retention they
-keep. Escalate to them immediately (step 3) rather than delaying that call to
-hunt for a local snapshot.
+**The real position: Supabase holds the only copy of production data.** That
+sentence named Base44 until this layer, which was true when it was written and
+stopped being true at the cutover — the kind of stale fact that is read once,
+believed, and sends the first fifteen minutes of an incident to the wrong
+vendor.
+
+So: recovery depends entirely on Supabase, and on whether this project has
+point-in-time recovery. **Find that out now, not during an incident** —
+Supabase dashboard → Database → Backups. Without it, the daily automated backup
+is the floor and the recovery point is up to twenty-four hours. Escalate to
+Supabase immediately rather than delaying the call to hunt for a local
+snapshot.
 
 **The code is now written and waiting on one command.** The job moved to
-`worker/routes/nightly-backup.js`, on a Cloudflare cron at 09:00 UTC — it had to
-leave Base44, which blocks backend functions on this plan, so a nightly job
-there would never have run. It covers all eight entities, pages past the
+`worker/routes/nightly-backup.js`, on a Cloudflare cron at 09:00 UTC.
+It had to leave Base44, which blocks backend functions on this plan, so a
+nightly job there would never have run. It covers all eight entities, pages past the
 200-record cap, writes to R2, and reads each object back to confirm it landed.
 
 It writes one object per entity under a dated prefix, plus a manifest:
@@ -233,10 +339,11 @@ procedure before you have restored from it once.
 ### Data Loss Triage Matrix
 | Scope | Likely Cause | Owner |
 |---|---|---|
-| All entities empty | Platform-level incident | Base44 support |
-| One entity empty | Accidental bulk delete / RLS misconfiguration | Engineering |
+| All tables empty | Platform-level incident | Supabase support |
+| One table empty | Accidental bulk delete / RLS misconfiguration | Engineering |
 | Specific user's data gone | RLS rule change / account delete | Engineering |
-| Partial records missing | Cleanup job ran too aggressively | Engineering — check `cleanupExpiredSessions` logs |
+| Guest names blank on old splits | **Not loss.** 30-day retention redaction, working as designed — see `worker/routes/retention.js` | Nobody |
+| Partial records missing | Retention pass ran too aggressively | Engineering — filter Worker logs for `job: "retention"` |
 
 ### Communications
 - Notify affected hosts via email within 1 hour of confirmed loss.
@@ -290,10 +397,14 @@ One paragraph. What happened, what was affected, how it was resolved.
 
 | Resource | Link |
 |---|---|
-| Base44 Dashboard | app.base44.com |
-| Function Logs | Dashboard → Code → [function name] |
-| Automations | Dashboard → Automations |
-| Environment Variables / Secrets | Dashboard → Settings → Environment Variables |
-| Base44 Support | support@base44.com |
+| Health check | `https://billtap.app/api/health` (add `?deep=1` for the database) |
+| Roll back a bad deploy | `npm run versions`, then `npm run rollback` — see Incident 0 |
+| Worker logs | Cloudflare dashboard → Workers → billtap → Logs, or `npx wrangler tail --format json` |
+| Errors, searchable by request id | Sentry, tag `request_id` — needs `SENTRY_DSN` bound; see the top of this file |
+| Cron schedules | `triggers.crons` in `wrangler.jsonc` — 09:00 backup, 09:30 retention |
+| Secrets | `npx wrangler secret list` / `npx wrangler secret put <NAME>` |
+| Database | Supabase dashboard → project `skrqxxhoxbrvlviqrhjt` |
+| Cloudflare status | cloudflarestatus.com |
+| Supabase status | status.supabase.com |
 | Privacy / Deletion requests | privacy@billtap.app |
 | Security issues | security@billtap.app |

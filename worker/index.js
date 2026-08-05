@@ -21,11 +21,13 @@ import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
+import { onRequestGet as health } from './routes/health.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { scheduled as applyRetention } from './routes/retention.js';
 import { rateLimit } from './lib/rate-limit.js';
 import { assertEnvironmentIsolated } from './lib/environment.js';
 import { errorResponse, requestId } from './lib/errors.js';
+import { reportError } from './lib/report.js';
 
 /** Where the app's own functions answer. */
 const FN_PREFIX = '/api/fn/';
@@ -260,12 +262,33 @@ export default {
               level: 'error',
               message: error?.message || String(error),
             }));
+            reportError(env, ctx, error, { id: requestId(), route: 'cron/retention' });
           }),
       );
       return;
     }
 
-    ctx.waitUntil(nightlyBackup(env));
+    /**
+     * The backup, and the reason its failure has to leave this Worker.
+     *
+     * It throws on purpose — an unconfigured or partial backup must mark the
+     * invocation failed rather than report success. But "the invocation is
+     * marked failed" is a number on a Cloudflare dashboard nobody opens at
+     * 09:00, and the moment it matters is Incident 3, where the first question
+     * is how old the last good snapshot is. A backup that has been failing for
+     * three weeks and a backup that ran last night look identical from here.
+     *
+     * So the same reporter the request path uses (worker/lib/report.js, added
+     * for exactly this class of invisible failure) is given the exception
+     * before it is rethrown. Still a no-op without a DSN, still incapable of
+     * failing anything: the rethrow below happens either way.
+     */
+    ctx.waitUntil(
+      nightlyBackup(env).catch((error) => {
+        reportError(env, ctx, error, { id: requestId(), route: 'cron/nightly-backup' });
+        throw error;
+      }),
+    );
   },
 
   /**
@@ -307,6 +330,26 @@ export default {
     if (path.startsWith('/api/')) {
       const limited = await rateLimit(request, env, path);
       if (limited) return limited;
+    }
+
+    /**
+     * The one URL an uptime monitor can be pointed at.
+     *
+     * Above the function dispatch and outside the POST tables because it is the
+     * only GET under /api/, and before anything that touches the database
+     * because a check that needs the database to answer cannot report that the
+     * database is down.
+     *
+     * Left out of the rate limiter's list on purpose: a monitor polling every
+     * thirty seconds is 2 requests a minute against a 60 budget, but every
+     * monitor in the world shares a handful of source addresses, and an
+     * availability check that reports 429 during an incident is worse than no
+     * check. The shallow answer costs no subrequests, which is what makes that
+     * safe; ?deep=1 costs one and is not what a monitor should poll.
+     */
+    if (path === '/api/health') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      return health({ request, env });
     }
 
     // There was a proxy here forwarding /api/apps/** to Base44, because the SDK

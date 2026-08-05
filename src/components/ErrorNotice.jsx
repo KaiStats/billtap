@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, RefreshCw, X } from "lucide-react";
 import { describeError } from "@/lib/errors";
 
 /**
@@ -25,9 +25,20 @@ import { describeError } from "@/lib/errors";
  * **Be reportable.** The request id, small, under the message. It is the only
  * thing that turns "the app said error" into one log query — see
  * worker/lib/errors.js.
+ *
+ * **Offer the way round, when there is one.** A retry is the right answer to a
+ * slow network and the wrong one to a provider that is down: it fails again,
+ * more slowly, and the person leaves. `fallback` is for the case where some
+ * other path through the product still works — see the scan failure in
+ * NewReceipt.jsx, where an even split needs no model at all and was sitting
+ * one collapsed panel away, unmentioned, while the diner retried.
  */
-/** @param {{ error?: any, onRetry?: any, onDismiss?: any, className?: any, [key: string]: any }} props */
-export default function ErrorNotice({ error, onRetry, onDismiss, className = "" }) {
+/**
+ * @param {{ error?: any, onRetry?: any, onDismiss?: any, className?: any,
+ *   fallback?: { label: string, onSelect: () => void } | null,
+ *   [key: string]: any }} props
+ */
+export default function ErrorNotice({ error, onRetry, onDismiss, fallback = null, className = "" }) {
   if (!error) return null;
   const { message, advice, requestId, retry } = describeError(error);
 
@@ -46,16 +57,34 @@ export default function ErrorNotice({ error, onRetry, onDismiss, className = "" 
           <p className="font-medium text-red-900">{message}</p>
           {advice && <p className="mt-1 text-sm text-red-800">{advice}</p>}
 
-          {(retry && onRetry) && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Try again
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {(retry && onRetry) && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Try again
+              </button>
+            )}
+
+            {/*
+              Shown alongside the retry rather than instead of it. Both can be
+              right at once — the network may recover on the next tap, and if it
+              does not, this is the path that does not depend on it.
+            */}
+            {fallback && (
+              <button
+                type="button"
+                onClick={fallback.onSelect}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-100"
+              >
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                {fallback.label}
+              </button>
+            )}
+          </div>
 
           {requestId && (
             // Selectable, and labelled in a way somebody can read down a phone.
