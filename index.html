@@ -48,7 +48,7 @@
       embed later is a decision somebody makes, not something that quietly
       starts working.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <!--
       X-XSS-Protection was here, set to "1; mode=block".
@@ -105,9 +105,20 @@
     <link
       rel="preload"
       as="style"
+      data-fonts
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <!--
+      The onload="this.rel='stylesheet'" that used to sit on the link above is
+      an inline event handler, and a CSP without script-src 'unsafe-inline'
+      blocks those exactly as it blocks inline <script>. Dropping that token —
+      the point of moving the analytics tags to /analytics.js — would have
+      stopped the fonts being applied at all, silently: the preload still
+      fetches, the page still renders, every headline just falls back forever.
+
+      public/fonts.js does the same job from a file this origin serves.
+    -->
+    <script defer src="/fonts.js"></script>
     <noscript>
       <link
         rel="stylesheet"
@@ -133,25 +144,18 @@
     <meta property="og:image" content="https://billtap.app/img/og-default.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://billtap.app/img/og-default.png" />
-    <!-- Meta Pixel -->
-    <script>
-      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-      n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-      n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-      document,'script','https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '2102574843552117');
-      fbq('trackCustom', 'PageView');
-    </script>
-    <!-- End Meta Pixel -->
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XEEM8Q99JG"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-XEEM8Q99JG');
-    </script>
+    <!--
+      Analytics, in one external file.
+      https://billtap.app/analytics.js — see public/analytics.js.
+
+      These were two inline <script> blocks, and they were the only reason the
+      Content-Security-Policy above carried script-src 'unsafe-inline'. That one
+      token means any injected script in this page executes, which undoes most
+      of what the policy is for. A file from this origin needs only 'self'.
+
+      defer, because neither vendor needs to run before the page paints.
+    -->
+    <script defer src="/analytics.js"></script>
   </head>
   <body>
     <div id="root"></div>

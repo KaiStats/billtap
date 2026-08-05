@@ -170,6 +170,27 @@ const HTML_SECURITY_HEADERS = {
    * start asking a diner for their camera at a restaurant table.
    */
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+  /**
+   * HTTP Strict Transport Security.
+   *
+   * Without it, the first request of a session is the one that is not
+   * protected: somebody types billtap.app, the browser tries http://, and
+   * anything between them and Cloudflare gets to answer first. On a
+   * restaurant's shared wifi — which is where this product is used, by people
+   * who have never visited before and are typing the domain off a table tent —
+   * that is the realistic attack, not a certificate forgery.
+   *
+   * Two years, subdomains included, and preload NOT requested. The omission is
+   * the deliberate part: `preload` gets the domain baked into browser binaries
+   * and is slow and awkward to reverse, while max-age simply expires. This is
+   * reversible by removing the line and waiting, which is the property worth
+   * keeping while the app is still moving.
+   *
+   * Safe here because the site is Cloudflare-fronted and HTTPS-only already;
+   * nothing is served over plain HTTP that this would break. Set on HTML
+   * responses, which is where a browser first learns the policy.
+   */
+  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
 };
 
 /** Returns a copy of `response` with the HTML security headers applied. */
