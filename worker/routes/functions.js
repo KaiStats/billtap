@@ -303,6 +303,57 @@ async function isHost(env, request, session, providedKey) {
   return Boolean(user && user.id && user.id === session.created_by_id);
 }
 
+// ── Participant keys ────────────────────────────────────────────────────────
+//
+// Who is allowed to act as one diner in a split?
+//
+// participant_id was the answer, and it could not be. It is minted in the
+// browser, and scopeForParticipant lists every participant's id in every poll
+// response — it has to, so the table can see who claimed what and who has
+// settled. The thing that authorised acting as a diner was therefore published
+// to everyone at that diner's table, and to anyone the claim link reached.
+//
+// Measured against the handlers as they were, any diner could read another's
+// exact amount_owed by replaying an id out of the response they had just been
+// handed; could call markMePaid as them, so the host saw a diner asserting they
+// had sent money when they had not; and could call joinSession as them to
+// release their claims — leaving them owing nothing and the table short.
+//
+// So a diner gets a secret too, exactly as the host does. Same shape as the
+// host key deliberately: minted once, only its SHA-256 stored, and a second
+// mechanism would be a second thing to get wrong.
+
+/** 18 bytes, base64url. Same generator as the host key, one size down. */
+function mintParticipantKey() {
+  return b64url(crypto.getRandomValues(new Uint8Array(18)));
+}
+
+/**
+ * Whether `providedKey` proves the caller is `participant`.
+ *
+ * ── Rows minted before this existed ───────────────────────────────────────
+ *
+ * A participant with no stored hash predates participant keys. Splits live for
+ * thirty days, so on the day this ships every split in flight is in that state,
+ * and refusing them would strand tables mid-meal — diners unable to claim, mark
+ * themselves paid, or see their own share, with no way to obtain a key for a
+ * row that has none.
+ *
+ * Those rows are therefore allowed through, and joinSession mints a key for
+ * them the next time the diner's client calls it, which Claim.jsx does on load.
+ * The permissive window is bounded by the split's own expiry rather than open
+ * ended, and no session created after this deploy is ever in it.
+ */
+async function isParticipant(participant, providedKey) {
+  if (!participant) return false;
+  if (!participant.participant_key_hash) return true;
+  if (typeof providedKey !== 'string' || !providedKey) return false;
+  return safeEqual(await sha256Hex(providedKey), participant.participant_key_hash);
+}
+
+/** True when this row still needs a key minted for it. */
+const needsKey = (participant) => Boolean(participant) && !participant.participant_key_hash;
+
 // ── The functions ───────────────────────────────────────────────────────────
 
 const HANDLERS = {
@@ -323,7 +374,7 @@ const HANDLERS = {
    * joinSession does: names, who has settled, your own share, nothing else.
    */
   async getSplitStatus({ env, body }) {
-    const { session_id, participant_id } = body;
+    const { session_id, participant_id, participant_key } = body;
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
     }
@@ -336,7 +387,27 @@ const HANDLERS = {
     const session = sessions[0];
     if (!session) return json({ error: 'Session not found' }, 404);
 
-    return json({ session: scopeForParticipant(session, participant_id || null) });
+    /**
+     * Which diner this caller is allowed to be shown as themselves.
+     *
+     * It used to be whichever one they named. Since the previous response hands
+     * out every participant's id, that meant asking twice — once as yourself to
+     * learn the ids, once as somebody else — returned their amount_owed,
+     * paid_amount and paid_at. The scoping below is the only thing keeping one
+     * diner's share from the rest of the table, so the id alone cannot be what
+     * unlocks it.
+     *
+     * A caller who names a diner without holding their key is not refused; they
+     * are simply nobody, and get the same view a bystander with the link gets.
+     * Refusing outright would turn a stale key into a broken screen for a diner
+     * who has done nothing wrong, and there is nothing here worth refusing over
+     * — everything withheld is withheld either way.
+     */
+    const rows = session.participants || [];
+    const claimed = participant_id ? rows.find((p) => p.participant_id === participant_id) : null;
+    const asSelf = (await isParticipant(claimed, participant_key)) ? participant_id : null;
+
+    return json({ session: scopeForParticipant(session, asSelf || null) });
   },
 
   /**
@@ -1169,7 +1240,7 @@ const HANDLERS = {
    * request started from.
    */
   async joinSession({ env, body, audit = NO_AUDIT }) {
-    const { session_id, participant_id, name, items } = body;
+    const { session_id, participant_id, name, items, participant_key } = body;
     if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
     if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
       return json({ error: 'Invalid participant_id' }, 400);
@@ -1189,6 +1260,34 @@ const HANDLERS = {
       return json({ error: 'Session is full (max 50 participants)' }, 400);
     }
 
+    /**
+     * Acting as an existing diner takes their key.
+     *
+     * This is the call that could do the most damage without one. Naming
+     * somebody else's participant_id — which the previous poll response handed
+     * out — let a caller rename them, release their item claims so they owed
+     * nothing and the table came up short, or claim extra items for them so
+     * they owed more than they ate.
+     *
+     * A row with no stored hash predates participant keys and is allowed
+     * through; one is minted for it below. See isParticipant.
+     */
+    if (already && !(await isParticipant(already, participant_key))) {
+      await audit({
+        action: ACTIONS.HOST_KEY_REJECTED,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorParticipantId: participant_id,
+        outcome: 'denied',
+        detail: { reason: 'participant_key' },
+      });
+      throw new AppError(
+        'not_participant',
+        'That is not your place in this split.',
+        403,
+      );
+    }
+
     // Once the host has confirmed the money arrived, the diner's side of the
     // split is closed. Letting them keep claiming would change what they owe
     // after they had already paid it, and their row is frozen below, so the
@@ -1198,6 +1297,16 @@ const HANDLERS = {
     }
 
     const cleanName = clean(name, 40);
+
+    /**
+     * Minted for anyone who does not have one — a diner joining now, or a row
+     * created before participant keys existed.
+     *
+     * Generated once, outside the retry loop, so a retry does not hand back a
+     * key different from the one it wrote.
+     */
+    const mintedKey = !already || needsKey(already) ? mintParticipantKey() : null;
+    const mintedHash = mintedKey ? await sha256Hex(mintedKey) : null;
 
     /**
      * What this caller is asking for, from the body alone.
@@ -1282,7 +1391,14 @@ const HANDLERS = {
         let nextParticipants = mine
           ? rows.map((p) =>
               p.participant_id === participant_id
-                ? { ...p, ...(cleanName ? { name: cleanName } : {}) }
+                ? {
+                  ...p,
+                  ...(cleanName ? { name: cleanName } : {}),
+                  // Only ever added, never replaced: a row that already has a
+                  // hash keeps it, or a caller could rotate a diner's key out
+                  // from under them and lock them out of their own share.
+                  ...(mintedHash && needsKey(p) ? { participant_key_hash: mintedHash } : {}),
+                }
                 : p,
             )
           : [...rows, {
@@ -1290,6 +1406,7 @@ const HANDLERS = {
               name: cleanName || 'Anonymous',
               amount_owed: 0,
               payment_status: 'unpaid',
+              ...(mintedHash ? { participant_key_hash: mintedHash } : {}),
             }];
 
         // payment_status is never taken from the request: markMePaid owns it,
@@ -1347,12 +1464,19 @@ const HANDLERS = {
       },
     });
 
-    return json({ session: scopeForParticipant(updated, participant_id) });
+    return json({
+      session: scopeForParticipant(updated, participant_id),
+      // Returned exactly once, the way createSession returns the host key. The
+      // browser keeps it — see src/lib/participantKey.js — and sends it back on
+      // every later call that acts as this diner. Absent on subsequent joins,
+      // because there is nothing new to hand over.
+      ...(mintedKey ? { participant_key: mintedKey } : {}),
+    });
   },
 
   /** Marks the caller — and only the caller — as having sent payment. */
   async markMePaid({ env, body, audit = NO_AUDIT }) {
-    const { session_id, participant_id } = body;
+    const { session_id, participant_id, participant_key } = body;
     if (!session_id || typeof session_id !== 'string') return json({ error: 'session_id is required' }, 400);
     if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
       return json({ error: 'Invalid participant_id' }, 400);
@@ -1366,6 +1490,28 @@ const HANDLERS = {
     const participants = session.participants || [];
     const me = participants.find((p) => p.participant_id === participant_id);
     if (!me) return json({ error: 'Participant not found in session' }, 404);
+
+    /**
+     * "Only the caller" was not enforced by anything.
+     *
+     * The doc comment above this handler has always said it marks the caller
+     * and only the caller, and the id in the body was the whole of the check —
+     * an id every poll response publishes to the table. So any diner could
+     * report that any other diner had sent money, and the host's screen would
+     * show it. That is not a display bug: a host who believes a diner has paid
+     * stops chasing them, and the table comes up short by that diner's share.
+     */
+    if (!(await isParticipant(me, participant_key))) {
+      await audit({
+        action: ACTIONS.HOST_KEY_REJECTED,
+        sessionId: session_id,
+        restaurantId: session.restaurant_id,
+        actorParticipantId: participant_id,
+        outcome: 'denied',
+        detail: { reason: 'participant_key' },
+      });
+      throw new AppError('not_participant', 'That is not your place in this split.', 403);
+    }
 
     // Already settled by the host — leave it alone. Without this, a diner
     // returning to the tab and tapping the button again would move themselves
@@ -1629,14 +1775,27 @@ function scopeForParticipant(session, participantId) {
 }
 
 /**
- * The host's view: everything about the split except the thing that grants
+ * The host's view: everything about the split except the things that grant
  * control of it.
  *
  * host_key_hash never leaves the Worker. It is only a SHA-256 and so not
  * directly usable, but a hash handed to every client is a hash somebody will
  * eventually run a wordlist against, and there is no reason for it to travel.
+ *
+ * The same now applies per diner. participant_key_hash sits inside the
+ * participants array, so the outer destructure walks straight past it and every
+ * host response would have carried one hash per person at the table. The
+ * argument against shipping the host's hash is not weaker for being made about
+ * six smaller ones.
  */
 function publicSession(session) {
   const { host_key_hash, ...rest } = session || {};
-  return rest;
+  if (!Array.isArray(rest.participants)) return rest;
+  return {
+    ...rest,
+    participants: rest.participants.map((participant) => {
+      const { participant_key_hash, ...safe } = participant || {};
+      return safe;
+    }),
+  };
 }

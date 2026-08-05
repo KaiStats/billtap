@@ -62,7 +62,7 @@ export const authConfigured = Boolean(url && anonKey);
  */
 
 /** The localStorage key supabase-js keeps its session under: sb-<ref>-auth-token. */
-function storageKey() {
+export function storageKey() {
   try {
     // The project ref is the first label of the hostname. Derived rather than
     // configured, because a second variable that must agree with the URL is a

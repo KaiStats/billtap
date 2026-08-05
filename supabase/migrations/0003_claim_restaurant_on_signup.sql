@@ -30,8 +30,26 @@
 --     null AND legacy_owner_id must be non-null — that pair means "migrated
 --     from Base44 and never claimed". A restaurant created after the migration
 --     has its owner set at creation and can never be taken this way.
---   * Supabase only inserts into auth.users after the email is confirmed for
---     magic-link sign-in, so an unverified address never reaches this.
+--   * The row this claims for is keyed by email, and only whoever opens the
+--     emailed link can ever hold a session as it.
+--
+-- That second point replaces a sentence that said Supabase "only inserts into
+-- auth.users after the email is confirmed for magic-link sign-in". That is not
+-- what happens: signInWithOtp creates the user row when the link is REQUESTED,
+-- with email_confirmed_at still null, and this trigger fires on that insert. So
+-- anyone who can type an operator's alert_email into the sign-in form can make
+-- the claim happen.
+--
+-- It is still safe, for a different reason than the one that was written down.
+-- Supabase keys users by address, so the row created by that request is the
+-- same row the real operator signs in as when they open the link — the claim
+-- lands on the person who owns the inbox either way. What an attacker gets for
+-- typing the address is the timing, not the account.
+--
+-- Worth correcting rather than leaving, because the false version is the kind
+-- of sentence somebody reasons from later: "confirmed before insert" would
+-- justify trusting new.email from a provider where that is not true, and this
+-- runs as security definer.
 --
 -- If a restaurant is ever claimed by the wrong person, the fix is to set
 -- owner_id by hand. It does not become unclaimable.

@@ -21,8 +21,26 @@
 // Relative rather than through the @ alias, so this module can be loaded by
 // the tests without a bundler resolving paths for them.
 import { accessToken } from '../lib/supabase.js';
+import { getParticipantKey, rememberParticipantKey } from '../lib/participantKey.js';
 
 export async function invoke(name, body = {}) {
+  /**
+   * The diner's own secret, attached here rather than at each call site.
+   *
+   * participant_id used to be the whole of the proof that a caller was a
+   * particular diner, and every poll response publishes every participant's id
+   * to the table — so one diner could read another's share, mark them as having
+   * paid, or release their claims. worker/routes/functions.js now wants a key
+   * alongside the id.
+   *
+   * Done in one place on purpose. Threading it through Claim.jsx, useLiveSplit,
+   * Dashboard and the rest would mean six chances to forget it, and forgetting
+   * it degrades quietly — the caller becomes a bystander rather than failing.
+   */
+  if (body?.session_id && body?.participant_id && body.participant_key === undefined) {
+    const key = getParticipantKey(body.session_id, body.participant_id);
+    if (key) body = { ...body, participant_key: key };
+  }
   // Which rate-limit bucket this counts against, for the endpoints a whole
   // table hits at once. Not an identity claim — the Worker never trusts it for
   // anything else — but without it six diners on one restaurant wifi are a
@@ -66,6 +84,14 @@ export async function invoke(name, body = {}) {
     error.status = res.status;
     error.data = data;
     throw error;
+  }
+
+  // joinSession hands the key back exactly once, the way createSession hands
+  // back the host key. Kept here so no call site has to know it exists; missing
+  // it would leave the diner unable to prove they are themselves on the very
+  // next call.
+  if (data?.participant_key && body?.session_id && body?.participant_id) {
+    rememberParticipantKey(body.session_id, body.participant_id, data.participant_key);
   }
 
   return { data };

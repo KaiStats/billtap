@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
-import { getSupabase, authConfigured, authPending } from '@/lib/supabase';
+import { getSupabase, authConfigured, authPending, storageKey } from '@/lib/supabase';
 
 /**
  * Who is signed in, if anyone.
@@ -46,17 +46,46 @@ function clearBillTapStorage() {
 
   sessionStorage.clear();
 
+  /**
+   * The auth session itself, removed here as well as by signOut().
+   *
+   * supabase-js clears it on every path through _signOut, including when the
+   * API call fails — checked against 2.111.0 rather than assumed. What it
+   * cannot cover is the case where the auth client never loads at all: offline,
+   * or a chunk that fails to fetch. logout() catches that and carries on to the
+   * redirect, and without this the session token would still be sitting in
+   * localStorage afterwards, so the next page load signs the operator back in.
+   *
+   * Removing a key supabase-js also removes is harmless; not removing it when
+   * supabase-js never ran is not.
+   */
+  try {
+    const authKey = storageKey();
+    if (authKey) localStorage.removeItem(authKey);
+  } catch {
+    // Private mode. Nothing was stored, so nothing to clear.
+  }
+
   Sentry.setUser(null);
   Sentry.setTag('split_mode', null);
 }
 
 /**
- * Deliberately NOT cleared on sign-out: billtap_host_keys and billtap_splits.
+ * Deliberately NOT cleared on sign-out: the per-split host keys
+ * (billtap-hostkey-<id>, src/lib/hostKey.js), the per-diner participant keys
+ * (billtap-pkey-<session>-<participant>, src/lib/participantKey.js) and the
+ * bill history (billtap-split-history, src/lib/splitHistory.js).
  *
- * Those are how a guest host proves they own a split and how anyone finds their
- * own bill history. They belong to the device, not to an account — a host with
- * no account has nothing to sign out of, and wiping them would strand a table
- * mid-payment because an operator happened to sign out on the same phone.
+ * They are how a guest host proves they own a split, how a diner proves which
+ * share is theirs, and how anyone finds their own bill history. They belong to
+ * the device, not to an account — a host with no account has nothing to sign
+ * out of, and wiping them would strand a table mid-payment because an operator
+ * happened to sign out on the same phone.
+ *
+ * (This note previously named billtap_host_keys and billtap_splits. Neither has
+ * ever existed. The keys above are the real ones, and the difference matters:
+ * the loop below matches by prefix, so a wrong name here is how somebody
+ * "tidies up" a prefix that is load-bearing.)
  */
 
 const AuthContext = createContext();

@@ -582,7 +582,37 @@ test('stored money is rounded to cents', async () => {
 
 // ── joinSession ─────────────────────────────────────────────────────────────
 
-const join = (env, b) => HANDLERS.joinSession({ env, body: b });
+/**
+ * Keys handed out by joinSession, remembered per diner.
+ *
+ * The browser does this in src/api/functions.js: joinSession returns a
+ * participant_key once and every later call that acts as that diner sends it
+ * back. Mirrored here so these tests drive the same sequence a real client
+ * does — without it, the second call for any diner is a 403, which is the new
+ * behaviour working rather than a broken test.
+ *
+ * Keyed by participant id alone because each test builds its own store.
+ */
+const participantKeys = new Map();
+
+const withKey = (b) => {
+  const held = participantKeys.get(b?.participant_id);
+  return held && b.participant_key === undefined ? { ...b, participant_key: held } : b;
+};
+
+const remember = async (b, res) => {
+  // Peek without consuming: the caller still reads this Response.
+  const copy = res.clone ? res.clone() : res;
+  try {
+    const data = await copy.json();
+    if (data?.participant_key) participantKeys.set(b.participant_id, data.participant_key);
+  } catch {
+    /* not a JSON body, or an error response — nothing to remember */
+  }
+  return res;
+};
+
+const join = async (env, b) => remember(b, await HANDLERS.joinSession({ env, body: withKey(b) }));
 
 test('joinSession needs a session id', async () => {
   assert.equal((await join({}, { participant_id: ALICE })).status, 400);
@@ -845,7 +875,7 @@ test('the join response never carries the internal restaurant fields', async () 
 
 // ── markMePaid ──────────────────────────────────────────────────────────────
 
-const paid = (env, b) => HANDLERS.markMePaid({ env, body: b });
+const paid = (env, b) => HANDLERS.markMePaid({ env, body: withKey(b) });
 
 test('markMePaid validates its inputs', async () => {
   assert.equal((await paid({}, { participant_id: ALICE })).status, 400);

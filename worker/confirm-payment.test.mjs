@@ -114,8 +114,37 @@ const asResponse = async (promise) => {
 };
 
 const confirm = (env, request, b) => asResponse(HANDLERS.confirmPayment({ env, request, body: b }));
-const join = (env, b) => HANDLERS.joinSession({ env, body: b });
 const hostView = (env, request, b) => asResponse(HANDLERS.getSessionAsHost({ env, request, body: b }));
+
+/**
+ * Participant keys, remembered the way a browser does.
+ *
+ * joinSession mints a key per diner and returns it once; every later call that
+ * acts as that diner has to send it back, or the Worker cannot tell them from
+ * anyone else who read their id out of a poll response. src/api/functions.js
+ * does this transparently in production — these helpers do the same so the
+ * tests drive the real sequence.
+ */
+const participantKeys = new Map();
+
+const withKey = (b) => {
+  const held = participantKeys.get(b?.participant_id);
+  return held && b.participant_key === undefined ? { ...b, participant_key: held } : b;
+};
+
+const join = async (env, b) => {
+  const res = await HANDLERS.joinSession({ env, body: withKey(b) });
+  try {
+    const data = await res.clone().json();
+    if (data?.participant_key) participantKeys.set(b.participant_id, data.participant_key);
+  } catch {
+    /* an error response carries no key */
+  }
+  return res;
+};
+
+/** markMePaid as a diner who has actually joined, holding their own key. */
+const selfReport = (env, b) => asResponse(HANDLERS.markMePaid({ env, body: withKey(b) }));
 
 /**
  * Creates a real split through createSession so the host key is minted the way
@@ -310,7 +339,7 @@ test('confirming one diner leaves everyone else exactly as they were', async () 
     const { session, hostKey } = await newSplit({ env });
     await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
     await join(env, { session_id: session.id, participant_id: BOB, name: 'Bob', items: [{ id: 'i2', claimed_by: [BOB] }] });
-    await HANDLERS.markMePaid({ env, body: { session_id: session.id, participant_id: BOB } });
+    await selfReport(env, { session_id: session.id, participant_id: BOB });
 
     await confirm(env, req(), { session_id: session.id, participant_id: ALICE, host_key: hostKey });
 
@@ -392,8 +421,8 @@ test('a split completes only when the host has confirmed every diner', async () 
     await join(env, { session_id: session.id, participant_id: BOB, name: 'B', items: [{ id: 'i2', claimed_by: [BOB] }] });
 
     // Both diners insist they have paid. That is not completion.
-    await HANDLERS.markMePaid({ env, body: { session_id: session.id, participant_id: ALICE } });
-    await HANDLERS.markMePaid({ env, body: { session_id: session.id, participant_id: BOB } });
+    await selfReport(env, { session_id: session.id, participant_id: ALICE });
+    await selfReport(env, { session_id: session.id, participant_id: BOB });
     assert.equal(store.Session[0].status, 'claiming');
 
     await confirm(env, req(), { session_id: session.id, participant_id: ALICE, host_key: hostKey });
@@ -561,7 +590,7 @@ test('a diner sees their own settlement record once the host confirms it', async
     await join(env, { session_id: session.id, participant_id: ALICE, name: 'A', items: [{ id: 'i1', claimed_by: [ALICE] }] });
     await confirm(env, req(), { session_id: session.id, participant_id: ALICE, host_key: hostKey });
 
-    const res = await HANDLERS.markMePaid({ env, body: { session_id: session.id, participant_id: ALICE } });
+    const res = await selfReport(env, { session_id: session.id, participant_id: ALICE });
     const { session: scoped } = await body(res);
     const me = scoped.participants.find((p) => p.participant_id === ALICE);
     assert.equal(me.payment_status, 'paid');

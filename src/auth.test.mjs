@@ -91,10 +91,19 @@ test('signing out does not wipe the keys a guest host needs', () => {
   assert.ok(historyKey, 'could not find the history key name — update this test with it');
 
   const context = read('src/lib/AuthContext.jsx');
-  const clearBlock = context.slice(
-    context.indexOf('function clearBillTapStorage'),
-    context.indexOf('const AuthContext = createContext'),
-  );
+  // Comments stripped before the checks below.
+  //
+  // The invariant is about what the code touches, not what the file mentions,
+  // and the two came apart the moment the block grew a comment naming the keys
+  // it must leave alone — which is exactly the comment most worth having there.
+  // Testing the prose made documenting the rule a way to break it.
+  const clearBlock = context
+    .slice(
+      context.indexOf('function clearBillTapStorage'),
+      context.indexOf('const AuthContext = createContext'),
+    )
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
   // Neither named outright...
   assert.ok(!clearBlock.includes(hostKeyPrefix), 'sign-out must not destroy host keys');
@@ -108,6 +117,39 @@ test('signing out does not wipe the keys a guest host needs', () => {
     assert.ok(!hostKeyPrefix.startsWith(prefix), `startsWith('${prefix}') would sweep away host keys`);
     assert.ok(!historyKey.startsWith(prefix), `startsWith('${prefix}') would sweep away bill history`);
   }
+
+  /**
+   * And the diner's own key, which is the same argument one person down.
+   *
+   * billtap-pkey-<session>-<participant> is what proves a diner is themselves —
+   * without it they cannot see their own share, change their own claims, or say
+   * they have paid. A guest diner has no account either, so an operator signing
+   * out on a shared phone must not take it with them.
+   */
+  const participantPrefix = read('src/lib/participantKey.js')
+    .match(/`(billtap-[\w-]+)\$\{sessionId\}/)?.[1];
+  assert.ok(participantPrefix, 'could not find the participant key name — update this test with it');
+  assert.ok(!clearBlock.includes(participantPrefix), 'sign-out must not destroy participant keys');
+  for (const prefix of prefixes) {
+    assert.ok(
+      !participantPrefix.startsWith(prefix),
+      `startsWith('${prefix}') would sweep away participant keys`,
+    );
+  }
+});
+
+test('the auth session itself is cleared on sign-out, not only by supabase-js', () => {
+  // supabase-js removes it on every path through _signOut, including when the
+  // API call fails — verified against 2.111.0. What it cannot cover is the auth
+  // chunk failing to load at all: logout() catches that and carries on to the
+  // redirect, and the token would otherwise still be in localStorage, signing
+  // the operator back in on the next page load.
+  const context = read('src/lib/AuthContext.jsx');
+  assert.match(
+    context,
+    /storageKey\(\)/,
+    'clearBillTapStorage must remove the supabase session key itself',
+  );
 });
 
 test('the login redirect cannot be pointed off-site', () => {
