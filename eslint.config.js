@@ -56,7 +56,13 @@ export default [
     ignores: ["src/**/*.test.mjs"],
     ...pluginReact.configs.flat.recommended,
     languageOptions: {
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        // Replaced at build time by vite.config.js `define`. Declared readonly
+        // so a stray assignment is still an error — it is a constant baked into
+        // the bundle, not a variable.
+        __SENTRY_RELEASE__: "readonly",
+      },
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: "module",
@@ -189,6 +195,25 @@ export default [
     },
     rules: {
       "no-unused-vars": ["error", { ignoreRestSiblings: true, argsIgnorePattern: "^_" }],
+    },
+  },
+
+  {
+    /**
+     * Build configuration, which runs in Node and not in a browser.
+     *
+     * vite.config.js reads process.env — SENTRY_AUTH_TOKEN, SENTRY_ORG, the
+     * release name — to decide whether sourcemaps are generated and uploaded.
+     * Without this it is parsed as browser code and `process` is five undefined
+     * globals, which is a lint failure describing nothing real.
+     */
+    files: ["vite.config.js", "postcss.config.js"],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+      },
     },
   },
 

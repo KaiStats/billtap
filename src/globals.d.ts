@@ -78,3 +78,14 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/**
+ * The build's release name, replaced at build time by vite.config.js `define`.
+ *
+ * Declared rather than read from import.meta.env because it is not an env var —
+ * it is one expression in the build config, used twice: here, and by the plugin
+ * that uploads the sourcemaps. A release that does not match the one the maps
+ * were uploaded under is the usual reason a Sentry stack trace stays minified
+ * on a project that looks correctly configured.
+ */
+declare const __SENTRY_RELEASE__: string;

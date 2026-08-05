@@ -24,6 +24,33 @@ filter on them rather than grepping prose. A 4xx logs at `level: warn` and a 5xx
 at `level: error` — a spike in the first is usually a client bug or somebody
 probing; a spike in the second is ours.
 
+**Know how long that lookup stays possible.** Cloudflare Workers Logs retention
+is measured in days. A restaurant emailing on Tuesday about Saturday evening is
+the normal support request, not an unusual one, and for a while the id on their
+screen led to a line that no longer existed — while the browser's half of the
+same incident sat in Sentry for months.
+
+`worker/lib/report.js` now sends every 5xx onward to Sentry with `request_id`,
+`route` and `code` as **searchable tags**, so the six characters work there too
+and for as long as the Sentry project keeps them. It carries no request body, no
+headers and no address: this runs while a split is failing, so the body is a
+bill with people's names on it, and an error reporter must not become a second
+copy of what `worker/routes/retention.js` exists to remove.
+
+It is off until a DSN is bound. To turn it on, add `SENTRY_DSN` to the `vars`
+block of **each** environment in `wrangler.jsonc` — `vars` do not inherit, so
+setting it once leaves staging and development silent. Use a different Sentry
+project per environment. Until then the behaviour is exactly what it was:
+Cloudflare logs only.
+
+**Browser stack traces need one more thing to be readable.** The build generates
+hidden sourcemaps and uploads them only when `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`
+and `SENTRY_PROJECT` are set; without them no maps are produced and every trace
+in Sentry stays minified, which is what it had always been. Set the three and
+deploy. The release name is computed once in `vite.config.js` and used both by
+the uploader and by the client, because a mismatch between those two is the
+usual reason a project looks correctly configured and still resolves nothing.
+
 **Sensitive actions are in an append-only trail.** `audit_log`, written by
 `worker/lib/audit.js`. It answers who confirmed a payment for how much and when,
 who changed a split after people started claiming, every rejected host key, and

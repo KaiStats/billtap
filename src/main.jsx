@@ -14,8 +14,44 @@ Sentry.init({
   // a diner's, which makes the feed useless for the thing it exists for:
   // knowing whether the live site is broken right now.
   environment: ENVIRONMENT,
-  tracesSampleRate: 1.0,
-  replaysSessionSampleRate: 0.1,
+
+  /**
+   * Which build this frame came from.
+   *
+   * Injected by vite.config.js from one expression that also names the upload,
+   * because a release that does not match the one the sourcemaps were uploaded
+   * under is the single most common way sourcemaps look configured and resolve
+   * nothing. Undefined in dev, where the source is not minified anyway.
+   */
+  release: typeof __SENTRY_RELEASE__ === 'string' ? __SENTRY_RELEASE__ : undefined,
+
+  /**
+   * ── Sampling, and what each rate is actually buying ────────────────────────
+   *
+   * These were 1.0 and 0.1, which are the values from Sentry's getting-started
+   * page and not values anyone had multiplied out against this app.
+   *
+   * tracesSampleRate governs performance transactions, and
+   * browserTracingIntegration below turns every fetch into a span. This app
+   * polls: src/hooks/useLiveSplit calls the Worker every three seconds on every
+   * phone at the table, so at 1.0 a five-person split sends a hundred spans a
+   * minute, per table, for the length of a meal — a quota spent almost entirely
+   * on the request that says nothing changed, and the instrumentation for it
+   * running on a diner's phone. 10% of page loads still tells you if the app
+   * got slower.
+   *
+   * replaysSessionSampleRate is the one that matters more, and it was recording
+   * one session in ten of everybody. This is a bill-splitting app: the DOM it
+   * captures is people's names, what they ordered and what they owe. Recording
+   * a tenth of every table, indefinitely, to a third party, in case one of them
+   * later reports a bug, is not a trade this product should be making silently.
+   *
+   * Zero here does not mean no replays. replaysOnErrorSampleRate stays at 1.0,
+   * so a session that actually breaks is still recorded in full — which is the
+   * only replay anybody has ever gone looking for.
+   */
+  tracesSampleRate: ENVIRONMENT === 'production' ? 0.1 : 1.0,
+  replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1.0,
   // Replay is added after boot instead of here — see attachSessionReplay below.
   integrations: [

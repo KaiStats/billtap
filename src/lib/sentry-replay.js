@@ -15,4 +15,27 @@
  */
 import { replayIntegration } from '@sentry/react';
 
-export default replayIntegration;
+/**
+ * ── Masking, stated rather than inherited ───────────────────────────────────
+ *
+ * This was `export default replayIntegration` — called with no options, so the
+ * privacy of every recording rested on three library defaults. They are
+ * currently the right ones: @sentry-internal/replay defaults maskAllText,
+ * maskAllInputs and blockAllMedia to true, read out of the installed build
+ * rather than assumed. That is exactly the problem. Nothing in this repo said
+ * so, and nothing would notice if a version flipped one.
+ *
+ * What the DOM here contains is what makes it worth spelling out. This is a
+ * bill-splitting app: a replay is people's names, what they ordered, what each
+ * of them owes, and the host's payment handle. A default changing under a `^8`
+ * range would start shipping all of it to a third party, and the first anyone
+ * would know is on opening a replay and finding it legible.
+ *
+ * Written out, a Sentry upgrade that changes a default is either a diff in this
+ * file or nothing at all. src/observability.test.mjs asserts all three are named.
+ */
+export default () => replayIntegration({
+  maskAllText: true,
+  maskAllInputs: true,
+  blockAllMedia: true,
+});

@@ -58,6 +58,26 @@
   // key, and the anon key ships in the browser bundle. What it buys is a
   // staging deployment that refuses to serve when it is pointed at production's
   // database — which is the entire reason a staging project exists.
+  // ── Turning on server-side error reporting ────────────────────────────────
+  //
+  // worker/lib/report.js sends 5xx to Sentry so an incident outlives Cloudflare
+  // Workers Logs, whose retention is days — against the months the browser half
+  // of the same failure already gets. Without SENTRY_DSN it is a silent no-op,
+  // which is the state every environment is in right now.
+  //
+  // To turn it on, add the line below to the vars block of EACH environment.
+  // `vars` do not inherit (see the note further down about what does), so
+  // setting it here alone leaves staging and development reporting nothing:
+  //
+  //   "SENTRY_DSN": "https://<key>@o<org>.ingest.sentry.io/<project>"
+  //
+  // A var rather than a secret, deliberately: a DSN's key is public by design —
+  // it is compiled into every browser bundle that uses Sentry, including this
+  // one — so hiding it buys nothing and costs the ability to see it in a diff.
+  //
+  // Use a DIFFERENT Sentry project per environment, or a staging load test
+  // fires the same alerts as a restaurant's Saturday. src/lib/environment.js
+  // already tags the browser's events; this is the server half of that.
   "vars": {
     "ENVIRONMENT": "production",
     "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"

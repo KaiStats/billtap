@@ -1,6 +1,59 @@
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
+
+/**
+ * Which build this is, from git, once.
+ *
+ * A release name is the only thing that ties a minified frame in Sentry to a
+ * sourcemap uploaded by this build, and a mismatch between the two is the
+ * single most common reason sourcemaps appear to be configured and silently do
+ * nothing. So it is computed here and used twice — once by the plugin that
+ * uploads, once by the client that reports — rather than derived twice and
+ * hoped to agree. src/observability.test.mjs holds that line.
+ *
+ * SENTRY_RELEASE wins when set, for a CI system that knows better than git
+ * does. A shallow clone or no git at all falls back to 'dev', which is honest:
+ * an unnamed build is one whose traces will not resolve, and calling it 'dev'
+ * says so rather than inventing a version.
+ */
+function releaseName() {
+  if (process.env.SENTRY_RELEASE) return process.env.SENTRY_RELEASE
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+  } catch {
+    return 'dev'
+  }
+}
+
+const RELEASE = releaseName()
+
+/**
+ * Uploading sourcemaps needs a token, and shipping them needs care.
+ *
+ * Without SENTRY_AUTH_TOKEN nothing changes: no maps are generated and no
+ * plugin runs, so a contributor with no Sentry access builds exactly what they
+ * built before.
+ *
+ * With one, the maps are 'hidden' rather than true. That is the important
+ * word: 'hidden' emits the .map files but omits the //# sourceMappingURL
+ * comment, so no browser ever asks for them, and the plugin deletes them from
+ * dist after the upload. Plain `sourcemap: true` would publish this app's
+ * entire unminified source at a guessable URL on billtap.app.
+ *
+ * ── A bad token does not break the deploy ───────────────────────────────────
+ *
+ * Measured, not assumed. Built with a deliberately invalid token, the plugin
+ * prints a loud [sentry-vite-plugin] Error carrying the sentry-cli backtrace,
+ * and the build still exits 0, produces dist/, deletes the maps, and emits no
+ * sourceMappingURL comments. So an expired token or an unreachable Sentry costs
+ * the sourcemaps for that release and nothing else, which is the correct way
+ * round: an error reporter that can stop a deploy is a worse problem than the
+ * one it solves.
+ */
+const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN
 
 // The @base44/vite-plugin was here. It injected the builder's HMR notifier,
 // navigation notifier, analytics tracker and visual edit agent into every page
@@ -73,8 +126,31 @@ export default defineConfig({
     // default deliberately: this is the number that has to keep hurting until
     // the entry comes down. Do not raise it to silence the warning.
     chunkSizeWarningLimit: 500,
+
+    // See SENTRY_TOKEN above for why this is 'hidden' and not true, and why it
+    // is off entirely without a token.
+    sourcemap: SENTRY_TOKEN ? 'hidden' : false,
+  },
+  define: {
+    // Read by src/main.jsx. Must be the same string the plugin uploads under.
+    __SENTRY_RELEASE__: JSON.stringify(RELEASE),
   },
   plugins: [
     react(),
+    // Last, so it sees the finished bundle. A no-op without a token — the
+    // plugin is not even constructed, rather than constructed and told to do
+    // nothing, so a missing token cannot turn into a failed build.
+    ...(SENTRY_TOKEN
+      ? [sentryVitePlugin({
+          authToken: SENTRY_TOKEN,
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          release: { name: RELEASE },
+          sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+          // Nothing about this repo needs reporting to a third party's
+          // analytics to build.
+          telemetry: false,
+        })]
+      : []),
   ],
 });

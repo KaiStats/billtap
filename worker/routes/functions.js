@@ -1735,7 +1735,7 @@ export async function onRequestPost({ request, env, ctx, name }) {
 
   const handler = HANDLERS[name];
   if (!handler) {
-    return errorResponse(new AppError('unknown_function', `Unknown function: ${name}`, 404), { id, route });
+    return errorResponse(new AppError('unknown_function', `Unknown function: ${name}`, 404), { id, route, env, ctx });
   }
 
   // Which database this Worker talks to is a binding, not an import — see
@@ -1748,13 +1748,13 @@ export async function onRequestPost({ request, env, ctx, name }) {
   } catch (error) {
     return errorResponse(
       new AppError('misconfigured', 'Service misconfigured', 500, { detail: error.message }),
-      { id, route },
+      { id, route, env, ctx },
     );
   }
   if (missing) {
     return errorResponse(
       new AppError('misconfigured', 'Service misconfigured', 500, { detail: missing }),
-      { id, route },
+      { id, route, env, ctx },
     );
   }
 
@@ -1779,7 +1779,7 @@ export async function onRequestPost({ request, env, ctx, name }) {
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
     return errorResponse(
       new AppError('body_too_large', 'That request is too large.', 413),
-      { id, route },
+      { id, route, env, ctx },
     );
   }
 
@@ -1789,12 +1789,12 @@ export async function onRequestPost({ request, env, ctx, name }) {
     if (raw.length > MAX_BODY_BYTES) {
       return errorResponse(
         new AppError('body_too_large', 'That request is too large.', 413),
-        { id, route },
+        { id, route, env, ctx },
       );
     }
     if (raw) body = JSON.parse(raw);
   } catch {
-    return errorResponse(new AppError('invalid_json', 'Invalid JSON', 400), { id, route });
+    return errorResponse(new AppError('invalid_json', 'Invalid JSON', 400), { id, route, env, ctx });
   }
 
   // A JSON body that is not an object indexes nothing. Every handler destructures
@@ -1803,7 +1803,7 @@ export async function onRequestPost({ request, env, ctx, name }) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return errorResponse(
       new AppError('invalid_json', 'Expected a JSON object', 400),
-      { id, route },
+      { id, route, env, ctx },
     );
   }
 
@@ -1826,7 +1826,7 @@ export async function onRequestPost({ request, env, ctx, name }) {
   } catch (error) {
     // The function name is in `route`, because these all answer on one path and
     // an unlabelled stack says nothing about which of the thirteen failed.
-    return errorResponse(error, { id, route });
+    return errorResponse(error, { id, route, env, ctx });
   }
 }
 

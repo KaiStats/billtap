@@ -341,7 +341,7 @@ export default {
         headers.set('X-Request-Id', id);
         return new Response(response.body, { status: response.status, headers });
       } catch (error) {
-        return errorResponse(error, { id, route: path });
+        return errorResponse(error, { id, route: path, env, ctx });
       }
     }
 

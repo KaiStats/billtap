@@ -25,6 +25,8 @@
  * read six characters aloud and land on the exact log line.
  */
 
+import { reportError } from './report.js';
+
 /**
  * A short id for one request.
  *
@@ -147,14 +149,24 @@ export function logError(error, { id, route, extra = {} }) {
 }
 
 /**
- * The response, the log line, and the request id, from one call.
+ * The response, the log line, the report, and the request id, from one call.
  *
  * Every catch block in the Worker should be this and nothing else. Where it is
- * not, the two halves drift: a message gets logged that was never sent, or sent
- * and never logged, and the request id stops meaning anything.
+ * not, the halves drift: a message gets logged that was never sent, or sent and
+ * never logged, and the request id stops meaning anything.
+ *
+ * `env` and `ctx` are optional and only reach worker/lib/report.js, which sends
+ * 5xx onward to Sentry so the incident outlives Cloudflare's log retention —
+ * days, against the months the browser's half of the same incident gets. Both
+ * absent means log-only, which is what a direct handler call in a test does and
+ * what every environment does until a DSN is bound.
  */
-export function errorResponse(error, { id = requestId(), route = 'unknown', extra = {} } = {}) {
+export function errorResponse(
+  error,
+  { id = requestId(), route = 'unknown', extra = {}, env = null, ctx = null } = {},
+) {
   logError(error, { id, route, extra });
+  reportError(env, ctx, error, { id, route, extra });
   const { body, status } = publicShape(error, id);
   return new Response(JSON.stringify(body), {
     status,
