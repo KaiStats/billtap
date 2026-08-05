@@ -2,21 +2,58 @@ name: CI
 
 # Runs the checks that already exist but nothing was running automatically.
 #
-# There are 27 tests in this repo, including five covering the concurrent-claim
-# race in joinSession — two diners claiming at the same table, where the loser
-# used to have their claim silently erased. Nothing ran them on push, so a
-# change that broke the money maths would have shipped and been discovered by a
-# restaurant.
+# There are 526 tests in this repo, including the ones covering the
+# concurrent-claim race in joinSession — two diners claiming at the same table,
+# where the loser used to be erased from the split entirely. Nothing ran them on
+# push, so a change that broke the money maths would have shipped and been
+# discovered by a restaurant.
 #
-# Deliberately not a deploy gate. Base44's platform commits to main on its own,
-# and a workflow cannot gate a change that has already taken effect in
-# production. This catches regressions in code review, which is what it is good
-# for — do not mistake it for a security control.
+# (That count said 27 for a long while after it stopped being true. It is a
+# number in a comment, so it will drift again; what it is there to convey is
+# that this suite is the money code's only automated defence, and that has not
+# changed.)
+#
+# Deliberately not a deploy gate — deploys are a person running `npm run deploy`
+# — and it is not, on its own, a merge gate either. Nothing here can stop a
+# commit reaching main while the branch is unprotected; see the note at the
+# bottom of this file.
 
 on:
   push:
     branches: ['**']
   pull_request:
+
+# Least privilege for GITHUB_TOKEN.
+#
+# With no permissions block the token gets whatever the repository default is,
+# which for older repositories is read AND write on everything. This workflow
+# runs `npm ci`, which executes install scripts from every package in the tree —
+# esbuild and friends need them — so an npm supply-chain compromise gets a shell
+# in this job. Whether that shell also gets a token that can push to main and
+# rewrite this workflow should not be left to a repository setting nobody has
+# looked at.
+#
+# Nothing here writes to GitHub. Reading the code is the whole job.
+permissions:
+  contents: read
+
+# One run per branch, across both triggers.
+#
+# The job installs Chromium and drives a browser suite, so a run is minutes of
+# compute. Two things were spending it twice over: a push while the previous
+# run was still going, and the fact that this workflow fires on `push` AND on
+# `pull_request` — so every commit to a branch with a PR open ran the whole
+# suite twice, on the same code, for the same answer.
+#
+# Keying the group on the head branch rather than github.ref puts both triggers
+# in one group, so the pair collapses to a single run. `push` stays as a trigger
+# because it is what gives feedback on a branch before anyone opens a PR.
+#
+# Not cancelled on the default branch: there, every commit's result is worth
+# having, because main is what people go back and look at when something broke.
+concurrency:
+  group: ci-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -24,9 +61,22 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit, not a tag.
+      #
+      # `@v4` is a tag the action's own maintainers move, so what runs here is
+      # whatever they last pointed it at — and anyone who takes over that
+      # repository inherits the ability to change what executes in this job,
+      # retroactively, in every workflow that trusts the tag. A commit sha
+      # cannot be moved.
+      #
+      # These are v4.4.0 of each action, resolved from the tag at the time of
+      # writing and verified to match what `refs/tags/v4` pointed at. Update
+      # them the way any other dependency is updated: deliberately, with the
+      # version written next to the sha so the next person can tell what they
+      # are looking at.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -96,3 +146,26 @@ jobs:
       # days running.
       - name: Browser tests
         run: npm run test:ui
+
+# ── What this workflow cannot do ────────────────────────────────────────────
+#
+# `main` is unprotected. Confirmed against the GitHub API, not assumed:
+#
+#     GET /repos/kaistats/billtap/branches → main: "protected": false
+#
+# So every check above is advisory. A commit can be pushed straight to main, or
+# a pull request merged with this workflow red, and nothing stops either. The
+# suite that covers the concurrent-claim race and the participant-key
+# authorisation would run, fail, and be merged past.
+#
+# The fix is a repository setting, not a file, which is why it is written here
+# rather than fixed here. In Settings → Branches, add a rule for `main`:
+#
+#   * Require a pull request before merging
+#   * Require status checks to pass — select this workflow's "test" job
+#   * Require branches to be up to date before merging
+#   * Do not allow force pushes, and do not allow deletions
+#
+# Until that exists, treat a green tick here as information rather than as a
+# gate. The header at the top of this file says the same thing about deploys,
+# and it has been true of merges as well the whole time.

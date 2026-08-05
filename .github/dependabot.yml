@@ -1,0 +1,76 @@
+# Dependency updates, written down.
+#
+# ── Why this file exists ────────────────────────────────────────────────────
+#
+# Dependabot was already running — there are dependabot/npm_and_yarn branches on
+# the remote — but purely as a repository setting, so its behaviour lived
+# somewhere a clone cannot see and a diff cannot show. What it opens, how often,
+# and whether a patch bump gets its own pull request were all decisions nobody
+# had made on purpose.
+#
+# The two branches it had open were both already stale by the time they were
+# looked at: dompurify left the tree entirely when jspdf was removed as an
+# unused dependency, and js-yaml was already at the version being proposed.
+# Ungrouped, one-at-a-time updates against a tree that changes underneath them
+# produce exactly that — noise that reads as work.
+#
+# ── The shape ───────────────────────────────────────────────────────────────
+#
+# Weekly rather than daily: this is a few dozen restaurants, and a pull request
+# a day is a pull request nobody reads. Grouped rather than per-package, so a
+# week's patches arrive as one reviewable change instead of eleven.
+#
+# Security updates are deliberately NOT grouped or delayed — Dependabot raises
+# those on its own schedule regardless of what is written here, and that is the
+# correct behaviour for them.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+    groups:
+      # Everything the browser actually ships. Grouped together because they
+      # move together — a React minor and a Radix patch in the same week are one
+      # question, not two — and because this is the group whose failures are
+      # visible to a diner, so it is the one worth reading carefully.
+      production-minor-and-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
+      # Build, lint and test. These break CI rather than production, which means
+      # the pull request itself proves whether they are safe.
+      tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+    # Majors stay individual on purpose. A React 18→19 or a Vite 6→7 is a change
+    # with its own reading and its own risk, and burying it in a group of eleven
+    # patches is how it gets merged without either.
+    ignore: []
+
+  # The actions in .github/workflows are pinned to commit shas, which is what
+  # stops a moved tag changing what runs in CI. The tradeoff is that nothing
+  # tells you when they are out of date — a pinned sha is invisible to every
+  # notification a tag would have given you.
+  #
+  # Dependabot understands sha pins and updates them, keeping the `# v4.4.0`
+  # comment in step. That is the piece that makes pinning maintainable rather
+  # than merely frozen.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'
