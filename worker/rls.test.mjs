@@ -130,3 +130,148 @@ test('the security definer trigger pins its search_path', () => {
     'a security definer function must pin search_path',
   );
 });
+
+/**
+ * ── The gap that let a live outage through ──────────────────────────────────
+ *
+ * Everything above checks the schema. Nothing checked the Worker against it,
+ * and the two disagreed in production: createSession wrote through asCaller for
+ * a signed-in operator, sessions has RLS on with no policies, and PostgREST
+ * answered 42501. A guest could split a bill and the owner could not.
+ *
+ * It survived the whole audit because the unit tests stub the data layer. A
+ * stub has no policies, so `asCaller` and `serviceRole` behave identically in
+ * every test in this repo and differ only against a real database — which is
+ * the one place none of them run.
+ *
+ * These tie the two halves together statically. Same trick as the rest of this
+ * file: read the migrations, read the code, and refuse to let them drift.
+ */
+
+/** Base44 entity names to tables — mirrors TABLES in worker/lib/db.js. */
+const ENTITY_TABLE = {
+  Session: 'sessions',
+  Restaurant: 'restaurants',
+  GuestRating: 'guest_ratings',
+  GuestContact: 'guest_contacts',
+  RestaurantLead: 'restaurant_leads',
+  Waitlist: 'waitlist',
+  Receipt: 'receipts',
+};
+
+/** Tables with RLS on and no policy naming them: the anon key gets nothing. */
+function defaultDenyTables() {
+  const rls = new Set(
+    [...code.matchAll(/alter table\s+([a-z_]+)\s+enable row level security/gi)].map((m) => m[1]),
+  );
+  const withPolicy = new Set(
+    [...code.matchAll(/create policy\s+"[^"]+"\s*\n?\s*on\s+([a-z_]+)/gi)].map((m) => m[1]),
+  );
+  return new Set([...rls].filter((t) => !withPolicy.has(t)));
+}
+
+test('sessions is default-deny, so the rule below is not vacuous', () => {
+  // The control. If a policy is ever added to sessions this fails, and whoever
+  // added it has to decide what that means for the assertions underneath.
+  assert.ok(
+    defaultDenyTables().has('sessions'),
+    'sessions is no longer default-deny — the caller-scoped rules below need revisiting',
+  );
+});
+
+test('nothing reaches a default-deny table through the caller credentials', () => {
+  /**
+   * Every asCaller() must be chained straight onto an entity whose table has a
+   * policy. Anything else is an offence.
+   *
+   * The first version of this only matched `asCaller(...).entity('X')` and so
+   * would have missed the bug it was written for, which read
+   *
+   *   const writer = user ? asCaller(env, request) : svc;
+   *   ...
+   *   await writer.entity('Session').create(...)
+   *
+   * — the call and the table separated by twenty lines. Following a variable
+   * across a function is not something a regex should be trusted with, so this
+   * does not try. An unchained asCaller is an unprovable one, and the rule is
+   * that it has to be provable at the call site.
+   */
+  const denied = defaultDenyTables();
+  const root = dirname(fileURLToPath(import.meta.url));
+  // Route handlers and the dispatcher — where a credential is chosen. Not
+  // worker/lib, which is where asCaller and its two backends are implemented;
+  // those files name it because they define it.
+  const workerFiles = [...walkJs(join(root, 'routes')), join(root, 'index.js')];
+  const offences = [];
+
+  for (const file of workerFiles) {
+    if (/\.test\.mjs$|\.boundary\.test\.js$/.test(file)) continue;
+    const where = file.split('/worker/')[1];
+    const text = stripComments(readFileSync(file, 'utf8'));
+
+    for (const m of text.matchAll(/asCaller\s*\(/g)) {
+      const rest = text.slice(m.index);
+      const chained = /^asCaller\s*\([^)]*\)\s*\.entity\(\s*['"](\w+)['"]/.exec(rest);
+      if (!chained) {
+        offences.push(`${where}: asCaller() not chained to an entity — cannot prove which table`);
+        continue;
+      }
+      const table = ENTITY_TABLE[chained[1]];
+      if (!table) {
+        offences.push(`${where}: asCaller().entity('${chained[1]}') is not a known entity`);
+      } else if (denied.has(table)) {
+        offences.push(`${where}: asCaller().entity('${chained[1]}') → ${table} is default-deny`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offences,
+    [],
+    'a caller-scoped request against a table with RLS on and no policy reads nothing and ' +
+    'writes nothing — it does not fail loudly, it returns an empty array or a 42501:\n  ' +
+    `${offences.join('\n  ')}`,
+  );
+});
+
+test('the entity-to-table map here matches the one the data layer uses', () => {
+  // Otherwise the rule above silently stops covering an entity the day one is
+  // renamed — a test that passes because it checks nothing.
+  const db = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'lib', 'db.js'), 'utf8');
+  for (const [entity, table] of Object.entries(ENTITY_TABLE)) {
+    assert.match(
+      db,
+      new RegExp(`${entity}:\\s*'${table}'`),
+      `worker/lib/db.js no longer maps ${entity} to ${table}`,
+    );
+  }
+});
+
+test('a signed-in owner is stamped on the split they create', () => {
+  // created_by_id used to arrive because Base44 filled it in from the caller's
+  // token. Nothing does that now, so it is written explicitly — and if it stops
+  // being written, the operator dashboard empties and isHost() loses its
+  // fallback, both silently.
+  const fns = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'routes', 'functions.js'), 'utf8',
+  );
+  assert.match(
+    fns,
+    /created_by_id:\s*user\?\.id\s*\|\|\s*null/,
+    'createSession must stamp created_by_id from the verified user',
+  );
+});
+
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+function walkJs(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkJs(full));
+    else if (/\.(js|mjs)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}

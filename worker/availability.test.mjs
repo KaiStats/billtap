@@ -19,6 +19,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { onRequestGet as health } from './routes/health.js';
+import worker from './index.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -47,6 +48,63 @@ const ENV = {
 
 const get = (query = '') =>
   health({ request: new Request(`https://billtap.app/api/health${query}`), env: ENV });
+
+/**
+ * The same request, but through the front door.
+ *
+ * Everything else in this file calls health() directly, which tests the handler
+ * and says nothing about whether anything routes to it. That distinction was
+ * not academic: every assertion below passed while billtap.app/api/health
+ * answered `{"error":"Not found"}` in production, because a handler nobody
+ * dispatches to is a handler that works perfectly and is never reached.
+ *
+ * Same shape as the twelve vacuous end-to-end tests earlier in this audit —
+ * green, and touching nothing. The fix is the same: drive the real entry point.
+ */
+const viaWorker = (path, init) =>
+  worker.fetch(
+    new Request(`https://billtap.app${path}`, init),
+    { ...ENV, ASSETS: { fetch: async () => new Response('<html></html>', { headers: { 'content-type': 'text/html' } }) } },
+    { waitUntil() {} },
+  );
+
+test('the monitor URL is dispatched, not merely implemented', async () => {
+  // The gap this test exists for. A monitor is pointed at a URL, not at an
+  // exported function, so the route table is the thing under test.
+  const res = await viaWorker('/api/health');
+  assert.equal(res.status, 200, `GET /api/health returned ${res.status} through the Worker`);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.backend, 'supabase');
+});
+
+test('the deep variant is dispatched too, query string and all', async () => {
+  // ?deep=1 is a different branch of the same route. A dispatcher matching on
+  // the whole URL rather than the pathname would drop it.
+  const res = await viaWorker('/api/health?deep=1');
+  assert.notEqual(res.status, 404, 'the query string lost the route');
+  assert.equal((await res.json()).database.checked, true);
+});
+
+test('the health route is not swallowed by the unmatched-/api/ catch-all', async () => {
+  // What production actually returned. Asserted explicitly so a regression
+  // names itself rather than arriving as a bare status code.
+  const res = await viaWorker('/api/health');
+  assert.notDeepEqual(await res.json(), { error: 'Not found' });
+});
+
+test('a route that genuinely does not exist still 404s as JSON', async () => {
+  // The other half: proof the assertion above is not vacuously true because
+  // everything under /api/ happens to answer 200.
+  const res = await viaWorker('/api/no-such-thing');
+  assert.equal(res.status, 404);
+  assert.deepEqual(await res.json(), { error: 'Not found' });
+});
+
+test('the monitor URL refuses a POST rather than treating it as a check', async () => {
+  const res = await viaWorker('/api/health', { method: 'POST' });
+  assert.equal(res.status, 405);
+});
 
 // ── Something to point a monitor at ─────────────────────────────────────────
 

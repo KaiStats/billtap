@@ -456,3 +456,51 @@ test('each scheduled firing runs exactly one job', async () => {
   // rejection marks the invocation failed and loses the log line that says why.
   await Promise.allSettled(ran);
 });
+
+/**
+ * A page that is prerendered but absent from the sitemap is a page built for
+ * crawlers and then not shown to them.
+ *
+ * Found on the way into a promotion: eight routes were prerendered and seven
+ * were listed. /security was the missing one — the page whose whole purpose is
+ * being findable by somebody with a vulnerability to report.
+ *
+ * Checked rather than remembered, because the failure is silent in both
+ * directions. Nothing 404s, nothing errors; the page simply never gets crawled,
+ * and the only symptom is traffic that does not arrive.
+ */
+test('every prerendered route is in the sitemap', () => {
+  const sitemap = readFileSync(join(ROOT, 'public', 'sitemap.xml'), 'utf8');
+  const listed = new Set(
+    [...sitemap.matchAll(/<loc>https:\/\/billtap\.app(\/[^<]*)<\/loc>/g)]
+      // The home page is listed as "/" with a trailing slash; PRERENDERED keys
+      // it as "/". Normalise so they compare.
+      .map((m) => (m[1] === '/' ? '/' : m[1].replace(/\/$/, ''))),
+  );
+
+  const missing = Object.keys(PRERENDERED).filter((route) => !listed.has(route));
+  assert.deepEqual(
+    missing,
+    [],
+    `prerendered but not in public/sitemap.xml, so never crawled: ${missing.join(', ')}`,
+  );
+});
+
+test('the sitemap lists nothing robots.txt forbids', () => {
+  // The opposite mistake, and a worse one: submitting a URL in the sitemap that
+  // the same site tells crawlers not to fetch is a Search Console error on
+  // every one of them.
+  const sitemap = readFileSync(join(ROOT, 'public', 'sitemap.xml'), 'utf8');
+  const robots = readFileSync(join(ROOT, 'public', 'robots.txt'), 'utf8');
+  const disallowed = [...robots.matchAll(/^Disallow:\s*(\S+)/gm)].map((m) => m[1]);
+  const listed = [...sitemap.matchAll(/<loc>https:\/\/billtap\.app([^<]*)<\/loc>/g)].map((m) => m[1] || '/');
+
+  for (const url of listed) {
+    for (const rule of disallowed) {
+      assert.ok(
+        !(url === rule || url.startsWith(rule.endsWith('/') ? rule : `${rule}/`)),
+        `sitemap lists ${url}, which robots.txt disallows via "${rule}"`,
+      );
+    }
+  }
+});
