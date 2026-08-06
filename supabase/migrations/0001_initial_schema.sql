@@ -57,7 +57,11 @@ create table if not exists restaurants (
   google_review_url       text,
   alert_email             text,
   alert_phone             text,
-  rating_threshold        numeric not null default 3,
+  -- Four: only a five-star guest is routed out to Google, everyone else is
+  -- handed to the operator first. See 0009 for why this moved from three, and
+  -- note that 0009 is what a database created before that migration will have
+  -- applied — this line is for a database created from scratch today.
+  rating_threshold        numeric not null default 4,
   plan                    text not null default 'trial',
   trial_ends_at           bigint,
   stripe_customer_id      text,

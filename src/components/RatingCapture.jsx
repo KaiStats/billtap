@@ -43,7 +43,12 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
 
   if (!restaurant) return null;
 
-  const threshold = restaurant.rating_threshold ?? 3;
+  // Four, matching DEFAULT_RATING_THRESHOLD in worker/routes/functions.js. The
+  // server decides `routed_to_google` and this decides which screen the guest
+  // sees next; the two disagreeing means a guest told "sorry about that, tell
+  // us more" whose rating was published to Google anyway, or an operator never
+  // paged about a complaint the app showed them making.
+  const threshold = restaurant.rating_threshold ?? 4;
 
   /** Record the star count immediately — before we know if they'll finish. */
   const pickStars = async (value) => {

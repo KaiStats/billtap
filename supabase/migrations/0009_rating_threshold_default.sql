@@ -1,0 +1,41 @@
+-- Move the rating threshold default from three to four.
+--
+-- ── What the number does ────────────────────────────────────────────────────
+--
+-- submitGuestRating stores `routed_to_google = stars > rating_threshold`, and
+-- RatingCapture.jsx uses the same comparison to decide which screen a guest
+-- sees. At three, a four-star guest was routed straight to Google.
+--
+-- That is the wrong side of the line twice over. It publishes a four against
+-- the average the restaurant is paying $149 a month to raise — a four does not
+-- move a 4.3 upwards. And it spends the one moment that guest would have said
+-- what was almost right, which is the half of this product an operator cannot
+-- buy anywhere else. At four, only a five-star guest is handed to Google and
+-- everyone else reaches the operator first.
+--
+-- ── Why existing rows are left alone ────────────────────────────────────────
+--
+-- Deliberately `alter column ... set default` and not an `update`. The column
+-- is settable from the dashboard's settings pane, so a restaurant currently
+-- sitting at three may have chosen three — and rewriting a value an operator
+-- picked, silently, during a migration, is not a default change. It is us
+-- deciding we know better and not telling them.
+--
+-- A restaurant that never touched the setting also sits at three, and there is
+-- no column recording which of the two it is. Given that ambiguity the safe
+-- reading is "chosen", because the cost of being wrong runs one way: leaving a
+-- deliberate three alone costs nothing, and overwriting one starts routing that
+-- restaurant's four-star guests somewhere its operator decided they should not
+-- go.
+--
+-- So: new restaurants get four, and existing ones are moved by hand, per
+-- restaurant, by someone who has asked. Mariposa is the first of those.
+
+alter table restaurants alter column rating_threshold set default 4;
+
+-- Who is still on the old default, for whoever does that asking:
+--
+--   select name, alert_email, rating_threshold
+--   from restaurants
+--   where rating_threshold < 4
+--   order by name;

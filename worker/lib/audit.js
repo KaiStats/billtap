@@ -58,6 +58,13 @@ export const ACTIONS = {
   RATING_SUBMITTED: 'rating.submitted',
   BILLING_CHECKOUT: 'billing.checkout_started',
   BILLING_ACTIVATED: 'billing.activated',
+  // "Why is our QR pointing somewhere else" and "who changed where our alerts
+  // go" are both disputes the operator cannot settle from the row itself: the
+  // restaurant table keeps only the current value. These two are the record of
+  // who moved it and when. The Google review URL in particular is a redirect
+  // this app opens on a stranger's phone, so a change to it is worth a row.
+  RESTAURANT_CREATED: 'restaurant.created',
+  RESTAURANT_UPDATED: 'restaurant.updated',
   // Deliberately absent: auth.failed. Sign-in is still Base44's and moving to
   // Supabase, so there is no point in this codebase that sees a failed login.
   // Listing it would imply a coverage the code does not have — add it with the
@@ -95,6 +102,15 @@ const ALLOWED_DETAIL = new Set([
   'split_mode', 'previous_split_mode', 'status', 'previous_status',
   'reason', 'plan', 'previous_plan', 'stars', 'routed_to_google',
   'row_count', 'expired', 'verified_by',
+  // The settings write. `slug` is the string printed on the table tents, so a
+  // creation row without it cannot answer which restaurant it made; `fields` is
+  // which columns a patch touched — the names only, never the values, because
+  // alert_email and the review URL are among them.
+  //
+  // Both are here because this list fails closed. Adding the two actions above
+  // without adding these would produce audit rows with an empty detail object:
+  // a trail that records that something was changed and refuses to say what.
+  'slug', 'fields',
 ]);
 
 /** @returns {object} only the listed keys, with anything unprintable dropped */

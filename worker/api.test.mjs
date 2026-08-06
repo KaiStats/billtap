@@ -1020,11 +1020,25 @@ test("a rating exactly on the threshold is not routed out — it is not a rave",
   });
 });
 
-test('a restaurant with no threshold set gets the default of three', async () => {
+test('a restaurant with no threshold set gets the default of four', async () => {
+  // Both halves, because one alone pins nothing. Asserting only that five is
+  // routed passes at a default of three and at four; asserting only that four
+  // is held back passes at four and at five. The pair says which number it is.
+  //
+  // Four is the number: at three, every four-star guest went straight to
+  // Google — publishing a mediocre rating against the average the restaurant
+  // pays to raise, and spending the one moment they would have said what was
+  // almost right.
   await withStub({
     entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1' }] },
   }, async ({ env, store }) => {
     await rate(env, { action: 'rate', session_id: 's1', stars: 4 });
+    assert.equal(store.GuestRating[0].routed_to_google, false, 'a four is a conversation, not a review');
+  });
+  await withStub({
+    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1' }] },
+  }, async ({ env, store }) => {
+    await rate(env, { action: 'rate', session_id: 's1', stars: 5 });
     assert.equal(store.GuestRating[0].routed_to_google, true);
   });
 });

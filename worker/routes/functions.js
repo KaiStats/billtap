@@ -86,6 +86,241 @@ const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 /** Guest participant ids are minted client-side; keep the shape constrained. */
 const PARTICIPANT_RE = /^p_\d+_[a-z0-9]+$/;
 
+// ── Restaurant settings ─────────────────────────────────────────────────────
+
+/**
+ * Where the line falls between "tell the operator" and "let it go public".
+ *
+ * `routed_to_google` is `stars > threshold`, so a threshold of four sends only
+ * five-star guests to Google and hands everyone else to the operator first.
+ *
+ * It used to be three, which routed every four-star guest straight out. That is
+ * the wrong side of the line twice over: it publishes a mediocre rating against
+ * the average the restaurant is paying to raise, and it spends the one moment
+ * that guest would have told them what was almost right — which is the half of
+ * this product an operator cannot buy anywhere else.
+ *
+ * Changing it means changing it in five places at once: here, the client
+ * fallback in src/components/RatingCapture.jsx, the dashboard form's initial
+ * state, and the column default in both schema files. The server and the client
+ * disagreeing about this is an operator not being paged about a rating the
+ * screen told the guest was a complaint.
+ */
+export const DEFAULT_RATING_THRESHOLD = 4;
+
+/** Days of trial a new restaurant starts with. Matches the copy on the form. */
+const TRIAL_DAYS = 14;
+
+/**
+ * A url-safe name for the table tents.
+ *
+ * Apostrophes are removed rather than replaced. Every other punctuation mark
+ * becomes a hyphen, which is right for "Fish & Chips" — but `Harry's` under that
+ * rule is `harry-s`, and this string is printed on a card, read aloud down a
+ * phone, and typed by hand when the QR does not scan. `harrys` is the name;
+ * `harry-s` is a bug someone has to live with in print.
+ *
+ * Accents are folded for the same reason: `Café` becomes `cafe` rather than
+ * `caf`, which is what dropping non-ascii would have produced.
+ */
+export function slugify(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/['\u2018\u2019`\u00b4]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+}
+
+/**
+ * Hosts a Google review link is allowed to point at.
+ *
+ * RatingCapture.jsx calls `window.open` on this value, on a guest's phone,
+ * moments after they scanned a QR code off a table. Unrestricted, the field is
+ * a redirect to anywhere handed to strangers under the restaurant's name — and
+ * it is reachable by any operator, and by anyone who claimed a restaurant
+ * through the email trigger in supabase/migrations/0003. "Only an operator can
+ * set it" is not a control when claiming a restaurant is an email away.
+ *
+ * The exact hosts are the review-link forms Google actually mints; the pattern
+ * covers google.<tld> and its country variants, which is where a "Write a
+ * review" link from a localised Maps ends up.
+ */
+const GOOGLE_HOSTS = new Set([
+  'g.page', 'www.g.page',
+  'goo.gl', 'maps.app.goo.gl',
+  'search.google.com', 'maps.google.com', 'business.google.com',
+]);
+const GOOGLE_DOMAIN_RE = /^(?:www\.|maps\.)?google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
+
+/** True for an https URL on a Google host, with no credentials smuggled in. */
+export function isGoogleReviewUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value));
+  } catch {
+    return false;
+  }
+  // `https://google.com@evil.example/` parses with evil.example as the host and
+  // google.com as a username. Refusing any userinfo at all is cheaper than
+  // reasoning about it.
+  if (url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+
+  const host = url.hostname.toLowerCase();
+  return GOOGLE_HOSTS.has(host) || GOOGLE_DOMAIN_RE.test(host);
+}
+
+/**
+ * The fields an operator may set on their own restaurant, and only those.
+ *
+ * One validator for both the create and the update path. Two would drift, and
+ * the direction they drift in is predictable: the create path is written first,
+ * the update path is written under time pressure later, and the field that ends
+ * up unchecked is whichever one was added last.
+ *
+ * Everything else on the row is server-owned and silently ignored when sent:
+ * `plan` and `trial_ends_at` are what the operator is being billed on,
+ * the Stripe ids are what the billing routes match against, `owner_id` is the
+ * answer to "whose restaurant is this", and the slug is on printed cards. A
+ * request carrying any of them is not refused — a browser sending back the row
+ * it was given should not fail — it just does not get to set them.
+ *
+ * @returns {{ error: string } | { patch: object, fields: string[] }}
+ */
+export function restaurantPatch(body, { creating = false } = {}) {
+  const patch = {};
+  const fields = [];
+  const has = (key) => body?.[key] !== undefined && body?.[key] !== null;
+
+  if (creating || has('name')) {
+    const name = clean(body?.name, 80);
+    if (!name) return { error: 'Give the restaurant a name.' };
+    patch.name = name;
+    fields.push('name');
+  }
+
+  if (has('google_review_url')) {
+    const raw = clean(body.google_review_url, 500);
+    if (!raw) {
+      // An empty string is "clear it", which is a legitimate thing to want:
+      // it puts the Google handoff back to disabled rather than pointing it
+      // somewhere stale.
+      patch.google_review_url = null;
+    } else if (!isGoogleReviewUrl(raw)) {
+      return {
+        error: 'That has to be an https link to Google — the "Share review form" '
+          + 'link from your Google Business profile, which looks like https://g.page/r/…/review.',
+      };
+    } else {
+      patch.google_review_url = raw;
+    }
+    fields.push('google_review_url');
+  }
+
+  if (has('alert_email')) {
+    const email = clean(body.alert_email, 200).toLowerCase();
+    if (email && !EMAIL_RE.test(email)) return { error: "That alert email doesn't look right." };
+    patch.alert_email = email || null;
+    fields.push('alert_email');
+  }
+
+  if (has('alert_phone')) {
+    const phone = clean(body.alert_phone, 32);
+    // Digits and the punctuation people write phone numbers with. Loose enough
+    // for an international number, tight enough that the field is not a free
+    // text column on a row the alert path reads.
+    if (phone && !/^\+?[\d\s().-]{7,32}$/.test(phone)) {
+      return { error: "That phone number doesn't look right." };
+    }
+    patch.alert_phone = phone || null;
+    fields.push('alert_phone');
+  }
+
+  if (has('rating_threshold')) {
+    const threshold = Number(body.rating_threshold);
+    // One to four, matching the form. Five would mean nothing is ever routed to
+    // Google, which is the product switched off rather than configured, and a
+    // value the dashboard cannot produce should not arrive by another door.
+    if (!Number.isInteger(threshold) || threshold < 1 || threshold > 4) {
+      return { error: 'Alert threshold must be between 1 and 4 stars.' };
+    }
+    patch.rating_threshold = threshold;
+    fields.push('rating_threshold');
+  }
+
+  return { patch, fields };
+}
+
+/**
+ * The operator's own view of their restaurant.
+ *
+ * An allow-list rather than a spread, for the same reason getPublicRestaurant
+ * is one: this row also holds `owner_id`, `legacy_owner_id` and the two Stripe
+ * ids. The operator is entitled to more of their row than a guest is, and still
+ * not to those — a Stripe subscription id in a browser is a support call away
+ * from being pasted into a chat window.
+ */
+export function ownerView(r) {
+  // The column is `numeric`, and coercing rather than type-testing is the
+  // difference between the form showing what the database holds and the form
+  // showing the default while the database quietly holds something else. A
+  // settings screen that disagrees with the row it is editing is the failure
+  // this whole endpoint exists to stop.
+  const threshold = r.rating_threshold === null || r.rating_threshold === undefined
+    ? NaN
+    : Number(r.rating_threshold);
+
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    slug: r.slug,
+    google_review_url: r.google_review_url ?? null,
+    alert_email: r.alert_email ?? null,
+    alert_phone: r.alert_phone ?? null,
+    rating_threshold: Number.isFinite(threshold) ? threshold : DEFAULT_RATING_THRESHOLD,
+    plan: r.plan ?? 'trial',
+    trial_ends_at: r.trial_ends_at ?? null,
+    current_period_end: r.current_period_end ?? null,
+  };
+}
+
+/**
+ * A slug nobody else holds, or null.
+ *
+ * Checked as service role against every restaurant, not through the caller's
+ * own view. An owner-scoped read would find only their own rows, so every other
+ * restaurant's slug would come back free — and two restaurants sharing a slug
+ * means one of them has table tents pointing at the other's listing.
+ *
+ * The check is not the guarantee — the unique index on `restaurants.slug` is.
+ * Two operators creating the same name in the same second can both be told a
+ * slug is free, and the second insert then fails and surfaces as a 500 they
+ * retry, at which point the slug really is taken and they get the suffix. That
+ * is the right way round: the loser of the race sees an error and tries again,
+ * rather than both of them succeeding and one restaurant's printed cards
+ * resolving to the other's page.
+ */
+async function reserveSlug(svc, name) {
+  const base = slugify(name) || 'restaurant';
+  const candidates = [base];
+  for (let n = 2; n <= 9; n += 1) candidates.push(`${base.slice(0, 37)}-${n}`);
+  // A short random tail after the numbered ones, so a popular name does not
+  // depend on nine sequential round trips being enough.
+  for (let n = 0; n < 3; n += 1) {
+    candidates.push(`${base.slice(0, 35)}-${crypto.randomUUID().slice(0, 4)}`);
+  }
+
+  for (const candidate of candidates) {
+    const taken = await svc.entity('Restaurant').filter({ slug: candidate });
+    if (!taken.length) return candidate;
+  }
+  return null;
+}
+
 // ── QR token signing ────────────────────────────────────────────────────────
 //
 // HMAC-SHA256 over "<session_id>.<expiry>", base64url. Same scheme as
@@ -851,7 +1086,7 @@ const HANDLERS = {
       const existing = await svc.entity('GuestRating').filter({ session_id });
       if (existing.length) return json({ rating_id: existing[0].id, existing: true });
 
-      let threshold = 3;
+      let threshold = DEFAULT_RATING_THRESHOLD;
       try {
         const rows = await svc.entity('Restaurant').filter({ id: session.restaurant_id });
         if (Number.isFinite(rows[0]?.rating_threshold)) threshold = rows[0].rating_threshold;
@@ -1673,6 +1908,93 @@ const HANDLERS = {
   },
 
   /**
+   * Create the caller's restaurant, or patch it. The settings pane's write half.
+   *
+   * ── Why this did not exist ────────────────────────────────────────────────
+   *
+   * The dashboard used to create and patch Restaurant rows straight from the
+   * browser through the Base44 SDK. Deleting Base44 took that path with it and
+   * nothing replaced it, so the settings form has been refusing both of its
+   * writes and telling operators to send an email. That is not a missing
+   * nicety: `google_review_url` lives here, RatingCapture disables the Google
+   * handoff without one, and so a new restaurant puts tents on its tables,
+   * sends every happy guest to a dead button, and never sees a review. It also
+   * holds `alert_email`, so nobody can self-onboard into being paged at all.
+   *
+   * ── Ownership is never in the body ────────────────────────────────────────
+   *
+   * This is the question that stopped it being written during the cutover, and
+   * the answer is to remove it rather than to check it. There is no id
+   * parameter. The row is found by `owner_id` from the signed-in user, so there
+   * is nothing to tamper with and no way to address someone else's restaurant —
+   * not by guessing an id, not by sending one back that was never yours. An
+   * operator has exactly one restaurant reachable from here: their own, or the
+   * one they are about to create.
+   *
+   * Everything server-owned is dropped rather than refused — see
+   * restaurantPatch. The slug in particular is assigned once and a rename does
+   * not move it: `/r/<slug>` is encoded in printed table tents, and a slug that
+   * followed the name would 404 every card already sitting on a table.
+   */
+  async saveMyRestaurant({ env, request, body, audit = NO_AUDIT }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+
+    const svc = serviceRole(env);
+    const owned = await svc.entity('Restaurant').filter({ owner_id: user.id });
+    const existing = owned[0] || null;
+
+    const parsed = restaurantPatch(body, { creating: !existing });
+    if (parsed.error) return json({ error: parsed.error }, 400);
+    const { patch, fields } = parsed;
+
+    if (!existing) {
+      const slug = await reserveSlug(svc, patch.name);
+      if (!slug) {
+        return json({ error: 'Could not reserve a web address for that name. Try a different one.' }, 409);
+      }
+
+      const row = await svc.entity('Restaurant').create({
+        ...patch,
+        slug,
+        owner_id: user.id,
+        // The address the operator signed in with, when they did not give one.
+        // It is also what migration 0003 matches a migrated restaurant on, so
+        // leaving it empty would quietly cost them the claim as well as the
+        // alerts.
+        alert_email: patch.alert_email ?? (user.email || null),
+        rating_threshold: patch.rating_threshold ?? DEFAULT_RATING_THRESHOLD,
+        plan: 'trial',
+        trial_ends_at: Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
+        created_at: Date.now(),
+      });
+
+      await audit({
+        action: ACTIONS.RESTAURANT_CREATED,
+        restaurantId: row.id,
+        actorUserId: user.id,
+        detail: { slug, fields: fields.join(',') },
+      });
+      return json({ restaurant: ownerView(row) });
+    }
+
+    // Nothing to write. Answering with the current row rather than a 400 keeps
+    // a save that changed nothing from reading as a failure on the screen.
+    if (!fields.length) return json({ restaurant: ownerView(existing) });
+
+    const row = await svc.entity('Restaurant').update(existing.id, patch);
+    await audit({
+      action: ACTIONS.RESTAURANT_UPDATED,
+      restaurantId: existing.id,
+      actorUserId: user.id,
+      // Which columns moved, never what they moved to: alert_email and the
+      // review URL are both in this list.
+      detail: { fields: fields.join(',') },
+    });
+    return json({ restaurant: ownerView(row || { ...existing, ...patch }) });
+  },
+
+  /**
    * The operator's own ratings and contacts. Ownership from their identity.
    *
    * See readAll below for why these are paged rather than limited.
@@ -1720,6 +2042,13 @@ const HANDLERS = {
 
     return json({
       restaurant_id: restaurant.id,
+      // The read half the settings form never had. Without it the form had
+      // nothing to populate from and no way to show an operator what is
+      // currently set — which is the other half of why the pane was inert.
+      //
+      // Allow-listed by ownerView, not spread: the Stripe ids and owner_id do
+      // not travel to a browser just because the caller owns the row.
+      restaurant: ownerView(restaurant),
       ratings: ratings.rows,
       contacts: contacts.rows,
       // Only present when a list actually hit the ceiling, so the ordinary

@@ -101,7 +101,7 @@ CREATE TABLE restaurants (
   google_review_url      TEXT,
   alert_email            TEXT,
   alert_phone            TEXT,
-  rating_threshold       INTEGER NOT NULL DEFAULT 3,
+  rating_threshold       INTEGER NOT NULL DEFAULT 4,
   plan                   TEXT NOT NULL DEFAULT 'trial'
                            CHECK (plan IN ('trial','active','past_due','cancelled')),
   trial_ends_at          INTEGER,

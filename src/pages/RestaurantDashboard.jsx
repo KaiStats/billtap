@@ -6,8 +6,10 @@ import { invoke } from "@/api/functions";
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const slugify = (s) =>
-  s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+// The slug is minted server-side by saveMyRestaurant and never recomputed here.
+// It has to be checked for collisions against every restaurant, which is a read
+// this browser is not allowed to do, and it must not follow a rename — the old
+// slugify() lived here and turned "Harry's" into harry-s besides.
 
 /** @param {{ label?: any, value?: any, hint?: any, accent?: any, [key: string]: any }} props */
 function Stat({ label, value, hint, accent }) {
@@ -27,34 +29,40 @@ export default function RestaurantDashboard() {
   const [contacts, setContacts] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
-  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3 });
+  // rating_threshold four, matching DEFAULT_RATING_THRESHOLD in
+  // worker/routes/functions.js. A form that opened on three would quietly save
+  // three the first time an operator pressed Save for any other reason.
+  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 4 });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
   const handledCheckout = useRef(null);
 
   /**
-   * What the Worker can currently tell this screen, which is not all of it.
+   * Everything this screen shows, from one call.
    *
-   * The restaurant row itself used to come from an owner-scoped entity read.
-   * getRestaurantDashboardData returns the ratings, the contacts and the
-   * restaurant's id — it re-derives ownership from the signed-in user rather
-   * than accepting an id here, because GuestRating and GuestContact as open
-   * reads let anyone on the internet enumerate every restaurant's guest list —
-   * but it does not return the row's own fields.
-   *
-   * So the settings form below has nothing to populate and nothing to save
-   * against, and it says so rather than presenting empty inputs that discard
-   * what is typed into them. The gap closes with one endpoint returning the
-   * restaurant and one accepting a patch to it; both belong to the data layer
-   * and neither belongs in a commit whose job is to delete a vendor.
+   * getRestaurantDashboardData re-derives ownership from the signed-in user
+   * rather than accepting an id — GuestRating and GuestContact as open reads
+   * let anyone on the internet enumerate every restaurant's guest list — and it
+   * now returns an allow-listed view of the restaurant row alongside them. That
+   * row is what the settings form populates from, so the form shows what is
+   * actually set instead of blank inputs.
    */
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await invoke("getRestaurantDashboardData", {});
-      const id = res?.data?.restaurant_id || null;
-      setRestaurant(id ? { id } : null);
+      const r = res?.data?.restaurant || null;
+      setRestaurant(r);
+      if (r) {
+        setForm({
+          name: r.name || "",
+          google_review_url: r.google_review_url || "",
+          alert_email: r.alert_email || "",
+          alert_phone: r.alert_phone || "",
+          rating_threshold: r.rating_threshold ?? 4,
+        });
+      }
       setRatings(res?.data?.ratings || []);
       setContacts(res?.data?.contacts || []);
     } catch {
@@ -62,10 +70,6 @@ export default function RestaurantDashboard() {
     }
     setLoading(false);
   }, []);
-
-  /** Set when a write has nowhere to go — see load(). */
-  const SETTINGS_UNAVAILABLE =
-    "Restaurant settings can't be edited from here yet. Email hello@billtap.app and we'll change it for you.";
 
   useEffect(() => { load(); }, [load]);
 
@@ -85,7 +89,10 @@ export default function RestaurantDashboard() {
       window.history.replaceState({}, document.title, window.location.pathname);
 
     if (param === "cancelled") { setBilling("cancelled"); clearParam(); return; }
-    if (!param.startsWith("cs_") || restaurant.stripe_subscription_id) { clearParam(); return; }
+    // `plan`, not stripe_subscription_id: the dashboard read is allow-listed
+    // and the Stripe ids stay on the Worker. This guard was reading undefined
+    // and never firing.
+    if (!param.startsWith("cs_") || restaurant.plan === "active") { clearParam(); return; }
 
     let alive = true;
     (async () => {
@@ -169,25 +176,83 @@ export default function RestaurantDashboard() {
   }, [restaurant, trialDaysLeft]);
 
   /**
-   * Both writes are refused rather than attempted.
+   * The message from a rejected write, or a fallback.
    *
-   * They wrote Restaurant rows straight from the browser through the Base44
-   * SDK. There is no endpoint on the Worker that creates or patches a
-   * restaurant, and inventing one here means deciding who may rename a
-   * restaurant, who may repoint its Google review URL, and what happens to the
-   * slug printed on its table tents — an ownership question, in the paid part
-   * of the product, which is not something to answer on the way past.
+   * The Worker's refusals are the useful half here — "that has to be an https
+   * link to Google" tells an operator what to type next, and a generic "save
+   * failed" does not. invoke() attaches the parsed body as `data`, so this
+   * takes the server's sentence when there is one.
    *
-   * Refusing in one line beats a form that appears to work: an operator who
-   * types a new alert email and sees "Saved" will stop watching for the alerts
-   * that never arrive.
+   * Deliberately not error.message: on a dropped connection that is "Failed to
+   * fetch", which is a browser's words for a problem the operator can do
+   * nothing about and reads like the input was rejected.
+   */
+  const reason = (error, fallback) => {
+    const message = /** @type {any} */ (error)?.data?.error;
+    return typeof message === "string" && message ? message : fallback;
+  };
+
+  /**
+   * Both writes go through saveMyRestaurant, and both surface what it says.
+   *
+   * These used to write Restaurant rows straight from the browser through the
+   * Base44 SDK; deleting Base44 took that path with it and for a while these
+   * two functions refused instead, which is why the settings pane has been
+   * telling operators to send an email.
+   *
+   * The failure mode being avoided is not an error nobody reads — it is the
+   * opposite. An operator who types a new alert email and sees "Saved" stops
+   * watching for alerts that will never arrive, so a write that did not land
+   * has to say so, in the words the server used.
    */
   const createRestaurant = async () => {
-    setFormError(SETTINGS_UNAVAILABLE);
+    const name = form.name.trim();
+    if (!name) { setFormError("Give the restaurant a name."); return; }
+    if (form.alert_email.trim() && !EMAIL_RE.test(form.alert_email.trim())) {
+      setFormError("That alert email doesn't look right.");
+      return;
+    }
+    setCreating(true);
+    setFormError("");
+    try {
+      // No id and no slug: the Worker derives ownership from the session and
+      // mints the slug itself.
+      await invoke("saveMyRestaurant", {
+        name,
+        alert_email: form.alert_email.trim(),
+      });
+      await load();
+    } catch (error) {
+      setFormError(reason(error, "Couldn't create that. Try again in a moment."));
+    }
+    setCreating(false);
   };
 
   const save = async () => {
-    setFormError(SETTINGS_UNAVAILABLE);
+    if (form.alert_email.trim() && !EMAIL_RE.test(form.alert_email.trim())) {
+      setFormError("That alert email doesn't look right.");
+      return;
+    }
+    setSaving(true);
+    setFormError("");
+    try {
+      const res = await invoke("saveMyRestaurant", {
+        name: form.name.trim(),
+        google_review_url: form.google_review_url.trim(),
+        alert_email: form.alert_email.trim(),
+        alert_phone: form.alert_phone.trim(),
+        rating_threshold: Number(form.rating_threshold),
+      });
+      // Only after the write is acknowledged. "Saved" appearing on an optimistic
+      // update is the exact lie this endpoint exists to stop telling.
+      setSavedAt(Date.now());
+      if (res?.data?.restaurant) setRestaurant(res.data.restaurant);
+      await load();
+    } catch (error) {
+      setSavedAt(null);
+      setFormError(reason(error, "Save failed. Try again."));
+    }
+    setSaving(false);
   };
 
   const exportCsv = () => {
