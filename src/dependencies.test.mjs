@@ -5,7 +5,9 @@
  * a browser, which are build tooling, or whether the vulnerable code path is one
  * this app ever executes. Six GitHub alerts on the default branch turned out to
  * be two unrelated situations with opposite answers, and the difference is not
- * visible from the severity column.
+ * visible from the severity column. js-yaml, below, is the third such situation
+ * and it went the same way undici did — for the same reason, which is the useful
+ * part: the question is never the severity, it is whether the code runs here.
  *
  * These tests record the decisions so the next person does not have to redo the
  * analysis — and, more to the point, so nobody reaches for `npm audit fix
@@ -63,6 +65,42 @@ test('the override is not quietly satisfied by wrangler being downgraded', () =>
 });
 
 /**
+ * ── js-yaml: fixed, for the same reason undici was ─────────────────────────
+ *
+ * GHSA-5p4m-2wfm-xmqj, high, js-yaml >=4.0.0 <=4.3.0: quadratic CPU
+ * consumption resolving `!!omap`, the CVE-2026-59870 fix not having been
+ * backported.
+ *
+ * It arrives as eslint → @eslint/eslintrc → js-yaml, and eslint is a
+ * devDependency. Nothing in the bundle parses YAML; `npm ls js-yaml
+ * --omit=dev` is empty. The reachable surface is a linter reading a config
+ * file that is checked into this repository — an attacker who can put a
+ * malicious YAML file there can already run whatever they like.
+ *
+ * Fixed anyway, because 4.3.1 is a patch release and the fix costs nothing.
+ * That is the same test undici passed: not "is it reachable" but "is not
+ * fixing it cheaper than fixing it", and here it plainly is not.
+ *
+ * An override rather than an eslint bump, because eslint 9.39.5 does not
+ * depend on a fixed eslintrc yet — waiting for it would leave the alert open
+ * for a transitive dependency two levels down that nobody here controls.
+ */
+test('js-yaml is pinned above the omap advisory', () => {
+  const pinned = pkg.overrides?.['js-yaml'];
+  assert.ok(pinned, 'package.json needs an overrides entry for js-yaml');
+
+  const [major, minor, patch] = String(pinned).replace(/^[^\d]*/, '').split('.').map(Number);
+  assert.ok(
+    major > 4 || (major === 4 && (minor > 3 || (minor === 3 && patch >= 1))),
+    `js-yaml override is ${pinned}; GHSA-5p4m-2wfm-xmqj covers <=4.3.0, so the floor is 4.3.1`,
+  );
+  // Deliberately a 4.x floor. js-yaml 5 is out and eslintrc asks for ^4, so a
+  // 5.x override would be a major bump smuggled in as a security fix — the
+  // exact move the rest of this file exists to prevent.
+  assert.ok(major === 4, `js-yaml override is ${pinned}; @eslint/eslintrc wants ^4, so stay on 4.x`);
+});
+
+/**
  * ── react-router: NOT upgraded, deliberately ───────────────────────────────
  *
  * GHSA-qwww-vcr4-c8h2, high, react-router >=7.12.0 <8.3.0: "RSC Mode CSRF
@@ -75,9 +113,16 @@ test('the override is not quietly satisfied by wrangler being downgraded', () =>
  * server is worker/index.js, which serves prerendered HTML and JSON and has
  * never heard of a router action.
  *
- * The fix is react-router-dom 8.x, a major version. Taking a major bump on the
- * routing layer of a live app, to close a hole in a mode the app does not
- * enable, is more risk than the advisory carries.
+ * The fix is react-router 8.3.0, which now exists — and it is not a version
+ * bump. React Router 8 folds react-router-dom back into react-router and stops
+ * publishing the former: the latest react-router-dom is 7.18.2 and there is no
+ * 8.x of it, so "upgrading" means rewriting the import in all 22 files that
+ * name react-router-dom, on the routing layer of a live app, to close a hole in
+ * a mode this app does not enable. That is more risk than the advisory carries.
+ *
+ * Written down because the alert will keep appearing and the obvious next move
+ * — `npm i react-router-dom@8` — fails with a confusing error rather than
+ * telling you the package was retired.
  *
  * This test fails the day that stops being true — which is the point. If
  * anybody adopts createBrowserRouter, a loader, an action, or RSC, the
