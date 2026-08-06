@@ -108,6 +108,44 @@ const PARTICIPANT_RE = /^p_\d+_[a-z0-9]+$/;
  */
 export const DEFAULT_RATING_THRESHOLD = 4;
 
+/**
+ * The threshold a stored row actually means, as a number.
+ *
+ * One function because there were two readings of the same column and they did
+ * not agree. `ownerView` coerced, on the grounds that `rating_threshold` is
+ * `numeric` and a driver is entitled to hand that back as a string; the read in
+ * submitGuestRating tested `Number.isFinite` on the raw value, which is false
+ * for the string "3" — so the same row could be a three on the settings screen
+ * and a four to the code deciding `routed_to_google`.
+ *
+ * That is the precise divergence every comment in this file says must not
+ * exist: a guest shown "sorry about that, tell us more" whose rating went to
+ * Google anyway, or an operator never paged about a complaint the app showed
+ * the guest making. Whether any driver in this stack really does stringify a
+ * numeric is beside the point — one of the two readings was wrong about it, and
+ * a single function cannot be wrong in two directions at once.
+ *
+ * Null, undefined and empty are the default. Anything that will not coerce to a
+ * finite number is the default too, rather than NaN — `stars > NaN` is false
+ * for every rating, which would route nobody to Google and look like nothing
+ * was wrong.
+ */
+export function ratingThreshold(value) {
+  // Numbers and strings only, and `Number()` after that rather than around it.
+  // `Number([])` is 0 and `Number(' ')` is 0, both finite, and zero is the one
+  // value that must never be arrived at by accident: `routed_to_google` is
+  // `stars > threshold`, so a zero publishes every rating to Google including
+  // the one-star complaints this product exists to catch first.
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return DEFAULT_RATING_THRESHOLD;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : DEFAULT_RATING_THRESHOLD;
+  }
+  if (typeof value !== 'number') return DEFAULT_RATING_THRESHOLD;
+  return Number.isFinite(value) ? value : DEFAULT_RATING_THRESHOLD;
+}
+
 /** Days of trial a new restaurant starts with. Matches the copy on the form. */
 const TRIAL_DAYS = 14;
 
@@ -299,15 +337,6 @@ export function restaurantPatch(body, { creating = false } = {}) {
  * from being pasted into a chat window.
  */
 export function ownerView(r) {
-  // The column is `numeric`, and coercing rather than type-testing is the
-  // difference between the form showing what the database holds and the form
-  // showing the default while the database quietly holds something else. A
-  // settings screen that disagrees with the row it is editing is the failure
-  // this whole endpoint exists to stop.
-  const threshold = r.rating_threshold === null || r.rating_threshold === undefined
-    ? NaN
-    : Number(r.rating_threshold);
-
   return {
     id: r.id,
     name: r.name ?? '',
@@ -315,7 +344,7 @@ export function ownerView(r) {
     google_review_url: r.google_review_url ?? null,
     alert_email: r.alert_email ?? null,
     alert_phone: r.alert_phone ?? null,
-    rating_threshold: Number.isFinite(threshold) ? threshold : DEFAULT_RATING_THRESHOLD,
+    rating_threshold: ratingThreshold(r.rating_threshold),
     plan: r.plan ?? 'trial',
     trial_ends_at: r.trial_ends_at ?? null,
     current_period_end: r.current_period_end ?? null,
@@ -339,13 +368,33 @@ export function ownerView(r) {
  * resolving to the other's page.
  */
 async function reserveSlug(svc, name) {
-  const base = slugify(name) || 'restaurant';
-  const candidates = [base];
-  for (let n = 2; n <= 9; n += 1) candidates.push(`${base.slice(0, 37)}-${n}`);
-  // A short random tail after the numbered ones, so a popular name does not
-  // depend on nine sequential round trips being enough.
-  for (let n = 0; n < 3; n += 1) {
-    candidates.push(`${base.slice(0, 35)}-${crypto.randomUUID().slice(0, 4)}`);
+  const base = slugify(name);
+  // A name that survives slugify as nothing — 北京烤鸭, or a name that is all
+  // punctuation — used to fall back to the bare word `restaurant`, which hands
+  // the first such operator /r/restaurant and the second /r/restaurant-2. The
+  // first is worse than the second: it reads like a placeholder somebody forgot
+  // to fill in, and it is claimed first-come by whoever signs up earliest.
+  //
+  // A random tail is not a good slug either — nothing here can make one out of
+  // a name with no ascii in it. It is only the honest version: unmistakably
+  // machine-assigned, so the operator asks for a real one instead of printing
+  // it on a table tent believing we chose it. Giving them a way to choose is
+  // the actual fix and it is a product decision, not a rename in this function.
+  const candidates = [];
+  if (base) {
+    candidates.push(base);
+    for (let n = 2; n <= 9; n += 1) candidates.push(`${base.slice(0, 37)}-${n}`);
+    // A short random tail after the numbered ones, so a popular name does not
+    // depend on nine sequential round trips being enough.
+    for (let n = 0; n < 3; n += 1) {
+      candidates.push(`${base.slice(0, 35)}-${crypto.randomUUID().slice(0, 4)}`);
+    }
+  } else {
+    // Never the bare word, and never a leading hyphen either — `-a1b2` is what
+    // the numbered branch produces when base is empty.
+    for (let n = 0; n < 4; n += 1) {
+      candidates.push(`restaurant-${crypto.randomUUID().slice(0, 6)}`);
+    }
   }
 
   for (const candidate of candidates) {
@@ -881,7 +930,11 @@ const HANDLERS = {
         name: r.name,
         slug: r.slug,
         google_review_url: r.google_review_url,
-        rating_threshold: r.rating_threshold,
+        // The third reading of this column, and the one RatingCapture decides
+        // which screen a guest sees from. Through the same function as the
+        // other two: the guest-facing branch and the server's routed_to_google
+        // disagreeing is the failure ratingThreshold exists to make impossible.
+        rating_threshold: ratingThreshold(r.rating_threshold),
       },
     });
   },
@@ -1198,7 +1251,10 @@ const HANDLERS = {
       let threshold = DEFAULT_RATING_THRESHOLD;
       try {
         const rows = await svc.entity('Restaurant').filter({ id: session.restaurant_id });
-        if (Number.isFinite(rows[0]?.rating_threshold)) threshold = rows[0].rating_threshold;
+        // Through the same reading ownerView uses, so the number deciding
+        // routed_to_google here and the number the settings screen shows the
+        // operator are the same number. See ratingThreshold.
+        if (rows[0]) threshold = ratingThreshold(rows[0].rating_threshold);
       } catch { /* default stands */ }
 
       const row = await svc.entity('GuestRating').create({

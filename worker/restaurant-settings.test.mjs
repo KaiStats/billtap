@@ -22,7 +22,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HANDLERS, restaurantPatch, slugify, isGoogleReviewUrl } from './routes/functions.js';
+import {
+  HANDLERS, restaurantPatch, slugify, isGoogleReviewUrl,
+  ratingThreshold, DEFAULT_RATING_THRESHOLD,
+} from './routes/functions.js';
 import { ACTIONS, safeDetail } from './lib/audit.js';
 
 // ── Harness ─────────────────────────────────────────────────────────────────
@@ -483,6 +486,78 @@ test('the dashboard read returns the row the settings form populates from', asyn
       'alert_email', 'alert_phone', 'current_period_end', 'google_review_url',
       'id', 'name', 'plan', 'rating_threshold', 'slug', 'trial_ends_at',
     ]);
+  });
+});
+
+// ── The threshold, read the same way everywhere ─────────────────────────────
+
+test('one reading of rating_threshold, so the three call sites cannot disagree', async () => {
+  // The column is `numeric`. ownerView coerced it and the read in
+  // submitGuestRating tested Number.isFinite on the raw value — false for the
+  // string "3" — so the same row could be a three on the settings screen and a
+  // four to the code deciding routed_to_google. A guest told "sorry about that,
+  // tell us more" whose rating went to Google anyway is that gap.
+  assert.equal(ratingThreshold('3'), 3, 'a numeric handed back as a string is still a three');
+  assert.equal(ratingThreshold(3), 3);
+  assert.equal(ratingThreshold('4.0'), 4);
+
+  // Absent is the default.
+  for (const empty of [null, undefined, '']) {
+    assert.equal(ratingThreshold(empty), DEFAULT_RATING_THRESHOLD);
+  }
+
+  // Unparseable is the default too, never NaN: `stars > NaN` is false for every
+  // rating, which routes nobody to Google and looks like nothing is wrong.
+  //
+  // The two that matter most are `[]` and `' '`, because `Number()` makes both
+  // of them 0 rather than NaN — and zero is the worst value this can hold.
+  // `routed_to_google` is `stars > threshold`, so a zero sends every rating to
+  // Google, one-star complaints included. Coercing without checking the type
+  // first is how a threshold ends up there.
+  for (const junk of ['four', {}, [], ' ', true, NaN, Infinity, () => 3]) {
+    assert.equal(ratingThreshold(junk), DEFAULT_RATING_THRESHOLD, `${String(junk)}`);
+  }
+});
+
+test('the guest-facing read sends the same number the server routes on', async () => {
+  // getPublicRestaurant feeds RatingCapture, which picks the guest's next
+  // screen from it. It is the third reading of the column and the one a guest
+  // actually meets.
+  const stringy = { ...MARIPOSA(), owner_id: OTHER, rating_threshold: '3' };
+  await withStub({ restaurants: [stringy] }, async () => {
+    const res = await HANDLERS.getPublicRestaurant({
+      env: ENV,
+      request: request(false),
+      body: { slug: 'mariposa' },
+      audit: async () => {},
+    });
+    const out = await res.json();
+    assert.equal(out.restaurant.rating_threshold, 3);
+  });
+});
+
+// ── The slug for a name that has no ascii in it ─────────────────────────────
+
+test('a name that slugifies to nothing does not take the bare /r/restaurant', async () => {
+  // 北京烤鸭 reduces to an empty string. The old fallback handed the first such
+  // operator `restaurant` — a slug that reads like a placeholder nobody filled
+  // in, claimed first-come — and the next one `restaurant-2`.
+  assert.equal(slugify('北京烤鸭'), '');
+  await withStub({}, async ({ tables }) => {
+    const { json } = await save({ name: '北京烤鸭' });
+    assert.match(json.restaurant.slug, /^restaurant-[0-9a-f]{6}$/);
+    assert.notEqual(json.restaurant.slug, 'restaurant');
+    assert.equal(tables.restaurants[0].name, '北京烤鸭', 'the name itself is untouched');
+  });
+});
+
+test('an empty slug base never produces a leading hyphen', async () => {
+  // The numbered branch is `${base.slice(0, 37)}-${n}`, which for an empty base
+  // is `-2`. A slug starting with a hyphen is a URL nobody would type twice.
+  await withStub({}, async () => {
+    const { json } = await save({ name: '!!!' });
+    assert.ok(!json.restaurant.slug.startsWith('-'), json.restaurant.slug);
+    assert.match(json.restaurant.slug, /^restaurant-[0-9a-f]{6}$/);
   });
 });
 
