@@ -47,12 +47,43 @@ function stub({ restaurants = [], user = { id: OWNER, email: 'owner@example.com'
   const tables = { restaurants: structuredClone(restaurants), guest_ratings: [], guest_contacts: [] };
   let minted = 0;
 
+  /**
+   * An unrecognised operator throws rather than being skipped.
+   *
+   * The version of this that ignored anything it did not understand answered a
+   * query it could not parse with every row in the table — so a test could pass
+   * while the filter it was exercising did nothing at all. A stub that quietly
+   * widens a query is worse than no stub, and this is the one place a widened
+   * query would look like a working adoption.
+   */
   const matches = (row, params) => {
     for (const [key, value] of params) {
       if (['select', 'order', 'limit', 'offset'].includes(key)) continue;
-      if (String(value).startsWith('eq.') && String(row[key]) !== String(value).slice(3)) return false;
+      const raw = String(value);
+      const [op, ...rest] = raw.split('.');
+      const operand = rest.join('.');
+      if (op === 'eq') {
+        if (String(row[key]) !== operand) return false;
+      } else if (op === 'is') {
+        const isNull = row[key] === null || row[key] === undefined;
+        if (operand === 'null' ? !isNull : isNull) return false;
+      } else {
+        throw new Error(`stub does not implement PostgREST operator "${op}" (${key}=${raw})`);
+      }
     }
     return true;
+  };
+
+  const sorted = (rows, spec) => {
+    if (!spec) return rows;
+    const [column, direction] = String(spec).split('.');
+    const sign = direction === 'desc' ? -1 : 1;
+    return [...rows].sort((a, b) => {
+      const x = a[column] ?? '';
+      const y = b[column] ?? '';
+      if (x === y) return 0;
+      return x < y ? -sign : sign;
+    });
   };
 
   globalThis.fetch = async (url, init = {}) => {
@@ -80,7 +111,7 @@ function stub({ restaurants = [], user = { id: OWNER, email: 'owner@example.com'
       return new Response(JSON.stringify(hit), { status: 200 });
     }
 
-    let out = rows.filter((row) => matches(row, u.searchParams));
+    let out = sorted(rows.filter((row) => matches(row, u.searchParams)), u.searchParams.get('order'));
     const limit = Number(u.searchParams.get('limit'));
     const offset = Number(u.searchParams.get('offset')) || 0;
     if (limit) out = out.slice(offset, offset + limit);
@@ -163,6 +194,83 @@ test('an id in the body reaches nobody — ownership comes from the session', as
     assert.equal(untouched.google_review_url, null, "another owner's review link cannot be repointed");
     assert.equal(json.restaurant.id, 'r_1', 'the caller got their own new row');
     assert.equal(tables.restaurants.find((r) => r.id === 'r_1').owner_id, OWNER);
+  });
+});
+
+// ── Rows made by hand, waiting for their operator ───────────────────────────
+//
+// A restaurant typed into the SQL editor has no owner_id, and migration 0003
+// cannot give it one: that trigger matches only rows carrying a
+// legacy_owner_id, and it fires only on INSERT into auth.users, so it does
+// nothing for a hand-made row and nothing for an operator who already has an
+// account. Mariposa is both.
+//
+// The failure that produces is silent and expensive: the operator is shown the
+// create form, makes a second restaurant on a suffixed slug, and every table
+// tent already printed goes on pointing at the row he no longer owns.
+
+/** MARIPOSA before anyone has signed in for it — the hand-made shape. */
+const UNCLAIMED = () => ({
+  ...MARIPOSA(),
+  owner_id: null,
+  legacy_owner_id: null,
+  alert_email: 'owner@example.com',
+});
+
+test('an unclaimed row is adopted, not duplicated, on the first save', async () => {
+  await withStub({ restaurants: [UNCLAIMED()] }, async ({ tables }) => {
+    const { res, json, audited } = await save({ name: 'Mariposa' });
+
+    assert.equal(res.status, 200);
+    assert.equal(tables.restaurants.length, 1, 'a second restaurant is the whole bug');
+    assert.equal(tables.restaurants[0].owner_id, OWNER);
+    assert.equal(json.restaurant.slug, 'mariposa', 'and the printed table tents still resolve');
+
+    assert.equal(audited[0].action, ACTIONS.RESTAURANT_CLAIMED);
+    assert.equal(audited[0].actorUserId, OWNER);
+    assert.deepEqual(safeDetail(audited[0].detail), { slug: 'mariposa' });
+  });
+});
+
+test('the dashboard read adopts too, so the create form is never offered', async () => {
+  // The read is where an operator actually meets this. Adopting only on save
+  // would still show them a create form first, which is the screen that talks
+  // them into the duplicate.
+  await withStub({ restaurants: [UNCLAIMED()] }, async ({ tables }) => {
+    const res = await HANDLERS.getRestaurantDashboardData({
+      env: ENV,
+      request: request(),
+      audit: async () => {},
+    });
+    const out = await res.json();
+
+    assert.equal(out.restaurant.slug, 'mariposa');
+    assert.equal(tables.restaurants[0].owner_id, OWNER);
+  });
+});
+
+test('a restaurant that already has an owner is never adopted', async () => {
+  // Same alert_email, different owner. The gate is owner_id being null, and
+  // every row this endpoint creates sets it — so a live restaurant cannot be
+  // taken from its operator by signing in with an address it happens to alert.
+  const theirs = { ...MARIPOSA(), owner_id: OTHER, alert_email: 'owner@example.com' };
+  await withStub({ restaurants: [theirs] }, async ({ tables }) => {
+    const { json } = await save({ name: 'Mine Now' });
+
+    assert.equal(tables.restaurants.find((r) => r.id === 'r_mariposa').owner_id, OTHER);
+    assert.equal(json.restaurant.id, 'r_1', 'the caller got a new row of their own instead');
+    assert.equal(tables.restaurants.length, 2);
+  });
+});
+
+test('an unclaimed row alerting a different address is not adopted', async () => {
+  const someone_else = { ...UNCLAIMED(), alert_email: 'gm@somewhere-else.example' };
+  await withStub({ restaurants: [someone_else] }, async ({ tables }) => {
+    const { json, audited } = await save({ name: 'Harrys' });
+
+    assert.equal(tables.restaurants.find((r) => r.id === 'r_mariposa').owner_id, null);
+    assert.equal(json.restaurant.slug, 'harrys');
+    assert.equal(audited[0].action, ACTIONS.RESTAURANT_CREATED, 'nothing was claimed');
   });
 });
 
@@ -304,6 +412,21 @@ test('a review link that is not Google over https is refused', async () => {
     'https://notgoogle.com/review',
     'https://evil.example/?u=https://g.page/r/abc/review',
     'data:text/html,<script>alert(1)</script>',
+
+    // The ones a host-only allow-list let through. Each of these is on a
+    // Google domain and goes wherever the person who typed it chose, which is
+    // the entire thing this function claims to prevent.
+    'https://www.google.com/url?q=https://evil.example/steal',
+    'https://google.com/url?q=https://evil.example',
+    'https://www.google.com/amp/s/evil.example',
+    'https://goo.gl/AbCdEf',
+    'https://www.google.com/search?q=anything',
+    // google.zip and google.top are three letters, which the old TLD pattern
+    // took for a country code.
+    'https://google.zip/maps/place/x',
+    'https://google.top/maps',
+    // The admin console is not a place to send a guest.
+    'https://business.google.com/reviews',
   ];
   for (const url of refused) assert.equal(isGoogleReviewUrl(url), false, `${url} must be refused`);
 

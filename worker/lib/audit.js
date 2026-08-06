@@ -65,6 +65,12 @@ export const ACTIONS = {
   // this app opens on a stranger's phone, so a change to it is worth a row.
   RESTAURANT_CREATED: 'restaurant.created',
   RESTAURANT_UPDATED: 'restaurant.updated',
+  // A row that had no owner acquiring one, by the email match described in
+  // supabase/migrations/0003. It is the moment a restaurant's guest list, its
+  // review link and its alert address all become one account's to change, and
+  // it happens without anyone pressing a button labelled that — so it is the
+  // one an "who has access to our data" question ends up asking about.
+  RESTAURANT_CLAIMED: 'restaurant.claimed',
   // Deliberately absent: auth.failed. Sign-in is still Base44's and moving to
   // Supabase, so there is no point in this codebase that sees a failed login.
   // Listing it would imply a coverage the code does not have — add it with the

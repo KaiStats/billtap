@@ -136,7 +136,7 @@ export function slugify(value) {
 }
 
 /**
- * Hosts a Google review link is allowed to point at.
+ * Where a Google review link is allowed to land — host *and* path.
  *
  * RatingCapture.jsx calls `window.open` on this value, on a guest's phone,
  * moments after they scanned a QR code off a table. Unrestricted, the field is
@@ -145,18 +145,51 @@ export function slugify(value) {
  * through the email trigger in supabase/migrations/0003. "Only an operator can
  * set it" is not a control when claiming a restaurant is an email away.
  *
- * The exact hosts are the review-link forms Google actually mints; the pattern
- * covers google.<tld> and its country variants, which is where a "Write a
- * review" link from a localised Maps ends up.
+ * ── Why the host alone is not the check ─────────────────────────────────────
+ *
+ * The first version of this allowed any path on any Google host, which let the
+ * whole control be walked around without leaving Google:
+ *
+ *   https://www.google.com/url?q=https://evil.example  — Google's own
+ *     off-site redirector. On an allowed host, and it goes anywhere.
+ *   https://goo.gl/AbCdEf — a general-purpose shortener, not a Maps one. The
+ *     destination is whatever the person who minted it chose.
+ *
+ * So `goo.gl` is gone (Google stopped serving those links in 2025 in any case)
+ * and every remaining host carries a path rule. The property being enforced is
+ * not "this is a Google domain" — it is "this lands on a Google review or Maps
+ * page", which is the only thing a guest tapping "Leave a review" consented to.
+ *
+ * `maps.app.goo.gl` stays: those are minted by Google's own Maps share sheet
+ * and resolve into Maps, so the destination space is not caller-chosen the way
+ * a goo.gl short link's is. `business.google.com` is gone too — it is the
+ * operator's admin console, never somewhere to send a guest.
+ *
+ * The TLD pattern is tightened to com / <cc> / co.<cc> / com.<cc>, which is
+ * where a "Write a review" link from a localised Maps ends up. The old
+ * `[a-z]{2,3}` also matched things like google.zip and google.top.
  */
-const GOOGLE_HOSTS = new Set([
-  'g.page', 'www.g.page',
-  'goo.gl', 'maps.app.goo.gl',
-  'search.google.com', 'maps.google.com', 'business.google.com',
-]);
-const GOOGLE_DOMAIN_RE = /^(?:www\.|maps\.)?google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
+const GOOGLE_TLD = String.raw`(?:com|[a-z]{2}|(?:co|com)\.[a-z]{2})`;
+const GOOGLE_LINK_RULES = [
+  // Business Profile short links: g.page/r/<cid>/review, g.page/<name>/review.
+  { host: /^(?:www\.)?g\.page$/, path: /^\/[\w-]+(?:\/[\w-]+)*\/?$/ },
+  // Maps share links.
+  { host: /^maps\.app\.goo\.gl$/, path: /^\/[\w-]+\/?$/ },
+  // The "Write a review" form itself — the shape a place_id link takes.
+  { host: /^search\.google\.com$/, path: /^\/local\/writereview\/?$/ },
+  // Maps place pages on google.com and its country variants.
+  { host: new RegExp(String.raw`^(?:www\.)?google\.${GOOGLE_TLD}$`), path: /^\/maps(?:\/|$)/ },
+  // maps.google.<tld>, where the place is usually in the query string.
+  { host: new RegExp(String.raw`^maps\.google\.${GOOGLE_TLD}$`), path: /^\/(?:maps(?:\/|$))?$/ },
+];
 
-/** True for an https URL on a Google host, with no credentials smuggled in. */
+/**
+ * True for an https link that lands on a Google review or Maps page.
+ *
+ * Exported so the test can assert the refusals directly — the interesting
+ * cases are all strings the endpoint must say no to, and reaching them through
+ * an HTTP round trip would only obscure which one failed.
+ */
 export function isGoogleReviewUrl(value) {
   let url;
   try {
@@ -171,7 +204,8 @@ export function isGoogleReviewUrl(value) {
   if (url.username || url.password) return false;
 
   const host = url.hostname.toLowerCase();
-  return GOOGLE_HOSTS.has(host) || GOOGLE_DOMAIN_RE.test(host);
+  const path = url.pathname;
+  return GOOGLE_LINK_RULES.some((rule) => rule.host.test(host) && rule.path.test(path));
 }
 
 /**
@@ -319,6 +353,81 @@ async function reserveSlug(svc, name) {
     if (!taken.length) return candidate;
   }
   return null;
+}
+
+/**
+ * The caller's restaurant: the one they own, or an unclaimed one that is
+ * theirs by email and has been waiting for them.
+ *
+ * ── The failure this exists to stop ─────────────────────────────────────────
+ *
+ * Ownership is `owner_id`, and a row created by hand in SQL has none. The
+ * trigger in migration 0003 is what normally fills it in, and it does not fire
+ * here for two reasons at once: it only matches rows carrying a
+ * `legacy_owner_id` (a hand-made row has none), and it only fires on INSERT
+ * into auth.users (an operator who already has an account will never insert
+ * again).
+ *
+ * Mariposa is both of those. Without this, its GM signs in, is shown the
+ * *create* form because nothing matches his owner_id, types the name he already
+ * has, and gets a second restaurant on `mariposa-2`. Every table tent already
+ * printed points at `/r/mariposa` — the row he no longer owns — so his ratings
+ * and his alerts go on landing there while his dashboard reads zero forever.
+ * Nobody finds out from an error; they find out from a month of silence.
+ *
+ * ── Why claiming by email is not a new key to anything ──────────────────────
+ *
+ * This is the same trust model migration 0003 already documents and the same
+ * one magic-link sign-in has by construction: whoever controls the inbox can
+ * hold a session as that address regardless, so matching on it grants nothing
+ * that was not already reachable. What changes here is only *when* it can
+ * happen — at any sign-in rather than only at the first one.
+ *
+ * The blast radius is the same as 0003's, for the same reason: only a row with
+ * `owner_id` null is adoptable, and every row this endpoint creates sets
+ * `owner_id` at creation. A restaurant that has an owner cannot be taken from
+ * them by anyone, through here or anywhere else.
+ *
+ * Both lookups resolve oldest-first. `filter()` sends no `order` unless asked
+ * and PostgREST is under no obligation to be consistent without one, so an
+ * operator who somehow has two rows should at least see the same one on every
+ * request rather than flipping between them — which is the difference between
+ * a duplicate that can be merged by hand and one whose dashboard changes
+ * between refreshes.
+ */
+async function findOrAdoptRestaurant(svc, user, audit = NO_AUDIT) {
+  const owned = await svc.entity('Restaurant')
+    .filter({ owner_id: user.id }, { order: 'created_date' });
+  if (owned[0]) return owned[0];
+
+  const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+  if (!email) return null;
+
+  // Matched on the address in the database and narrowed to unclaimed here,
+  // rather than sending `owner_id=is.null` — worker/lib/base44.js cannot
+  // express an operator and refuses rather than silently answering with
+  // everything, so a query shaped that way would work on Supabase and throw on
+  // the other backend. The read is still one indexed lookup: the rows sharing
+  // an alert_email are one restaurant's, not a table scan.
+  //
+  // `alert_email` is stored lowercased — restaurantPatch lowercases every write
+  // and migration 0010 folded the rows that predate it — so this is an exact
+  // match rather than a pattern, and no address containing a `%` or a `_` can
+  // widen it.
+  const sharing = await svc.entity('Restaurant').filter({ alert_email: email });
+  const orphan = sharing
+    .filter((row) => row.owner_id === null || row.owner_id === undefined)
+    .sort((a, b) => String(a.created_date ?? '').localeCompare(String(b.created_date ?? '')))[0];
+  if (!orphan) return null;
+
+  const claimed = await svc.entity('Restaurant').update(orphan.id, { owner_id: user.id });
+  await audit({
+    action: ACTIONS.RESTAURANT_CLAIMED,
+    restaurantId: orphan.id,
+    actorUserId: user.id,
+    detail: { slug: orphan.slug },
+  });
+  return claimed || { ...orphan, owner_id: user.id };
 }
 
 // ── QR token signing ────────────────────────────────────────────────────────
@@ -1941,8 +2050,10 @@ const HANDLERS = {
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const svc = serviceRole(env);
-    const owned = await svc.entity('Restaurant').filter({ owner_id: user.id });
-    const existing = owned[0] || null;
+    // Adopts an unclaimed row that is already this operator's before deciding
+    // this is a create — otherwise a hand-made row goes on existing beside the
+    // duplicate this would have minted. See findOrAdoptRestaurant.
+    const existing = await findOrAdoptRestaurant(svc, user, audit);
 
     const parsed = restaurantPatch(body, { creating: !existing });
     if (parsed.error) return json({ error: parsed.error }, 400);
@@ -2004,8 +2115,10 @@ const HANDLERS = {
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const svc = serviceRole(env);
-    const owned = await svc.entity('Restaurant').filter({ owner_id: user.id });
-    const restaurant = owned[0];
+    // The same lookup the write path uses, so an operator whose row was made by
+    // hand sees their restaurant on the first load rather than a create form
+    // offering to make them a second one.
+    const restaurant = await findOrAdoptRestaurant(svc, user, audit);
     if (!restaurant) return json({ restaurant: null, ratings: [], contacts: [] });
 
     /**
