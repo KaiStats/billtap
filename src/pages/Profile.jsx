@@ -1,15 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { invoke } from "@/api/functions";
 import { listSplits } from "@/lib/splitHistory";
 import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Trash2, LogOut, User, AlertTriangle } from "lucide-react";
+import { Trash2, LogOut, User, AlertTriangle, Store, ChevronRight } from "lucide-react";
 import ErrorNotice from "@/components/ErrorNotice";
 
 export default function Profile() {
   const { user, logout } = useAuth();
+
+  /**
+   * The restaurant this operator owns, if they own one.
+   *
+   * /restaurant-dashboard was reachable only by typing the URL. Nothing links
+   * to it: BottomNav lists it among the paths where it hides itself, no menu
+   * names it, and the only thing that ever sent anyone there was Stripe's
+   * success_url — once, on the day they paid. An operator on $149 a month who
+   * closed that tab had no way back to the screen holding their review link,
+   * their alert address and their guest list.
+   *
+   * A failure here leaves the link out rather than showing an error. A diner
+   * with no restaurant gets null from the same call, so on this screen the two
+   * are indistinguishable and neither is worth a message.
+   */
+  const [myRestaurant, setMyRestaurant] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    invoke("getMyRestaurantSummary", {})
+      .then((res) => { if (alive) setMyRestaurant(res?.data?.restaurant || null); })
+      .catch(() => { /* no link, no error */ });
+    return () => { alive = false; };
+  }, []);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [activeSessionWarning, setActiveSessionWarning] = useState(false);
@@ -103,6 +127,25 @@ export default function Profile() {
       </div>
 
       <div className="max-w-lg mx-auto px-5 py-5 space-y-4">
+
+        {/* The way back to the owner dashboard. Only for operators — a diner
+            gets null from getMyRestaurantSummary and sees nothing here. */}
+        {myRestaurant && (
+          <Link
+            to="/restaurant-dashboard"
+            className="w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-semibold text-left transition-all"
+            style={{ background: 'rgba(240,180,41,0.08)', border: '1px solid rgba(240,180,41,0.25)', color: '#f0b429' }}
+          >
+            <Store className="w-5 h-5 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0">
+              <span className="block truncate">{myRestaurant.name || "Your restaurant"}</span>
+              <span className="block text-xs font-normal" style={{ color: 'rgba(240,180,41,0.6)' }}>
+                Owner dashboard — settings, ratings, guest list
+              </span>
+            </span>
+            <ChevronRight className="w-5 h-5 shrink-0" aria-hidden="true" />
+          </Link>
+        )}
 
         {/* Sign Out Button */}
         <button

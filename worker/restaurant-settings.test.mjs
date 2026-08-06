@@ -561,6 +561,76 @@ test('an empty slug base never produces a leading hyphen', async () => {
   });
 });
 
+// ── The way back to the dashboard ───────────────────────────────────────────
+//
+// /restaurant-dashboard was reachable only by typing the URL: BottomNav hides
+// itself on that path, nothing links to it, and the only thing that ever sent
+// anyone was Stripe's success_url, once, on the day they paid.
+
+test('an operator gets the two fields a link needs, and nothing else', async () => {
+  await withStub({ restaurants: [MARIPOSA()] }, async () => {
+    const res = await HANDLERS.getMyRestaurantSummary({
+      env: ENV, request: request(), audit: async () => {},
+    });
+    const out = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(out.restaurant, { slug: 'mariposa', name: 'Mariposa' });
+    // Emphatically not the row. This is asked to decide whether to draw a link,
+    // on a screen that displays none of it.
+    assert.deepEqual(Object.keys(out.restaurant).sort(), ['name', 'slug']);
+  });
+});
+
+test('a signed-in diner with no restaurant gets null, not an error', async () => {
+  await withStub({}, async () => {
+    const res = await HANDLERS.getMyRestaurantSummary({
+      env: ENV, request: request(), audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).restaurant, null);
+  });
+});
+
+test('an anonymous caller gets null rather than a 401', async () => {
+  // Otherwise every signed-out diner opening this screen logs an auth failure.
+  await withStub({ user: null }, async () => {
+    const res = await HANDLERS.getMyRestaurantSummary({
+      env: ENV, request: request(false), audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).restaurant, null);
+  });
+});
+
+test('the summary never writes a guests.exported row', async () => {
+  // The reason this is not getRestaurantDashboardData. That endpoint audits
+  // every call as a guest-list export — correct there, and on a profile page
+  // load it would bury the real exports under navigation noise, destroying the
+  // only signal "did anyone export our guest list" has.
+  const audited = [];
+  await withStub({ restaurants: [MARIPOSA()] }, async () => {
+    await HANDLERS.getMyRestaurantSummary({
+      env: ENV,
+      request: request(),
+      audit: async (entry) => { audited.push(entry); },
+    });
+  });
+  assert.deepEqual(audited.filter((a) => a.action === ACTIONS.GUESTS_EXPORTED), []);
+});
+
+test('the summary adopts, so the link reaches the operator who cannot find the screen', async () => {
+  // The unclaimed row is exactly the case with no other way in: no owner_id, so
+  // no link, so no visit to the dashboard whose read would have claimed it.
+  await withStub({ restaurants: [UNCLAIMED()] }, async ({ tables }) => {
+    const res = await HANDLERS.getMyRestaurantSummary({
+      env: ENV, request: request(), audit: async () => {},
+    });
+    assert.equal((await res.json()).restaurant.slug, 'mariposa');
+    assert.equal(tables.restaurants[0].owner_id, OWNER);
+  });
+});
+
 // ── The validator, directly ─────────────────────────────────────────────────
 
 test('one validator covers create and update, so the two cannot drift', async () => {

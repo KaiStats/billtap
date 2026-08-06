@@ -2162,6 +2162,44 @@ const HANDLERS = {
   },
 
   /**
+   * Does the caller own a restaurant, and what is it called.
+   *
+   * ── Why this is not getRestaurantDashboardData ────────────────────────────
+   *
+   * The screen asking is /profile, and all it needs is whether to draw a link.
+   * getRestaurantDashboardData answers the same question and would be the wrong
+   * way to ask it twice over: it pages every rating and every contact the
+   * restaurant has, on a screen that shows none of them, and it writes a
+   * `guests.exported` audit row every time it runs.
+   *
+   * That second one is the worse half. That row exists so "did anyone export
+   * our guest list" has an answer. Firing it on a profile page load would bury
+   * the real exports under navigation noise and quietly destroy the only signal
+   * there is.
+   *
+   * ── Why it adopts ─────────────────────────────────────────────────────────
+   *
+   * Through findOrAdoptRestaurant, like the other two entry points. A row made
+   * by hand has no owner_id until something claims it, and the claim was
+   * reachable only from a screen the operator had no way to find — which is the
+   * whole reason this endpoint exists. Leaving adoption out would withhold the
+   * link from exactly the people who cannot get there without it.
+   */
+  async getMyRestaurantSummary({ env, request, audit = NO_AUDIT }) {
+    const user = await currentUser(env, request);
+    // Not a 401. This is asked in order to decide whether to draw a link, and
+    // an anonymous caller is an ordinary diner rather than a failure.
+    if (!user) return json({ restaurant: null });
+
+    const restaurant = await findOrAdoptRestaurant(serviceRole(env), user, audit);
+    // Two fields: what to label the link, and nothing else. A response this
+    // cheap to ask for should not carry a row.
+    return json({
+      restaurant: restaurant ? { slug: restaurant.slug, name: restaurant.name ?? '' } : null,
+    });
+  },
+
+  /**
    * The operator's own ratings and contacts. Ownership from their identity.
    *
    * See readAll below for why these are paged rather than limited.
