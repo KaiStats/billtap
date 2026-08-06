@@ -15,6 +15,7 @@
  * as Base44 Deno functions. Keep Cloudflare code under worker/.
  */
 import { onRequestPost as restaurantLead } from './routes/restaurant-lead.js';
+import { onRequestPost as waitlist } from './routes/waitlist.js';
 import { onRequestPost as ratingAlert } from './routes/rating-alert.js';
 import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
@@ -46,6 +47,9 @@ export const RETENTION_CRON = '30 9 * * *';
 /** POST-only endpoints owned by this app. */
 const POST_ROUTES = {
   '/api/restaurant-lead': restaurantLead,
+  // The landing page's consumer sign-up. See routes/waitlist.js: the form has
+  // been reporting an error to every visitor since the Base44 SDK was removed.
+  '/api/waitlist': waitlist,
   '/api/rating-alert': ratingAlert,
   '/api/create-checkout': createCheckout,
   '/api/verify-checkout': verifyCheckout,

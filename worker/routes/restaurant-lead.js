@@ -15,6 +15,7 @@
  * sender the chosen provider has verified).
  */
 import { json, clean, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
+import { serviceRole, backendName } from '../lib/data.js';
 
 const MAX_BODY_BYTES = 4096;
 
@@ -69,6 +70,33 @@ export async function onRequestPost({ request, env }) {
 
   const text = rows.map(([label, value]) => `${label}: ${value}`).join('\n');
 
+  /**
+   * The lead is stored before it is announced.
+   *
+   * The header above says this endpoint "is the lead in its entirety", which
+   * made the mail provider a single point of failure for a business record: a
+   * restaurant fills in the form, Postmark is down, they get a 502 asking them
+   * to try again, and nothing anywhere has their details. restaurant_leads has
+   * existed since migration 0001 and nothing has ever written a row to it.
+   */
+  let stored = false;
+  if (backendName(env) === 'supabase' && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await serviceRole(env).entity('RestaurantLead').create({
+        restaurant_name: restaurantName,
+        contact_name: contactName || null,
+        email,
+        phone: phone || null,
+        locations: locations || null,
+        source,
+        created_at: Date.now(),
+      });
+      stored = true;
+    } catch (error) {
+      console.error(`restaurant-lead: could not store lead — ${error?.message}`);
+    }
+  }
+
   const result = await sendEmail(env, {
     to: env.LEAD_NOTIFY_TO || 'alerts@billtap.app',
     subject: `New restaurant lead — ${restaurantName}`,
@@ -95,7 +123,14 @@ export async function onRequestPost({ request, env }) {
    * form that reports a gateway error every time is a false alarm somebody
    * learns to ignore.
    */
-  if (!result.ok && result.reason !== 'suppressed_outside_production') {
+  const delivered = result.ok || result.reason === 'suppressed_outside_production';
+
+  /**
+   * Now a total loss rather than an undelivered email. The 502 was right while
+   * the email was the only record; with the row stored, "try again" sends a
+   * restaurant back to a form whose contents are already safe.
+   */
+  if (!stored && !delivered) {
     return json(
       {
         ok: false,
@@ -108,5 +143,5 @@ export async function onRequestPost({ request, env }) {
     );
   }
 
-  return json({ ok: true, notified: result.ok, ...(result.ok ? {} : { reason: result.reason }) });
+  return json({ ok: true, stored, notified: result.ok, ...(result.ok ? {} : { reason: result.reason }) });
 }

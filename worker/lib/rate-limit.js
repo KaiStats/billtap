@@ -54,6 +54,9 @@
 const LIMITED = new Set([
   '/api/rating-alert',
   '/api/restaurant-lead',
+  // Public, unauthenticated, and it can send mail. Exactly the shape that gets
+  // used as somebody's free mailer if nothing counts it.
+  '/api/waitlist',
   '/api/fn/createSession',
   '/api/fn/joinSession',
   '/api/fn/markMePaid',
@@ -263,6 +266,8 @@ const COSTLY = new Set([
   '/api/rating-alert',
   // Sends email.
   '/api/restaurant-lead',
+  // Writes a row and sends an email, unauthenticated.
+  '/api/waitlist',
   // Writes a session row, and mints a host key.
   '/api/fn/createSession',
   // Spends at the model provider.

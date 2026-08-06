@@ -206,8 +206,26 @@ export default function Landing() {
    */
   const handleWaitlist = async () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(waitlistEmail.trim())) return;
-    setWaitlistStatus("error");
+    const email = waitlistEmail.trim();
+    if (!emailRegex.test(email)) return;
+
+    setWaitlistStatus("loading");
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // company_website is the honeypot the endpoint checks. Empty from a
+        // real browser; a bot that fills every field it finds is accepted and
+        // discarded without being told it was caught.
+        body: JSON.stringify({ email, source: "landing", company_website: "" }),
+      });
+      // The endpoint answers 502 only when nothing was stored AND nothing was
+      // sent, so res.ok genuinely means somebody has this address.
+      if (!res.ok) throw new Error(`waitlist responded ${res.status}`);
+      setWaitlistStatus("done");
+    } catch {
+      setWaitlistStatus("error");
+    }
   };
 
   const steps = [
@@ -694,7 +712,7 @@ export default function Landing() {
                     so a second attempt fails identically. */}
                 {waitlistStatus === "error" && (
                   <p role="alert" className="text-xs mt-2" style={{ color: "#f87171" }}>
-                    We can&apos;t take waitlist signups right now. Email hello@billtap.app and we&apos;ll add you by hand.
+                    That didn&apos;t go through. Please try again, or email hello@billtap.app and we&apos;ll add you by hand.
                   </p>
                 )}
                 <p className="text-xs mt-3" style={{ color: "#4a5068" }}>No spam. One email when Pro launches. Unsubscribe anytime.</p>
