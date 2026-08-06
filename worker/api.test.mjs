@@ -289,8 +289,14 @@ test('the reported totals are rounded to cents', async () => {
 // ── QR tokens ───────────────────────────────────────────────────────────────
 
 async function mintToken(overrides = {}) {
+  // Owned by HOST, explicitly. This used to mint against an ownerless
+  // simpleSession() and pass only because generateQRSignature re-read the row
+  // through asCaller and the stub has no row level security, so it handed the
+  // row to whoever asked. Against the real database that read returns nothing
+  // for anyone (sessions is default-deny). The check now compares
+  // created_by_id, so the fixture has to say who owns it.
   return withStub({
-    entities: { Session: [simpleSession()] },
+    entities: { Session: [{ ...simpleSession(), created_by_id: HOST.id }] },
     users: { [HOST_COOKIE]: HOST },
   }, async ({ env }) => {
     const res = await HANDLERS.generateQRSignature({

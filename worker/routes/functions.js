@@ -18,7 +18,7 @@
  * preserved.
  */
 import { json } from '../lib/email.js';
-import { serviceRole, asCaller, currentUser, dataMisconfiguration, backendName } from '../lib/data.js';
+import { serviceRole, currentUser, dataMisconfiguration, backendName } from '../lib/data.js';
 // Straight from db.js rather than through the backend switch: storage is
 // Supabase's and there is no Base44 equivalent to route to. createReceiptUpload
 // checks the backend itself before calling this.
@@ -589,10 +589,15 @@ const HANDLERS = {
       const user = await currentUser(env, request);
       if (!user) return json({ error: 'Unauthorized' }, 401);
 
-      // Ownership via the caller's own credentials: if Base44's rules would not
-      // show them this session, they do not get a token for it.
-      const mine = await asCaller(env, request).entity('Session').filter({ id: session_id });
+      // Ownership against the stored row, not the database's view of the caller.
+      // This read used to go through asCaller. sessions has RLS on and no
+      // policies, so a caller-scoped select returns zero rows for everybody and
+      // every signed-in host got "Session not found" for their own split.
+      const mine = await serviceRole(env).entity('Session').filter({ id: session_id });
       if (!mine.length) return json({ error: 'Session not found' }, 404);
+      // Same 404 as a missing split: whether a session id exists is not
+      // something a stranger needs confirmed.
+      if (mine[0].created_by_id !== user.id) return json({ error: 'Session not found' }, 404);
     }
 
     const expiry = Date.now() + 30 * 60 * 1000;
@@ -1071,10 +1076,13 @@ const HANDLERS = {
       }
     }
 
-    // As the caller when there is one, so created_by_id is the real owner and
-    // the session shows up in their dashboard; as the app for a guest, who has
-    // no id to stamp.
-    const writer = user ? asCaller(env, request) : svc;
+    // Always the service role, with the owner stamped explicitly below.
+    // This was `user ? asCaller(env, request) : svc`, which was right against
+    // Base44 (it stamped created_by_id from the caller's token) and wrong
+    // against Supabase: sessions is RLS-on with no policies, so the insert ran
+    // as `authenticated` against a default-deny table and returned 42501.
+    // A guest could create a split and a signed-in operator could not.
+    const writer = svc;
 
     // Minted here and returned exactly once. Only the hash is stored, so a leak
     // of the Session row does not hand anyone the host controls.
@@ -1092,6 +1100,10 @@ const HANDLERS = {
       status: 'waiting',
       expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000,
       host_key_hash: await sha256Hex(hostKey),
+      // Nothing else fills this in any more. It is what puts the split in the
+      // operator dashboard and what isHost() falls back to without a host key.
+      // From the verified user, never from the request body.
+      created_by_id: user?.id || null,
       ...(restaurantId ? { restaurant_id: restaurantId } : {}),
     });
 

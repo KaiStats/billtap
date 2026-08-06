@@ -297,7 +297,11 @@ test('an ownerless split cannot be claimed by simply signing in', async () => {
     users: { [OTHER_COOKIE]: OTHER_USER },
   }, async ({ env, store }) => {
     const { session } = await newSplit({ env });
-    assert.equal(store.Session[0].created_by_id, undefined);
+    // null rather than absent. createSession stamps created_by_id explicitly
+    // now — Base44 filled it in from the caller's token and PostgREST does not
+    // — so a guest split records "nobody" instead of leaving the column
+    // unmentioned. isHost() treats both as nobody.
+    assert.equal(store.Session[0].created_by_id, null);
     await join(env, { session_id: session.id, participant_id: ALICE, name: 'A', items: [] });
 
     const res = await confirm(env, req(OTHER_COOKIE), { session_id: session.id, participant_id: ALICE });
