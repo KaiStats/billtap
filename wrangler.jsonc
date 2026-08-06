@@ -39,7 +39,7 @@
   // refuse to serve when a non-production deployment is pointed at the
   // production Base44 app. It appeared in two comments here as a settled fact
   // and in no `vars` block, so that half of the check had never once been able
-  // to fire. DATA_BACKEND is unset, which means Base44 is the live database,
+  // to fire. DATA_BACKEND is "supabase" — see the vars blocks below.
   // which means it is the half that currently matters.
   //
   // It is not filled in here because the value is not in this repository to
@@ -80,6 +80,7 @@
   // already tags the browser's events; this is the server half of that.
   "vars": {
     "ENVIRONMENT": "production",
+    "DATA_BACKEND": "supabase",
     "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
   },
 
@@ -126,6 +127,7 @@
       "triggers": { "crons": [] },
       "vars": {
         "ENVIRONMENT": "staging",
+        "DATA_BACKEND": "supabase",
         // Repeated deliberately. See assertEnvironmentIsolated: without this
         // the "you are pointed at production" check cannot run at all.
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
@@ -166,6 +168,7 @@
       "triggers": { "crons": [] },
       "vars": {
         "ENVIRONMENT": "development",
+        "DATA_BACKEND": "supabase",
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
       },
       "unsafe": {
@@ -337,9 +340,9 @@
   // has to be loud rather than quiet. src/RUNBOOK.md states plainly that there
   // is no restorable backup; keep that warning until this binding is live.
   //
-  // "r2_buckets": [
-  //   { "binding": "BACKUP_BUCKET", "bucket_name": "billtap-backups" }
-  // ],
+  "r2_buckets": [
+    { "binding": "BACKUP_BUCKET", "bucket_name": "billtap-backups" }
+  ],
 
   "build": {
     "command": "node scripts/verify-dist.mjs"
