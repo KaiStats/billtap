@@ -83,6 +83,35 @@ test('the override is not quietly satisfied by wrangler being downgraded', () =>
  * anybody adopts createBrowserRouter, a loader, an action, or RSC, the
  * reasoning above expires and the upgrade becomes real work that has to happen.
  */
+test('react-router is not downgraded to "fix" the advisory', () => {
+  /**
+   * The trap. `npm audit` proposes react-router-dom 7.11.0, because 7.11.0 is
+   * the last release before the RSC advisory's range opens. Taking that
+   * suggestion trades one unreachable advisory for fourteen, several of which
+   * this app very much can reach:
+   *
+   *   GHSA-wrjc-x8rr-h8h6  open redirect via backslash in <Link> and
+   *                        useNavigate           <7.18.0   - both are used here
+   *   GHSA-2w69-qvjg-hvjx  XSS via open redirects        <=7.11.0
+   *   GHSA-jjmj-jmhj-qwj2  open redirect leading to XSS  <=7.12.0
+   *   GHSA-chx6-hx7r-mcp5  unauthenticated DoS via route matching  <7.18.0
+   *
+   * plus ten more covering SSR hydration, single-fetch and __manifest, which
+   * this app does not run. npm's own verdict flips once you are down there:
+   * fixAvailable becomes react-router-dom 7.18.2, isSemVerMajor false.
+   *
+   * 7.18.0 is the floor where the reachable ones are all closed.
+   */
+  const declared = String(pkg.dependencies?.['react-router-dom'] || '');
+  const [major, minor] = declared.replace(/^[^\d]*/, '').split('.').map(Number);
+  assert.ok(
+    major > 7 || (major === 7 && minor >= 18),
+    `react-router-dom is ${declared}. Anything below 7.18.0 carries reachable ` +
+    'open-redirect, XSS and DoS advisories - strictly worse than the one ' +
+    'unreachable RSC advisory that downgrading is meant to silence.',
+  );
+});
+
 test('nothing has adopted the router mode the advisory is about', () => {
   const walk = (dir) => {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
