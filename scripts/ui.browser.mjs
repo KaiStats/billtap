@@ -108,7 +108,7 @@ after(async () => {
  * A phone-sized page with every network call stubbed and console errors
  * collected, so a test can assert the screen came up clean.
  */
-async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0, scanDelayMs = 0, directScan = true, restaurant = null } = {}) {
+async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0, scanDelayMs = 0, directScan = true, restaurant = null, failRating = false, failAlert = false } = {}) {
   const context = await browser.newContext({
     viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
   });
@@ -171,10 +171,16 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
     if (url.includes('/fn/submitGuestRating')) {
       const payload = route.request().postDataJSON();
       ratingCalls.push(payload);
+      if (failRating) {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"Service error"}' });
+      }
       return send(payload.action === 'rate' ? { rating_id: 'rat_test_1' } : { ok: true });
     }
     if (url.includes('/api/rating-alert')) {
       alertCalls.push(route.request().postDataJSON());
+      if (failAlert) {
+        return route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"Alert could not be delivered"}' });
+      }
       return send({ ok: true, notified: true });
     }
 
@@ -1989,5 +1995,74 @@ test('a restaurant with no review link set disables the button rather than lying
     await google.waitFor({ timeout: 10000 });
     assert.equal(await google.isEnabled(), false, 'nowhere to send them, so the button says so');
     assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+// ── The failure paths, where a gate could hide by accident ─────────────────
+//
+// The screens above are the deliberate behaviour. These are the ones nobody
+// designs: an outage must not strand a guest on the complaint screen, because
+// a guest who is asked what went wrong and then never offered the link is
+// exactly the thing this branch removed — whether that happened on purpose or
+// because a write failed.
+
+test('a rating that never saved still gets the guest to the link', async () => {
+  // pickStars swallows this by design — "never block the guest on our
+  // bookkeeping" — but it is also the call that mints ratingId, which the
+  // alert and the routed stamp both need. Failing softly has to mean the guest
+  // still moves, not that they quietly stop.
+  const { context, page, errors } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT, failRating: true,
+  });
+  try {
+    await toRating(page, { stars: 1 });
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: /^Skip$/ }).click();
+
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+    assert.ok(await google.isEnabled(), 'an outage must not read as a withheld link');
+
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('an alert that could not be delivered does not strand the guest either', async () => {
+  // The operator's page is the paid half and this is the moment it fails. The
+  // guest cannot be left holding a spinner over it: their rating is already
+  // stored, and the send button is not theirs to retry.
+  const { context, page, alertCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT, failAlert: true,
+  });
+  try {
+    await toRating(page, { stars: 2 });
+    await page.locator('textarea').fill('Nobody came back to the table.');
+    await page.getByRole('button', { name: /Send to the manager/i }).click();
+
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+    assert.equal(alertCalls.length, 1, 'it was attempted');
+  } finally { await context.close(); }
+});
+
+test('the Google button cannot be double-tapped into two tabs', async () => {
+  // goToGoogle is deliberately synchronous — awaiting before window.open loses
+  // the user-gesture and Safari eats the popup — which also means nothing
+  // awaits between the tap and the next tap being possible.
+  const { context, page, ratingCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 5 });
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+
+    await google.dispatchEvent('click');
+    await google.dispatchEvent('click').catch(() => {});
+
+    await page.getByText(/Thank you/i).waitFor({ timeout: 10000 });
+    assert.deepEqual(await openedUrls(page), [RESTAURANT.google_review_url],
+      'a guest gets one tab, not one per tap');
+    assert.equal(ratingCalls.filter((c) => c.action === 'routed').length, 1,
+      'and the tap is counted once');
   } finally { await context.close(); }
 });
