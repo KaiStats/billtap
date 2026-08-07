@@ -7,10 +7,33 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * Shown once a guest marks their share paid.
  *
- * This is the whole restaurant product in one screen: a happy guest gets routed
- * to Google while they are still at the table, an unhappy one is intercepted
- * into private feedback that pages the operator instead of becoming a public
- * review, and either way the email lands on the restaurant's list.
+ * This is the whole restaurant product in one screen: the operator hears about
+ * an unhappy guest while that guest is still in the building, and every guest
+ * is offered the restaurant's Google listing on the way out.
+ *
+ * ── Why every guest, and not just the happy ones ────────────────────────────
+ *
+ * This used to fork: above the threshold you got the Google button, at or below
+ * it you got a private feedback box and no button at all. That is review
+ * gating. Two things are wrong with it.
+ *
+ * It is against the rules of both parties involved. The FTC's consumer review
+ * rule treats suppressing solicited negative reviews as a deceptive practice,
+ * and Google's policy names the practice and removes what it catches — usually
+ * taking the good reviews collected the same way along with it. A restaurant
+ * paying for reviews was paying for reviews that could be deleted for how they
+ * were gathered.
+ *
+ * And it was leaving the actual product on the table. Review count and recency
+ * carry more weight in local ranking than the last tenth of a star, and the
+ * threshold sat where it silenced four-star guests: happy people, mid-meal
+ * glow, who would have written something warm and were never asked.
+ *
+ * So the fork stayed and the gate went. A low rating still routes through the
+ * feedback screen first and still pages the operator — that half is untouched,
+ * and it is the half the restaurant is paying for. It just no longer ends
+ * there. Being asked what went wrong is what a good manager does before handing
+ * you the comment card; it is not a reason to take the comment card away.
  *
  * Renders nothing unless the session belongs to a restaurant.
  */
@@ -22,8 +45,15 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
   const [comment, setComment] = useState("");
   const [email, setEmail] = useState("");
   const [ratingId, setRatingId] = useState(null);
-  const [phase, setPhase] = useState("rate"); // rate | happy | unhappy | done
+  const [phase, setPhase] = useState("rate"); // rate | feedback | review | done
   const [busy, setBusy] = useState(false);
+  // Whether this rating was at or below the operator's alert threshold, kept
+  // because the review screen is shown to both kinds of guest and the sentence
+  // above the button is the only thing that differs.
+  const [flagged, setFlagged] = useState(false);
+  // Set once the feedback form is submitted, so the review screen does not ask
+  // a second time for an email the guest has already handed over.
+  const [sentFeedback, setSentFeedback] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -43,19 +73,22 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
 
   if (!restaurant) return null;
 
-  // Four, matching DEFAULT_RATING_THRESHOLD in worker/routes/functions.js. The
-  // server decides `routed_to_google` and this decides which screen the guest
-  // sees next; the two disagreeing means a guest told "sorry about that, tell
-  // us more" whose rating was published to Google anyway, or an operator never
-  // paged about a complaint the app showed them making.
-  const threshold = restaurant.rating_threshold ?? 4;
+  // Three, matching DEFAULT_RATING_THRESHOLD in worker/routes/functions.js.
+  //
+  // One job now: at or below this, the guest is asked what went wrong and the
+  // operator is paged. It does not decide who is shown the Google button —
+  // everyone is, on the review screen below. When this number and the server's
+  // disagree, an operator is not paged about a complaint this screen showed the
+  // guest making, which is why both readings go through ratingThreshold.
+  const alertAt = restaurant.rating_threshold ?? 3;
 
   /** Record the star count immediately — before we know if they'll finish. */
   const pickStars = async (value) => {
     if (busy) return;
     setStars(value);
     setBusy(true);
-    const happy = value > threshold;
+    const needsManager = value <= alertAt;
+    setFlagged(needsManager);
 
     try {
       // Server-side: it derives restaurant_id from the stored session rather
@@ -72,7 +105,9 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     }
 
     setBusy(false);
-    setPhase(happy ? "happy" : "unhappy");
+    // The low path takes the extra step first and lands on the same review
+    // screen afterwards; the difference is the order, not the destination.
+    setPhase(needsManager ? "feedback" : "review");
 
     if (typeof window.gtag === "function") {
       window.gtag("event", "guest_rating", { stars: value, restaurant: restaurant.name });
@@ -103,10 +138,41 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     }
   };
 
-  const goToGoogle = async () => {
-    setBusy(true);
-    await saveContact();
-    setBusy(false);
+  /**
+   * Marks the rating as having actually reached Google.
+   *
+   * The server used to write this at rating time from the star count, which
+   * recorded permission rather than an event — under the old fork, "sent to
+   * Google" on the operator's dashboard counted the guests the app had been
+   * willing to let go. Now that every guest is offered the link, the only fact
+   * left worth storing is whether they took it, and this tap is the only place
+   * that knows.
+   */
+  const reportRouted = async () => {
+    if (!ratingId) return;
+    try {
+      await invoke("submitGuestRating", { action: "routed", rating_id: ratingId });
+    } catch {
+      /* Best effort — the rating itself is already stored. */
+    }
+  };
+
+  /**
+   * Opens the restaurant's listing, and records that the guest went.
+   *
+   * Nothing is awaited before `window.open`. Safari only allows a popup inside
+   * the user-gesture that asked for it, and an `await` ends that gesture — so a
+   * round trip here would cost some guests the tab entirely. Both requests are
+   * fired and left to land; the page stays alive behind the new tab, and the
+   * rating row they are updating is already stored either way.
+   */
+  const goToGoogle = () => {
+    // Not again if the feedback screen already sent it. The contact upsert
+    // counts visits, and a guest who typed their email into the complaint box
+    // and then tapped through would otherwise be recorded as having eaten here
+    // twice in one sitting.
+    if (!sentFeedback) void saveContact();
+    void reportRouted();
     if (restaurant.google_review_url) {
       window.open(restaurant.google_review_url, "_blank", "noopener,noreferrer");
     }
@@ -134,7 +200,8 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     }
 
     setBusy(false);
-    setPhase("done");
+    setSentFeedback(true);
+    setPhase("review");
   };
 
   const wrap = "fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4";
@@ -184,52 +251,22 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
           </>
         )}
 
-        {phase === "happy" && (
-          <>
-            <div className="flex justify-center gap-1 mb-5" aria-hidden="true">
-              {Array.from({ length: stars }).map((_, i) => (
-                <Star key={i} className="w-6 h-6" style={{ color: "#f0b429", fill: "#f0b429" }} />
-              ))}
-            </div>
-            <h2 className="text-xl font-black text-white text-center">
-              That means a lot.
-            </h2>
-            <p className="mt-2.5 text-sm text-center leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
-              Would you put that on Google? It takes about fifteen seconds and it's
-              the single biggest thing you can do for a place like ours.
-            </p>
-
-            <input
-              type="email" inputMode="email" autoComplete="email"
-              placeholder="Email for deals (optional)"
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              className="mt-6 w-full rounded-xl px-4 py-3 text-white text-sm"
-              style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)" }}
-            />
-
-            <button
-              onClick={goToGoogle}
-              disabled={busy || !restaurant.google_review_url}
-              className="mt-4 w-full h-13 py-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
-              style={{ background: "#f0b429", color: "#1a1200" }}
-            >
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-              Review us on Google
-            </button>
-            <button onClick={onDismiss} className="mt-3 w-full text-sm py-2" style={{ color: "rgba(255,255,255,.4)" }}>
-              Maybe later
-            </button>
-          </>
-        )}
-
-        {phase === "unhappy" && (
+        {/*
+          The extra step in front of the review screen, not instead of it. The
+          copy no longer promises this stays off the internet — it did once, and
+          that promise was only keepable by withholding the link on the next
+          screen. What it can honestly promise is speed: the manager hears this
+          while the guest is still sitting down, which is the whole reason an
+          operator pays for it.
+        */}
+        {phase === "feedback" && (
           <>
             <h2 className="text-xl font-black text-white text-center">
-              We'd rather hear it from you.
+              What went wrong?
             </h2>
             <p className="mt-2.5 text-sm text-center leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
-              This goes straight to the manager — not online. Tell us what went wrong
-              and someone will actually read it.
+              This reaches the manager right now, while you're still here — so
+              they have a chance to put it right tonight.
             </p>
 
             <textarea
@@ -254,8 +291,72 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
               Send to the manager
             </button>
+            {/*
+              Skipping lands on the review screen too. A guest who does not feel
+              like typing has not forfeited anything — routing them straight out
+              of the flow instead would be the gate again, wearing a different
+              button.
+            */}
+            <button
+              onClick={() => setPhase("review")} disabled={busy}
+              className="mt-3 w-full text-sm py-2 disabled:opacity-40"
+              style={{ color: "rgba(255,255,255,.4)" }}
+            >
+              Skip
+            </button>
+          </>
+        )}
+
+        {/*
+          One screen, every guest, the same button. The sentence above it is the
+          only thing that changes — a five-star guest is being asked a favour,
+          and a guest who just typed a complaint is being told the link is
+          theirs. Neither is given a different amount of friction to get to it.
+        */}
+        {phase === "review" && (
+          <>
+            <div className="flex justify-center gap-1 mb-5" aria-hidden="true">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  className="w-6 h-6"
+                  style={{
+                    color: n <= stars ? "#f0b429" : "rgba(255,255,255,.18)",
+                    fill: n <= stars ? "#f0b429" : "transparent",
+                  }}
+                />
+              ))}
+            </div>
+            <h2 className="text-xl font-black text-white text-center">
+              {flagged ? "Thanks for telling us." : "That means a lot."}
+            </h2>
+            <p className="mt-2.5 text-sm text-center leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
+              {flagged
+                ? "If you want to post about tonight publicly, here's our Google listing — it's the same link every guest gets, and what you write there is yours."
+                : "Would you put that on Google? It takes about fifteen seconds and it's the single biggest thing you can do for a place like ours."}
+            </p>
+
+            {!sentFeedback && (
+              <input
+                type="email" inputMode="email" autoComplete="email"
+                placeholder="Email for deals (optional)"
+                value={email} onChange={(e) => setEmail(e.target.value)}
+                className="mt-6 w-full rounded-xl px-4 py-3 text-white text-sm"
+                style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)" }}
+              />
+            )}
+
+            <button
+              onClick={goToGoogle}
+              disabled={!restaurant.google_review_url}
+              className="mt-4 w-full h-13 py-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: "#f0b429", color: "#1a1200" }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Review us on Google
+            </button>
             <button onClick={onDismiss} className="mt-3 w-full text-sm py-2" style={{ color: "rgba(255,255,255,.4)" }}>
-              No thanks
+              {flagged ? "No thanks" : "Maybe later"}
             </button>
           </>
         )}
