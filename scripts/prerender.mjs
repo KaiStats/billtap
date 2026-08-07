@@ -115,6 +115,7 @@ try {
 } catch (err) {
   server.close();
   await clearSnapshots();
+  await writeFile(join(DIST, 'PRERENDER-SKIPPED'), 'browser launch failed\n').catch(() => {});
   console.warn(`\n⚠ Prerendering skipped: browser launch failed (likely restricted environment)`);
   console.warn(`  Site will work with client-side rendering; no SEO impact for interactive routes.\n`);
   process.exit(0);

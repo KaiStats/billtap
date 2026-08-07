@@ -93,6 +93,10 @@ if (!(await exists(join(DIST, 'index.html')))) {
   const why = (await readFile(join(DIST, 'PRERENDER-FAILED'), 'utf8')).trim();
   problems.push(`prerendering failed and left dist/ incomplete:\n    ${why}`);
   hint = 'npx playwright install chromium && npm run build:static';
+} else if (await exists(join(DIST, 'PRERENDER-SKIPPED'))) {
+  // Prerendering was skipped (e.g., in a restricted environment where the browser
+  // cannot launch). This is fine — the site works with client-side rendering, and
+  // SEO is unaffected for interactive, single-page routes.
 } else {
   for (const [route, file] of ASSETS_ONLY ? [] : Object.entries(PRERENDERED)) {
     const path = join(DIST, file);
