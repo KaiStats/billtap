@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
 import { invoke } from "@/api/functions";
+import { planSummary } from "@/lib/plan";
 
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -148,32 +149,11 @@ export default function RestaurantDashboard() {
     return { n, avg, routed, low };
   }, [ratings]);
 
-  const trialDaysLeft = useMemo(() => {
-    if (!restaurant?.trial_ends_at) return null;
-    return Math.max(0, Math.ceil((restaurant.trial_ends_at - Date.now()) / 86400000));
-  }, [restaurant]);
-
-  // Plan states the Stripe webhook can now produce, not just trial/active.
-  const [billingTone, billingHeading, billingDetail] = useMemo(() => {
-    const renews = restaurant?.current_period_end
-      ? `Renews ${new Date(restaurant.current_period_end).toLocaleDateString()}. $149/month.`
-      : "$149/month.";
-    switch (restaurant?.plan) {
-      case "active":
-        return ["#30a46c", "Subscription active", renews];
-      case "past_due":
-        return ["#e5484d", "Payment failed",
-          "Stripe couldn't charge your card. Update it from the receipt email, or call (702) 844-0938 — your service is still on for now."];
-      case "cancelled":
-        return ["#8b8b8b", "Subscription cancelled",
-          "Your guests can still split checks, but reviews and alerts have stopped. Resubscribe any time."];
-      default:
-        return ["#f0b429", "Free trial",
-          trialDaysLeft !== null
-            ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left, then $149/month. Cancel anytime.`
-            : "$149/month when your trial ends. Cancel anytime."];
-    }
-  }, [restaurant, trialDaysLeft]);
+  // One source for the header line and the billing card, so the two cannot say
+  // different things about the same row — which is what they did. See
+  // src/lib/plan.js for the two ways that went wrong in production.
+  const plan = useMemo(() => planSummary(restaurant), [restaurant]);
+  const { tone: billingTone, heading: billingHeading, detail: billingDetail } = plan;
 
   /**
    * The message from a rejected write, or a fallback.
@@ -332,9 +312,7 @@ export default function RestaurantDashboard() {
           <div>
             <h1 className="text-3xl font-black">{restaurant.name}</h1>
             <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,.5)" }}>
-              {restaurant.plan === "trial" && restaurant.trial_ends_at
-                ? `Trial ends ${new Date(restaurant.trial_ends_at).toLocaleDateString()}`
-                : "Active plan"}
+              {plan.headline}
             </p>
           </div>
         </header>
