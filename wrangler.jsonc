@@ -325,7 +325,7 @@
   // restore taken from the night's snapshot holds the data as it was BEFORE the
   // names were removed, not after.
   "triggers": {
-    "crons": ["0 9 * * *", "30 9 * * *"]
+    "crons": ["0 9 * * *", "30 9 * * *", "0 10 * * *"]
   },
 
   // The bucket the backup writes to.

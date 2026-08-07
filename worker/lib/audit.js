@@ -71,6 +71,12 @@ export const ACTIONS = {
   // it happens without anyone pressing a button labelled that — so it is the
   // one an "who has access to our data" question ends up asking about.
   RESTAURANT_CLAIMED: 'restaurant.claimed',
+  // Stripe disagreeing with this database about whether somebody is paying,
+  // and this database changing its mind. "Why did our service stop" and "we
+  // cancelled weeks ago and were still charged" are both answered from here,
+  // and neither is answerable from the row itself, which keeps only the
+  // current plan.
+  BILLING_RECONCILED: 'billing.reconciled',
   // Deliberately absent: auth.failed. Sign-in is still Base44's and moving to
   // Supabase, so there is no point in this codebase that sees a failed login.
   // Listing it would imply a coverage the code does not have — add it with the

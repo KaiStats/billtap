@@ -26,6 +26,7 @@ import { onRequestGet as health } from './routes/health.js';
 import { onRequestGet as errorLog } from './routes/error-log.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { scheduled as applyRetention } from './routes/retention.js';
+import { scheduled as reconcileBilling } from './routes/reconcile-billing.js';
 import { rateLimit } from './lib/rate-limit.js';
 import { assertEnvironmentIsolated } from './lib/environment.js';
 import { errorResponse, requestId } from './lib/errors.js';
@@ -43,6 +44,13 @@ const FN_PREFIX = '/api/fn/';
  * worker/index.test.mjs checks the two against each other.
  */
 export const RETENTION_CRON = '30 9 * * *';
+/**
+ * Its own invocation, like the other two, for the same subrequest-budget
+ * reason — this one makes an API call per subscribed restaurant. 10:00, after
+ * the backup and the retention pass, so a plan change is never the reason a
+ * night's snapshot differs from the row it was taken from.
+ */
+export const RECONCILE_CRON = '0 10 * * *';
 
 /** POST-only endpoints owned by this app. */
 const POST_ROUTES = {
@@ -251,6 +259,22 @@ export default {
      * and not wired up here should not silently do nothing, and the backup is
      * the safe thing to do twice.
      */
+    if (event?.cron === RECONCILE_CRON) {
+      ctx.waitUntil(
+        reconcileBilling(env)
+          .then((summary) => {
+            console.log(JSON.stringify({ at: new Date().toISOString(), ...summary }));
+          })
+          .catch((error) => {
+            console.error(JSON.stringify({
+              at: new Date().toISOString(), job: 'reconcile-billing', level: 'error', message: error.message,
+            }));
+            reportError(env, ctx, error, { id: requestId(), route: 'cron/reconcile-billing' });
+          }),
+      );
+      return;
+    }
+
     if (event?.cron === RETENTION_CRON) {
       ctx.waitUntil(
         applyRetention(env)

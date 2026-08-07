@@ -27,6 +27,7 @@ import { validateReceiptParse as computeParse } from '../../shared/receipt-math.
 import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
+import { isEntitled } from '../../shared/entitlement.js';
 
 /**
  * The audit hook when nobody supplied one.
@@ -929,7 +930,21 @@ const HANDLERS = {
         id: r.id,
         name: r.name,
         slug: r.slug,
-        google_review_url: r.google_review_url,
+        /**
+         * Withheld when the restaurant is not entitled — and withheld here
+         * rather than blocked in the client.
+         *
+         * RatingCapture already disables the Google button when this is null,
+         * because a restaurant that never set a review link has nothing to
+         * hand a guest. An unpaid one is the same situation from the guest's
+         * side, so it needs no new branch, no new copy, and nothing on the
+         * screen that reads as an error. The guest is still thanked, still
+         * asked for their rating, still able to split the bill: they are not
+         * the party who did not pay.
+         *
+         * The stored value is untouched. Paying turns the button back on.
+         */
+        google_review_url: isEntitled(r) ? r.google_review_url : null,
         // The third reading of this column, and the one RatingCapture decides
         // which screen a guest sees from. Through the same function as the
         // other two: the guest-facing branch and the server's routed_to_google

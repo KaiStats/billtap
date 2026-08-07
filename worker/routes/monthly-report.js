@@ -11,6 +11,8 @@
  * Bindings: REPORT_WEBHOOK_SECRET (required), plus the usual email bindings.
  */
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
+import { serviceRole } from '../lib/data.js';
+import { isEntitled } from '../../shared/entitlement.js';
 
 const MAX_BODY_BYTES = 262144; // ~250KB — comfortably more than a few hundred restaurants
 
@@ -51,12 +53,37 @@ export async function onRequestPost({ request, env }) {
   if (reports.length === 0) return json({ ok: true, sent: 0 });
 
   let sent = 0;
+  let skipped = 0;
   const failures = [];
 
   for (const r of reports) {
     if (!EMAIL_RE.test(String(r.to || ''))) {
       failures.push({ restaurant: r.restaurant_name || '(unnamed)', reason: 'bad_recipient' });
       continue;
+    }
+
+    /**
+     * The monthly report is one of the three things $149 buys, so an unpaid
+     * restaurant does not get one.
+     *
+     * Gated on `restaurant_id` when the caller supplies one. This endpoint is
+     * a mailer — it is handed finished reports rather than building them — and
+     * the generator that will call it does not exist yet. So the check is here
+     * waiting for it, and a payload without an id still sends: refusing those
+     * would break the only way this endpoint is currently exercised, to
+     * enforce a rule against a restaurant it cannot even identify.
+     *
+     * When the generator is written it should pass restaurant_id, and this
+     * becomes real. `skipped` in the response is how anyone finds out it did.
+     */
+    if (r.restaurant_id) {
+      // Not `rows`: the report's own table rows are declared below and shadowing
+      // them here reads like a bug even though the block scopes save it.
+      const owner = await serviceRole(env).entity('Restaurant').filter({ id: String(r.restaurant_id) });
+      if (owner[0] && !isEntitled(owner[0])) {
+        skipped += 1;
+        continue;
+      }
     }
 
     const label = r.label || body.window || 'Last month';
@@ -98,5 +125,6 @@ export async function onRequestPost({ request, env }) {
     else failures.push({ restaurant: r.restaurant_name || '(unnamed)', reason: result.reason });
   }
 
-  return json({ ok: true, sent, failed: failures.length, failures });
+  // `skipped` only when something was: an ordinary response is unchanged.
+  return json({ ok: true, sent, failed: failures.length, failures, ...(skipped ? { skipped } : {}) });
 }

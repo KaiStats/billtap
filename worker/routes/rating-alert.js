@@ -25,6 +25,7 @@ import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js'
 // api.base44.com/v0, which 404s — every lookup here had been failing silently,
 // because the caller fires this best-effort and never reads the response.
 import { serviceRole } from '../lib/data.js';
+import { entitlement } from '../../shared/entitlement.js';
 
 const MAX_BODY_BYTES = 512;
 
@@ -88,6 +89,36 @@ export async function onRequestPost({ request, env }) {
     }
     if (!restaurant.alert_email) {
       return json({ error: 'Restaurant has no alert contact' }, 400);
+    }
+
+    /**
+     * The paid half of this product, and the gate that makes it paid.
+     *
+     * Being paged about an unhappy guest before they reach Google is the thing
+     * a restaurant is buying at $149 a month. Sending it to a restaurant whose
+     * trial ended, or whose subscription was cancelled, is the reason nobody
+     * had to renew.
+     *
+     * A 200, not an error. This endpoint is called by the guest's browser
+     * moments after they rated, and a failure would surface on their screen as
+     * something they did wrong. The rating itself is already stored — the row
+     * is the restaurant's and is waiting for them when they pay.
+     *
+     * `alerted_at` is deliberately NOT stamped: this alert was never sent, and
+     * marking it sent would mean it can never be delivered afterwards. An
+     * operator who resubscribes should be able to see what they missed.
+     */
+    const access = entitlement(restaurant);
+    if (!access.entitled) {
+      console.log(JSON.stringify({
+        at: new Date().toISOString(),
+        job: 'rating-alert',
+        skipped: 'not_entitled',
+        restaurant_id: restaurant.id,
+        state: access.state,
+        reason: access.reason,
+      }));
+      return json({ ok: true, skipped: 'not_entitled' }, 200);
     }
 
     const stars = Math.round(rating.stars);

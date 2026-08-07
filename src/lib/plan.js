@@ -26,6 +26,7 @@
  *
  * `now` is a parameter so a test can pin it rather than move with the clock.
  */
+import { entitlement, isEntitled } from '../../shared/entitlement.js';
 
 /** Days until the trial ends, or null when there is no end date to count to. */
 export function trialDaysLeft(restaurant, now = Date.now()) {
@@ -44,6 +45,42 @@ export function planSummary(restaurant, now = Date.now()) {
     ? `Renews ${new Date(restaurant.current_period_end).toLocaleDateString()}. $149/month.`
     : "$149/month.";
 
+  /**
+   * Service has stopped, and saying so plainly comes before everything else.
+   *
+   * The same rule the Worker gates on — shared/entitlement.js — decides
+   * this, so the screen and the server cannot disagree about whether a
+   * restaurant is being served. An operator finding out from a guest that
+   * their Google button is dead is the failure this exists to prevent, and a
+   * dashboard that still reads "Free trial" while the alerts have stopped is
+   * the same lie in a quieter voice.
+   */
+  if (!isEntitled(restaurant, now)) {
+    const { state } = entitlement(restaurant, now);
+    if (state === 'cancelled') {
+      return {
+        tone: "#8b8b8b",
+        headline: "Subscription cancelled",
+        heading: "Subscription cancelled",
+        detail: "Review routing, alerts and your monthly report have stopped. Your guests can still split checks. Resubscribe any time and it all comes back — nothing was deleted.",
+      };
+    }
+    if (state === 'lapsed') {
+      return {
+        tone: "#e5484d",
+        headline: "Payment failed — service paused",
+        heading: "Payment failed — service paused",
+        detail: "We couldn't take payment, so review routing and alerts have stopped. Update your card, or call (702) 844-0938. Your ratings and guest list are untouched.",
+      };
+    }
+    return {
+      tone: "#e5484d",
+      headline: "Trial ended",
+      heading: "Trial ended",
+      detail: "Review routing, alerts and your monthly report have stopped. Subscribe for $149/month to turn them back on — everything you collected is still here.",
+    };
+  }
+
   switch (restaurant?.plan) {
     case "active":
       return {
@@ -59,13 +96,8 @@ export function planSummary(restaurant, now = Date.now()) {
         heading: "Payment failed",
         detail: "Stripe couldn't charge your card. Update it from the receipt email, or call (702) 844-0938 — your service is still on for now.",
       };
-    case "cancelled":
-      return {
-        tone: "#8b8b8b",
-        headline: "Subscription cancelled",
-        heading: "Subscription cancelled",
-        detail: "Your guests can still split checks, but reviews and alerts have stopped. Resubscribe any time.",
-      };
+    // No `cancelled` arm: entitlement() denies that state, so the block above
+    // answers it first and a second copy here could only ever drift.
     default:
       return {
         tone: "#f0b429",

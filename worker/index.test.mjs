@@ -504,3 +504,37 @@ test('the sitemap lists nothing robots.txt forbids', () => {
     }
   }
 });
+
+/**
+ * The reconcile firing, checked the same way the other two are.
+ *
+ * `plan` could only move forward before this job existed — verify-checkout
+ * wrote 'active' and nothing wrote anything else. A typo in either the cron
+ * string or the dispatch would put that back, silently, and the symptom would
+ * be cancelled restaurants keeping full service for as long as anyone looked.
+ */
+test('the reconcile schedule the handler looks for is one wrangler actually fires', async () => {
+  const { RECONCILE_CRON } = await import('../worker/index.js');
+  const { triggers } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  assert.ok(
+    triggers.crons.includes(RECONCILE_CRON),
+    `worker/index.js dispatches billing reconciliation on "${RECONCILE_CRON}", which is ` +
+    `not in triggers.crons (${JSON.stringify(triggers.crons)}) — the job would never run`,
+  );
+});
+
+test('the reconcile pass gets its own invocation, like the other two', async () => {
+  // Its own subrequest budget: this one makes an API call per subscribed
+  // restaurant, and sharing an invocation with the backup is how the second
+  // job overnight becomes the one that runs out.
+  const { RECONCILE_CRON, RETENTION_CRON, default: worker } = await import('../worker/index.js');
+  const { triggers } = readJsonc(join(ROOT, 'wrangler.jsonc'));
+  assert.equal(new Set(triggers.crons).size, triggers.crons.length, 'no duplicate schedules');
+  assert.notEqual(RECONCILE_CRON, RETENTION_CRON);
+
+  const ran = [];
+  const ctx = { waitUntil: (p) => { ran.push(p); return p; } };
+  await worker.scheduled({ cron: RECONCILE_CRON }, { ENVIRONMENT: 'development' }, ctx);
+  assert.equal(ran.length, 1, 'the reconcile firing starts exactly one job');
+  await Promise.allSettled(ran);
+});
