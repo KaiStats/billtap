@@ -112,7 +112,7 @@ try {
   browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
   });
-} catch (err) {
+} catch {
   server.close();
   await clearSnapshots();
   await writeFile(join(DIST, 'PRERENDER-SKIPPED'), 'browser launch failed\n').catch(() => {});
