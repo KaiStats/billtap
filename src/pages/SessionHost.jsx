@@ -260,8 +260,17 @@ function SessionHostComponent() {
         >
           {/* Payment Setup Modal */}
           {showPaymentSetup && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowPaymentSetup(false)}>
-              <Card className="w-full max-w-sm rounded-2xl" onClick={e => e.stopPropagation()}>
+            {/*
+              overflow-y-auto for the same reason the split-config modal below
+              has it, and more urgently: the handle field is autoFocus, so the
+              keyboard is up the moment this opens and the viewport is roughly a
+              third of the screen. Without a scroller a fixed overlay clips its
+              own content with no way to reach it — here that would be the
+              question "How should guests pay you?" disappearing off the top
+              while the host is being asked to answer it.
+            */}
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={() => setShowPaymentSetup(false)}>
+              <Card className="w-full max-w-sm rounded-2xl my-auto" onClick={e => e.stopPropagation()}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <DollarSign className="w-5 h-5" /> How should guests pay you?

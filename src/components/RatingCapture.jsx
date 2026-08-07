@@ -205,8 +205,32 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
   };
 
   const wrap = "fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4";
+  /**
+   * The height cap and the scroller are load-bearing, not tidiness.
+   *
+   * This panel is pinned to the bottom of a fixed overlay, and the feedback
+   * phase is the tallest thing it holds — heading, paragraph, a four-row
+   * textarea, an email field and two buttons. That phase is also the only one
+   * where the on-screen keyboard is up, which on a small phone leaves roughly
+   * the top third of the screen. Without a cap the panel simply grows past the
+   * top of the viewport, and `items-end` decides which end gets lost: the
+   * heading. Measured at 56px of "What went wrong?" off-screen on a 320x374
+   * viewport — the guest could see the box and the send button, but not the
+   * question, and a fixed overlay has nothing to scroll to bring it back.
+   *
+   * dvh rather than vh because it tracks the viewport as mobile browser chrome
+   * hides and shows; vh is frozen at the largest size and would under-cap by
+   * exactly the toolbar. A browser too old to know dvh ignores the declaration
+   * and gets today's behaviour rather than a worse one, so no vh fallback is
+   * carried — one would only add a second rule whose cascade order against the
+   * first is not guaranteed.
+   *
+   * overscroll-contain stops a scroll that reaches the end of this panel from
+   * carrying on into the receipt behind it.
+   */
   const sheet =
-    "w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl";
+    "w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl " +
+    "max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain";
   const sheetStyle = { background: "#111827", border: "1px solid rgba(255,255,255,.08)" };
 
   return (
@@ -349,7 +373,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
             <button
               onClick={goToGoogle}
               disabled={!restaurant.google_review_url}
-              className="mt-4 w-full h-13 py-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
+              className="mt-4 w-full py-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: "#f0b429", color: "#1a1200" }}
             >
               <ExternalLink className="w-4 h-4" />

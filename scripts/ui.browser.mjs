@@ -2066,3 +2066,112 @@ test('the Google button cannot be double-tapped into two tabs', async () => {
       'and the tap is counted once');
   } finally { await context.close(); }
 });
+
+// ── The rating sheet on an actual phone ─────────────────────────────────────
+//
+// The block above proves the screens do the right thing. These prove a guest
+// can physically use them, which is a separate claim and was untested: this
+// sheet is the only part of the product a diner meets while standing up, on
+// their own phone, in a dark restaurant, one-handed.
+//
+// The generic phone checks elsewhere in this file cannot cover it. They walk
+// routes; this is a fixed-position overlay that only exists after a payment,
+// so /claim renders it on no route the loop visits.
+//
+// What is deliberately NOT asserted here: tap-target sizes and input font-size.
+// Both are already guaranteed globally in src/index.css — a 48px min-height on
+// every button and a 16px floor on every input, the latter being what stops iOS
+// zooming the page when a guest taps the complaint box. Re-asserting them per
+// component would be testing the same CSS rule in n places and would go stale
+// as a claim about this file rather than about the rule.
+
+/** Widths worth caring about: SE-class, common Android, iPhone, Pro Max. */
+const PHONE_WIDTHS = [320, 360, 390, 430];
+
+test('every rating screen fits a phone, at every width a guest might hold', async () => {
+  const { context, page } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page);
+
+    // Each phase in turn, because they have different content and the sheet is
+    // sized by what is in it. Walking the low-rating path reaches all four.
+    const overflowNow = () => page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth);
+
+    const phases = [];
+    const check = async (name) => {
+      for (const width of PHONE_WIDTHS) {
+        await page.setViewportSize({ width, height: 844 });
+        const overflow = await overflowNow();
+        assert.ok(overflow <= 1, `${name} overflowed by ${overflow}px at ${width}px`);
+      }
+      phases.push(name);
+    };
+
+    await check('rate');
+    await page.getByRole('button', { name: '1 star', exact: true }).click();
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+    await check('feedback');
+    await page.getByRole('button', { name: /^Skip$/ }).click();
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+    await check('review');
+    await page.getByRole('button', { name: /Review us on Google/i }).click();
+    await page.getByText(/Thank you/i).waitFor({ timeout: 10000 });
+    await check('done');
+
+    // A guard on the guard: if the walk above silently stopped early, the
+    // assertions would have passed by never running.
+    assert.deepEqual(phases, ['rate', 'feedback', 'review', 'done']);
+  } finally { await context.close(); }
+});
+
+test('the complaint box stays reachable with the keyboard up', async () => {
+  // The sheet is `fixed inset-0` with the panel pinned to the bottom, and the
+  // feedback phase is the tallest one — heading, paragraph, a four-row
+  // textarea, an email field and two buttons. It is also the only phase where
+  // the on-screen keyboard is up, which on an iPhone leaves roughly the top
+  // third of the screen visible.
+  //
+  // If the panel is taller than what is left, `items-end` pushes the overflow
+  // off the TOP of the viewport, and a fixed overlay has nothing to scroll —
+  // so the send button is on screen but the question is not, and neither can
+  // be brought back. Asserted at a viewport height standing in for that, not
+  // at the full 844.
+  const { context, page } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 1 });
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+
+    // 844 minus a ~470px iOS keyboard on the smallest common width.
+    await page.setViewportSize({ width: 320, height: 374 });
+
+    const panel = page.locator('[role="dialog"]');
+    const box = await panel.boundingBox();
+    const reachable = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"]');
+      // Only a scroller INSIDE the overlay counts. Scrolling the document is
+      // not an escape and must not be accepted as one: the overlay is
+      // position:fixed, so the page moving underneath leaves it exactly where
+      // it was. An earlier version of this test allowed it, and passed against
+      // a panel measured at 221px above the top of the screen — the /claim page
+      // behind the sheet happens to be scrollable, so the check answered a
+      // question nobody had asked. Walk up only as far as the fixed element.
+      for (let n = el; n; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return true;
+        if (s.position === 'fixed') break;
+      }
+      return false;
+    });
+
+    assert.ok(
+      box.y >= -1 || reachable,
+      `the feedback panel starts ${Math.round(box.y)}px above the viewport and nothing scrolls — ` +
+      'a guest cannot see what they are being asked',
+    );
+  } finally { await context.close(); }
+});
