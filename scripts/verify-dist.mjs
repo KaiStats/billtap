@@ -21,7 +21,17 @@ import { fileURLToPath } from 'node:url';
 import { PRERENDERED } from '../worker/index.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(ROOT, 'dist');
+
+/**
+ * ./dist, unless a test points this somewhere scratch.
+ *
+ * The override exists so scripts/verify-dist.test.mjs can build the dist states this
+ * gate is supposed to reject — no snapshots, empty #root, a stale marker — without
+ * writing them into the repo's real dist/ and changing what the next build ships.
+ * Nothing in the deploy path sets it: wrangler's build.command, `npm run deploy` and
+ * the CI step all invoke this bare, so production always reads ./dist.
+ */
+const DIST = process.env.VERIFY_DIST_DIR || join(ROOT, 'dist');
 
 const exists = (p) => access(p).then(() => true, () => false);
 
@@ -86,7 +96,20 @@ const ASSETS_ONLY =
 const problems = [];
 let hint = null;
 
-if (!(await exists(join(DIST, 'index.html')))) {
+/**
+ * Skipping prerender is only acceptable if this process was told so too.
+ *
+ * The marker file alone must never be enough. prerender.mjs writes it, so treating
+ * it as sufficient means the checked process decides whether it gets checked — and
+ * that is precisely how the gate came to be disarmed: a change to prerender.mjs
+ * started writing the marker on any launch failure, and this file waved it through.
+ * Requiring the same explicit opt-in in both processes keeps the decision with the
+ * person configuring the build rather than with whatever the build happened to do.
+ */
+const PRERENDER_OPTIONAL = process.env.PRERENDER_OPTIONAL === '1';
+
+const built = await exists(join(DIST, 'index.html'));
+if (!built) {
   problems.push('dist/index.html is missing — nothing has been built');
   hint = 'npm run build:static';
 } else if (await exists(join(DIST, 'PRERENDER-FAILED'))) {
@@ -94,11 +117,22 @@ if (!(await exists(join(DIST, 'index.html')))) {
   problems.push(`prerendering failed and left dist/ incomplete:\n    ${why}`);
   hint = 'npx playwright install chromium && npm run build:static';
 } else if (await exists(join(DIST, 'PRERENDER-SKIPPED'))) {
-  // Prerendering was skipped (e.g., in a restricted environment where the browser
-  // cannot launch). This is fine — the site works with client-side rendering, and
-  // SEO is unaffected for interactive, single-page routes.
-} else {
-  for (const [route, file] of ASSETS_ONLY ? [] : Object.entries(PRERENDERED)) {
+  const why = (await readFile(join(DIST, 'PRERENDER-SKIPPED'), 'utf8')).trim();
+  if (PRERENDER_OPTIONAL) {
+    console.warn(
+      `  note: prerendering was skipped deliberately (PRERENDER_OPTIONAL=1).\n` +
+      `        ${Object.keys(PRERENDERED).length} routes will serve crawlers the SPA shell.\n` +
+      `        ${why}`,
+    );
+  } else {
+    problems.push(
+      `prerendering was skipped and left dist/ without snapshots:\n    ${why}\n` +
+      `    (a PRERENDER-SKIPPED marker is present but PRERENDER_OPTIONAL=1 is not set here)`,
+    );
+    hint = 'fix the browser launch, or set PRERENDER_OPTIONAL=1 on both the build and the deploy to ship without snapshots';
+  }
+} else if (!ASSETS_ONLY) {
+  for (const [route, file] of Object.entries(PRERENDERED)) {
     const path = join(DIST, file);
     if (!(await exists(path))) {
       problems.push(`${route} has no snapshot (expected dist${file})`);
@@ -115,18 +149,25 @@ if (!(await exists(join(DIST, 'index.html')))) {
     }
   }
   if (problems.length) hint = 'npm run build:static';
+}
 
-  // Every image the build asks for has to exist, or it 404s in production.
-  //
-  // This shipped once: src/lib/landing-assets.js declared a 2560px hero variant,
-  // the fetch script skipped it because the original was only 2048px wide and it
-  // will not upscale, and nothing connected the two. The plain src 404'd and a 2x
-  // display picked the missing 2560w srcset candidate, so the hero art simply
-  // vanished on Retina screens. The gradient fallback meant nothing looked
-  // broken — which is exactly why it went unnoticed.
-  //
-  // The manifests and the files on disk are produced by different scripts at
-  // different times, so the only reliable check is against the built output.
+// Every image the build asks for has to exist, or it 404s in production.
+//
+// Outside the chain above on purpose. It used to be the last statement of the final
+// `else`, so any earlier branch — prerender failed, prerender skipped — silently took
+// the asset check down with it. Those are the builds most likely to be unusual, and
+// this check is cheap and independent of prerendering; it only needs a dist/.
+//
+// The bug it exists for shipped once: src/lib/landing-assets.js declared a 2560px hero
+// variant, the fetch script skipped it because the original was only 2048px wide and it
+// will not upscale, and nothing connected the two. The plain src 404'd and a 2x display
+// picked the missing 2560w srcset candidate, so the hero art simply vanished on Retina
+// screens. The gradient fallback meant nothing looked broken — which is exactly why it
+// went unnoticed.
+//
+// The manifests and the files on disk are produced by different scripts at different
+// times, so the only reliable check is against the built output.
+if (built) {
   const missingImages = [];
   for (const ref of await referencedMedia()) {
     if (!(await exists(join(DIST, ref)))) missingImages.push(ref);
@@ -151,8 +192,15 @@ if (problems.length) {
   process.exit(1);
 }
 
+// Say what was actually checked. The unconditional "N prerendered routes present"
+// was printed even on the runs that checked none of them, which is the same species
+// of mistake as the gate itself: a success line that cannot report a partial pass
+// reads as a full one.
+const skipped = await exists(join(DIST, 'PRERENDER-SKIPPED'));
 console.log(
-  ASSETS_ONLY
-    ? 'dist/ verified — every referenced image and video exists (snapshots not checked)'
-    : `dist/ verified — ${Object.keys(PRERENDERED).length} prerendered routes present`,
+  skipped
+    ? 'dist/ verified — assets exist; prerender snapshots absent by choice (PRERENDER_OPTIONAL=1)'
+    : ASSETS_ONLY
+      ? 'dist/ verified — every referenced image and video exists (snapshots not checked)'
+      : `dist/ verified — ${Object.keys(PRERENDERED).length} prerendered routes present`,
 );

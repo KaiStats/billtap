@@ -13,7 +13,7 @@
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
     "build:static": "node scripts/check-env.mjs && vite build && node scripts/prerender.mjs",
-    "build:ci": "node scripts/check-env.mjs && vite build && (playwright install chromium || true) && node scripts/prerender.mjs",
+    "build:ci": "node scripts/check-env.mjs && vite build && playwright install chromium && node scripts/prerender.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "deploy": "npm run build:static && wrangler deploy",
     "versions": "wrangler versions list",
