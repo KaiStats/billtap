@@ -57,11 +57,12 @@ create table if not exists restaurants (
   google_review_url       text,
   alert_email             text,
   alert_phone             text,
-  -- Four: only a five-star guest is routed out to Google, everyone else is
-  -- handed to the operator first. See 0009 for why this moved from three, and
-  -- note that 0009 is what a database created before that migration will have
-  -- applied — this line is for a database created from scratch today.
-  rating_threshold        numeric not null default 4,
+  -- Three: at or below three stars the guest is asked what went wrong and the
+  -- operator is paged. It does not decide who is shown the Google link — every
+  -- guest is. See 0012 for why it briefly did, and note that 0009 and 0012 are
+  -- what a database created before them will have applied; this line is for a
+  -- database created from scratch today.
+  rating_threshold        numeric not null default 3,
   plan                    text not null default 'trial',
   trial_ends_at           bigint,
   stripe_customer_id      text,
@@ -129,6 +130,8 @@ create table if not exists guest_ratings (
   restaurant_id    text not null references restaurants(id) on delete cascade,
   session_id       text references sessions(id) on delete set null,
   stars            integer not null check (stars between 1 and 5),
+  -- Whether the guest actually tapped through to the listing, stamped by the
+  -- 'routed' action when they do. Not a permission flag: see 0012.
   routed_to_google boolean not null default false,
   comment          text,
   guest_email      text,

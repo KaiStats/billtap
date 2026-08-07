@@ -996,50 +996,61 @@ test('the restaurant is read off the stored session, not the request', async () 
   });
 });
 
-test('a happy guest is routed to Google and an unhappy one is not', async () => {
-  await withStub({
-    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1', rating_threshold: 3 }] },
-  }, async ({ env, store }) => {
-    await rate(env, { action: 'rate', session_id: 's1', stars: 5 });
-    assert.equal(store.GuestRating[0].routed_to_google, true);
-  });
-  await withStub({
-    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1', rating_threshold: 3 }] },
-  }, async ({ env, store }) => {
-    await rate(env, { action: 'rate', session_id: 's1', stars: 2 });
-    assert.equal(store.GuestRating[0].routed_to_google, false);
-  });
-});
-
-test("a rating exactly on the threshold is not routed out — it is not a rave", async () => {
-  await withStub({
-    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1', rating_threshold: 4 }] },
-  }, async ({ env, store }) => {
-    await rate(env, { action: 'rate', session_id: 's1', stars: 4 });
-    assert.equal(store.GuestRating[0].routed_to_google, false);
-  });
-});
-
-test('a restaurant with no threshold set gets the default of four', async () => {
-  // Both halves, because one alone pins nothing. Asserting only that five is
-  // routed passes at a default of three and at four; asserting only that four
-  // is held back passes at four and at five. The pair says which number it is.
+test('the star count never decides routed_to_google — no rating is born routed', async () => {
+  // The regression guard on review gating, from the server's side.
   //
-  // Four is the number: at three, every four-star guest went straight to
-  // Google — publishing a mediocre rating against the average the restaurant
-  // pays to raise, and spending the one moment they would have said what was
-  // almost right.
+  // This column used to be written here as `stars > rating_threshold`, and
+  // RatingCapture used the same comparison to decide whether the guest was
+  // shown the Google button at all. Any value here derived from `stars` is that
+  // arrangement coming back: it means the app formed an opinion about whether
+  // this guest should be allowed to review the place, at a moment when the only
+  // thing it knew was that they were unhappy.
+  //
+  // Five and one, across a low threshold and a high one, because a single case
+  // would pass against a coincidence. All four must be false.
+  for (const threshold of [1, 4]) {
+    for (const stars of [1, 5]) {
+      await withStub({
+        entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1', rating_threshold: threshold }] },
+      }, async ({ env, store }) => {
+        await rate(env, { action: 'rate', session_id: 's1', stars });
+        assert.equal(
+          store.GuestRating[0].routed_to_google, false,
+          `${stars} stars at a threshold of ${threshold}`,
+        );
+      });
+    }
+  }
+});
+
+test('routed_to_google is stamped by the guest actually tapping through', async () => {
   await withStub({
     entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1' }] },
   }, async ({ env, store }) => {
-    await rate(env, { action: 'rate', session_id: 's1', stars: 4 });
-    assert.equal(store.GuestRating[0].routed_to_google, false, 'a four is a conversation, not a review');
-  });
-  await withStub({
-    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1' }] },
-  }, async ({ env, store }) => {
-    await rate(env, { action: 'rate', session_id: 's1', stars: 5 });
+    const created = await (await rate(env, { action: 'rate', session_id: 's1', stars: 2 })).json();
+    assert.equal(store.GuestRating[0].routed_to_google, false, 'not until they tap');
+
+    // A two-star guest reaching Google is the whole point: they are shown the
+    // same link as everyone else, and if they take it that is a fact worth
+    // recording rather than one to prevent.
+    const res = await rate(env, { action: 'routed', rating_id: created.rating_id });
+    assert.equal(res.status, 200);
     assert.equal(store.GuestRating[0].routed_to_google, true);
+  });
+});
+
+test('reporting a tap twice is a no-op, and an unknown rating is a 404', async () => {
+  await withStub({
+    entities: { Session: [ratedSession()], Restaurant: [{ id: 'r1' }] },
+  }, async ({ env, store }) => {
+    const created = await (await rate(env, { action: 'rate', session_id: 's1', stars: 5 })).json();
+    await rate(env, { action: 'routed', rating_id: created.rating_id });
+    await rate(env, { action: 'routed', rating_id: created.rating_id });
+    assert.equal(store.GuestRating[0].routed_to_google, true);
+    assert.equal(store.GuestRating.length, 1);
+
+    assert.equal((await rate(env, { action: 'routed', rating_id: 'nope' })).status, 404);
+    assert.equal((await rate(env, { action: 'routed' })).status, 400);
   });
 });
 

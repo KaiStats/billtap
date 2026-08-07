@@ -19,9 +19,13 @@ const PILLARS = [
     tone: "#e5484d",
     img: "pillar-alert",
     alt: "A restaurant owner on the dining room floor checking an alert on her phone mid-service.",
-    kicker: "Before it goes public",
-    title: "Stop 1-star reviews before they happen",
-    desc: "Real-time alert the moment a guest rates you low at the table — fix it before they go public.",
+    // Was "Stop 1-star reviews before they happen", which described a product
+    // that withheld the Google link from unhappy guests. It no longer does, and
+    // the honest version of this line is the better one anyway: an operator can
+    // print it, say it out loud, and put it in a marketplace application.
+    kicker: "While they're still at the table",
+    title: "Hear it before they walk out",
+    desc: "Real-time alert the moment a guest rates you low — while a manager can still walk over and fix it in person.",
   },
   {
     icon: Star,
@@ -29,8 +33,8 @@ const PILLARS = [
     img: "pillar-reviews",
     alt: "A guest's hand tapping a star rating on their phone over a table set with dessert and wine.",
     kicker: "One tap, no asking",
-    title: "Generate more 5-star Google reviews",
-    desc: "Happy guests get a one-tap route to your Google listing the second they finish paying. No staff asking.",
+    title: "Generate more Google reviews",
+    desc: "Every guest gets a one-tap route to your listing the second they finish paying. No staff asking.",
   },
   {
     icon: Mail,
@@ -72,7 +76,7 @@ const WITH = ["More 5-star reviews", "Build your customer list", "Instant bad-ex
 const STEPS = [
   { n: "01", img: "step-scan", title: "Guests scan a QR on the table", desc: "No app needed.", alt: "Friends at a table, one leaning in to scan the QR table tent." },
   { n: "02", img: "step-split", title: "They split the check", desc: "Everyone pays their share in about 30 seconds.", alt: "Four friends laughing as they settle the bill on their phones." },
-  { n: "03", img: "step-rate", title: "They rate you", desc: "Good goes to Google. Bad pings you instantly.", alt: "A satisfied guest smiling as she rates the meal on her phone." },
+  { n: "03", img: "step-rate", title: "They rate you", desc: "Everyone gets your Google link. A low rating pings you instantly.", alt: "A satisfied guest smiling as she rates the meal on her phone." },
 ];
 
 /**
@@ -200,7 +204,7 @@ export default function Restaurants() {
       <Seo
         path="/restaurants"
         title="More Google Reviews for Your Restaurant | BillTap"
-        description="Guests split the check from a QR code on the table, then rate you. Good ratings go to Google, bad ones alert you instantly. 14-day free trial, $149/month."
+        description="Guests split the check from a QR code on the table, then rate you. Every guest gets a one-tap route to your Google listing, and a low rating alerts you while they're still there. 14-day free trial, $149/month."
         image="https://billtap.app/img/og-restaurants.png"
       />
       <style>{`

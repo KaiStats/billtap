@@ -8,8 +8,11 @@ gets the reviews and the guest list.
 1. Guest scans the table tent → `/r/<slug>` (`src/pages/TableEntry.jsx`)
 2. They split and pay through the existing flow
 3. On "I've paid", `RatingCapture` opens (`src/components/RatingCapture.jsx`)
-4. **Above** the restaurant's threshold → one-tap handoff to its Google review URL
-5. **At or below** → private feedback, and `/api/rating-alert` pages the operator
+4. **At or below** the restaurant's threshold → "What went wrong?" first, and
+   `/api/rating-alert` pages the operator while the guest is still on site
+5. **Every** guest then reaches the same one-tap handoff to the Google review
+   URL — including the one who just typed a complaint, and the one who skipped
+   the question
 6. Either way the email lands in `GuestContact`
 7. Operator watches it all at `/restaurant-dashboard`
 8. First of the month, `monthlyRestaurantReport` aggregates and Cloudflare mails it
@@ -19,6 +22,34 @@ derived from the authenticated host's own `Restaurant` row. It is never accepted
 from the client — otherwise anyone could attribute ratings, and the guest emails
 attached to them, to a restaurant they don't own.
 
+## The threshold does not hide the link
+
+`rating_threshold` decides one thing: at or below it, the guest is asked what
+went wrong and the operator is paged. It does not decide who is shown the Google
+review link. Everyone is.
+
+It used to do both. `submitGuestRating` stored `routed_to_google = stars >
+rating_threshold` and `RatingCapture` used the same comparison to decide whether
+the Google button rendered at all, so raising the threshold raised the bar a
+guest had to clear before the app would let them review the place in public.
+That is review gating, and it fails on three counts:
+
+- **It is a deceptive practice.** The FTC's rule on consumer reviews covers
+  suppressing solicited negative reviews. This solicited every guest and showed
+  the link to some of them.
+- **Google deletes what it catches.** Its review policy names the practice, and
+  enforcement does not carefully spare the legitimate reviews collected the same
+  way. A restaurant was paying for reviews that could vanish for how they were
+  gathered.
+- **It cost volume, which is what actually ranks.** Review count and recency
+  outweigh the last tenth of a star in local search. At a threshold of four,
+  every four-star guest — a happy guest, still at the table — was never asked.
+
+The alert is untouched and is still the paid half of the product. Being asked
+what went wrong before you are handed the comment card is what a good manager
+does; taking the comment card away is not. If you are about to reintroduce a
+branch where some guests do not reach `google_review_url`, that is this, again.
+
 ## Files
 
 | File | Role |
@@ -26,9 +57,9 @@ attached to them, to a restaurant they don't own.
 | `src/pages/Restaurants.jsx` | Marketing page + lead capture |
 | `src/pages/TableEntry.jsx` | `/r/:slug` — what the table tent points at |
 | `src/pages/RestaurantDashboard.jsx` | Stats, low-rating queue, guest list, settings, table QR |
-| `src/components/RatingCapture.jsx` | Post-payment rating, routing, email capture |
+| `src/components/RatingCapture.jsx` | Post-payment rating, feedback, Google handoff, email capture |
 | `base44/entities/Restaurant.jsonc` | Restaurant config |
-| `base44/entities/GuestRating.jsonc` | Every rating, and whether it was routed to Google |
+| `base44/entities/GuestRating.jsonc` | Every rating, and whether the guest tapped through to Google |
 | `base44/entities/GuestContact.jsonc` | The guest list |
 | `base44/entities/RestaurantLead.jsonc` | Inbound sales leads |
 | `base44/functions/monthlyRestaurantReport/` | Scheduled aggregation, hands off to Cloudflare |

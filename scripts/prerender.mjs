@@ -37,6 +37,7 @@ import { PRERENDERED } from '../worker/index.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 const MARKER = join(DIST, 'PRERENDER-FAILED');
+const MARKER_SKIPPED = join(DIST, 'PRERENDER-SKIPPED');
 const PORT = 4173;
 
 // Routes and output filenames both come from the Worker's table, so the files
@@ -84,8 +85,12 @@ if (!(await stat(join(DIST, 'index.html')).catch(() => null))) {
   await fail('dist/index.html is missing — vite build did not run', 'npm run build:static');
 }
 
-// A previous failure must not linger and block a now-good build.
+// A previous run's verdict must not linger. FAILED lingering would block a now-good
+// build; SKIPPED lingering is worse in the other direction — Cloudflare restores a
+// build output cache between runs, so a marker written once would keep waving the
+// gate through on every later build, including the ones that could have prerendered.
 await unlink(MARKER).catch(() => {});
+await unlink(MARKER_SKIPPED).catch(() => {});
 
 // Minimal static server with the same SPA fallback the Worker provides.
 const server = createServer(async (req, res) => {
@@ -111,13 +116,52 @@ let browser;
 try {
   browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
+    // Chromium's own sandbox wants privileges a locked-down build image does not
+    // hand out, and a build container is already the isolation the sandbox would
+    // be providing. Harmless where it is not needed.
+    args: ['--no-sandbox'],
   });
 } catch (err) {
   server.close();
-  const missing = /Executable doesn't exist|browserType.launch/.test(err.message);
+  const why = err.message.split('\n').slice(0, 6).join('\n    ');
+
+  // Skipping is opt-in, and the opt-in has to be set by a human who meant it.
+  //
+  // The first attempt at this made skipping the default: any launch failure wrote a
+  // marker, exited 0, and verify-dist.mjs waved it through. That put back exactly the
+  // hole this file's header describes — a valid-looking dist/ with no snapshots,
+  // deployed silently, symptom limited to the wrong <title> — and it did it on the
+  // path that builds production. A gate that disarms itself on the failure it guards
+  // is not a gate.
+  //
+  // PRERENDER_OPTIONAL=1 exists for an environment that genuinely cannot run a
+  // browser and has accepted losing crawler HTML on eight marketing routes. It must
+  // also be set in the process that runs verify-dist.mjs, so the marker alone cannot
+  // reopen the gate for whoever comes next.
+  if (process.env.PRERENDER_OPTIONAL === '1') {
+    await clearSnapshots();
+    await writeFile(MARKER_SKIPPED, `${why}\n`).catch(() => {});
+    console.warn(`\n  Prerendering skipped — PRERENDER_OPTIONAL=1 and the browser would not start.`);
+    console.warn(`  ${why}`);
+    console.warn(`  The eight prerendered routes will serve crawlers the SPA shell.\n`);
+    process.exit(0);
+  }
+
+  // Otherwise: print what actually happened, and stop.
+  //
+  // This used to match err.message against /Executable doesn't exist|browserType.launch/
+  // and report "Playwright has no browser installed" for anything that matched — which
+  // is every launch failure, since the second alternative is in the prefix of all of
+  // them. So a build whose browser had downloaded successfully was told to install the
+  // browser, four times running, while the message naming the real cause was discarded
+  // unread. A diagnostic that can only say one thing is worse than none: it sends the
+  // next person somewhere wrong, with confidence.
   await fail(
-    missing ? 'Playwright has no browser installed' : err.message.split('\n')[0],
-    missing ? 'npx playwright install chromium' : null,
+    `chromium.launch() failed:\n    ${why}`,
+    'read the message above — it names the cause. A missing binary needs ' +
+    '`npx playwright install chromium`; a missing shared library needs the system ' +
+    'packages (`--with-deps`, or the distro equivalent where that cannot escalate). ' +
+    'Set PRERENDER_OPTIONAL=1 to ship without snapshots deliberately.',
   );
 }
 

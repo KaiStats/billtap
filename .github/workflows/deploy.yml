@@ -1,0 +1,74 @@
+name: Deploy
+
+# Runs the real build — with prerendering — somewhere that can actually finish
+# it, then deploys with wrangler.
+#
+# Why this exists: Cloudflare's own Workers Build sandbox can download
+# Chromium's binary but has no apt/root access to install the shared libraries
+# (libatk, etc.) it needs to launch. `playwright install --with-deps` fixes
+# that, but only works on a full Linux box — which ci.yml already proves this
+# runner is. So the build happens here, and the only thing Cloudflare's build
+# step needs to do afterward is... nothing; this workflow ships the artifact
+# itself via `wrangler deploy`.
+#
+# Manually triggered, not on every push to main. Deploys are deliberately a
+# person's decision, not automatic — see the note at the bottom of ci.yml.
+# Run it from the Actions tab → Deploy → Run workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build (with real prerendering) and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Cache Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # --with-deps is the whole reason this workflow exists: it apt-installs
+      # the shared libraries Cloudflare's own build sandbox has no permission
+      # to install, so prerendering can actually launch a browser here.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # build:static: check-env, vite build, then prerender — no
+      # PRERENDER_OPTIONAL fallback needed, because the browser here can
+      # actually launch.
+      - name: Build
+        run: npm run build:static
+        env:
+          VITE_ENVIRONMENT: production
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+
+      - name: Deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

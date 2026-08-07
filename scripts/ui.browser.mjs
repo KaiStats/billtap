@@ -108,7 +108,7 @@ after(async () => {
  * A phone-sized page with every network call stubbed and console errors
  * collected, so a test can assert the screen came up clean.
  */
-async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0, scanDelayMs = 0, directScan = true } = {}) {
+async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = true, uploadDelayMs = 0, scanDelayMs = 0, directScan = true, restaurant = null, failRating = false, failAlert = false } = {}) {
   const context = await browser.newContext({
     viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
   });
@@ -124,6 +124,11 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   const uploadCalls = [];
   const scanCalls = [];
   const statusCalls = [];
+  // The rating screen's three server calls, kept apart because the assertions
+  // are about which of them happened and in what order: the star write, the
+  // page to the manager, and the stamp that says the guest reached Google.
+  const ratingCalls = [];
+  const alertCalls = [];
   // Every poll of any kind. The host screen reads through getSessionAsHost and
   // a diner through getSplitStatus, so a test that counts only one of them is
   // counting nothing on half the screens.
@@ -156,6 +161,28 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+
+    // ── The rating screen ────────────────────────────────────────────────
+    // Before these three existed, getPublicRestaurant fell through to the
+    // catch-all `{}` below, RatingCapture read `restaurant` as null and
+    // rendered nothing at all. Every guest-facing assertion about it would
+    // have passed against a blank screen.
+    if (url.includes('/fn/getPublicRestaurant')) return send({ restaurant });
+    if (url.includes('/fn/submitGuestRating')) {
+      const payload = route.request().postDataJSON();
+      ratingCalls.push(payload);
+      if (failRating) {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"Service error"}' });
+      }
+      return send(payload.action === 'rate' ? { rating_id: 'rat_test_1' } : { ok: true });
+    }
+    if (url.includes('/api/rating-alert')) {
+      alertCalls.push(route.request().postDataJSON());
+      if (failAlert) {
+        return route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"Alert could not be delivered"}' });
+      }
+      return send({ ok: true, notified: true });
+    }
 
     if (url.includes('/api/scan-receipt')) {
       scanCalls.push(Date.now());
@@ -192,6 +219,21 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
         return route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"Only the host can change this split"}' });
       }
       hostState = { ...hostState, ...(payload.host_payment_info ? { host_payment_info: payload.host_payment_info } : {}), ...(payload.status ? { status: payload.status } : {}) };
+      return send({ session: hostState });
+    }
+    // The diner saying they have sent it. Answers with the session, because the
+    // caller does `setSession(res.data.session)` — falling through to the
+    // catch-all `{}` set the whole split to undefined, which unmounts the
+    // rating sheet the same tap just asked for.
+    if (url.includes('/fn/markMePaid')) {
+      const payload = route.request().postDataJSON();
+      hostState = {
+        ...hostState,
+        participants: hostState.participants.map((p) =>
+          p.participant_id === payload.participant_id
+            ? { ...p, payment_status: 'pending_verification' }
+            : p),
+      };
       return send({ session: hostState });
     }
     if (url.includes('/fn/getSplitStatus')) {
@@ -235,6 +277,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
 
   return {
     context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls, scanCalls,
+    ratingCalls, alertCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -259,6 +302,58 @@ const HOST_SESSION = {
     { participant_id: 'p_1700000000001_bbb', name: 'Bob', amount_owed: 40, payment_status: 'unpaid' },
   ],
 };
+
+/** A restaurant with a review link set and the default alert threshold. */
+const RESTAURANT = {
+  id: 'r_test_1',
+  name: 'Mariposa',
+  slug: 'mariposa',
+  google_review_url: 'https://g.page/r/mariposa/review',
+  rating_threshold: 3,
+};
+
+/** The same split, but eaten at a restaurant — which is what opens the rating. */
+const RESTAURANT_SESSION = { ...HOST_SESSION, restaurant_id: 'r_test_1' };
+
+/**
+ * Pays as Bob and taps `stars`, landing on whatever screen that earns.
+ *
+ * Bob rather than Alice because Alice is already pending_verification, and the
+ * pay button a settled diner sees is disabled. The session deliberately carries
+ * no host_payment_info, so the button calls markMePaid directly instead of
+ * handing off to a payment app — which is the path that opens the sheet.
+ *
+ * window.open is replaced before any tap, so a test can ask where the guest was
+ * sent without Chromium actually opening Google.
+ */
+async function toRating(page, { stars } = {}) {
+  await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    localStorage.setItem('billtap_participant_id', 'p_1700000000001_bbb');
+    localStorage.setItem('billtap_participant_name', 'Bob');
+  });
+  await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+
+  // The install prompt is fixed-position and lands over the pay bar, so a tap
+  // aimed at the button hits the banner instead. Not matched on an amount:
+  // Bob's is his proportional share of tax, not his amount_owed, and pinning
+  // the assertion to $44.29 would make this helper break on a tax change.
+  for (const dismiss of await page.getByRole('button', { name: /Dismiss/i }).all()) {
+    await dismiss.click({ timeout: 5000 }).catch(() => {});
+  }
+  await page.getByRole('button', { name: /^Pay \$/ }).click();
+  await page.getByText(/How was Mariposa\?/i).waitFor({ timeout: 15000 });
+  await page.evaluate(() => {
+    window.__opened = [];
+    window.open = (u) => { window.__opened.push(u); return null; };
+  });
+  if (stars) {
+    await page.getByRole('button', { name: `${stars} star${stars > 1 ? 's' : ''}`, exact: true }).click();
+  }
+}
+
+/** Where the guest was actually sent, if anywhere. */
+const openedUrls = (page) => page.evaluate(() => window.__opened || []);
 
 /** Opens the receipt screen with (or without) the host secret on the device. */
 async function openReceipt(page, { withHostKey = true } = {}) {
@@ -1740,4 +1835,234 @@ test('the sign-in screen does download it, because that is what it is for', asyn
   }
 
   assert.ok(found, 'the sign-in screen must load the auth client');
+});
+
+// ── The rating screen, and the gate that used to live in it ─────────────────
+//
+// This block is the regression guard on review gating. RatingCapture once
+// forked on the star count and showed the Google button only to guests above
+// the restaurant's threshold, which is a practice the FTC's review rule covers
+// and Google's policy removes reviews for. The fork still exists — a low rating
+// is asked what went wrong and pages the manager — but it now rejoins, and
+// every guest ends on the same button. None of that had browser coverage.
+
+test('a one-star guest is heard first and still reaches the Google button', async () => {
+  const { context, page, errors } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 1 });
+
+    // Heard first: the complaint box, not the review link.
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByRole('button', { name: /Review us on Google/i }).count(), 0,
+      'the review link must not be the first thing an unhappy guest is offered');
+
+    await page.locator('textarea').fill('Waited forty minutes for the mains.');
+    await page.getByRole('button', { name: /Send to the manager/i }).click();
+
+    // And then reaches it anyway. This is the whole point of the change.
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+    assert.ok(await google.isEnabled(), 'a one-star guest gets the same working button as everyone else');
+
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('skipping the complaint box does not cost the guest the link either', async () => {
+  // The gate's likeliest hiding place. A guest who does not feel like typing
+  // must not be quietly routed out of the flow instead — that is the same
+  // suppression wearing a different button.
+  const { context, page } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 2 });
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: /^Skip$/ }).click();
+
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+  } finally { await context.close(); }
+});
+
+test('the manager is still paged, which is the half that is paid for', async () => {
+  const { context, page, ratingCalls, alertCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 2 });
+    await page.locator('textarea').fill('Cold soup.');
+    await page.getByRole('button', { name: /Send to the manager/i }).click();
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+
+    assert.equal(alertCalls.length, 1, 'the low rating paged the operator');
+    assert.equal(alertCalls[0].rating_id, 'rat_test_1', 'and named the rating, not the restaurant');
+
+    const comment = ratingCalls.find((c) => c.action === 'contact');
+    assert.ok(comment, 'the comment reached the server');
+    assert.equal(comment.comment, 'Cold soup.',
+      'stored before the alert fires, or the operator opens an email emptier than the record');
+  } finally { await context.close(); }
+});
+
+test('a five-star guest is not made to answer "what went wrong" first', async () => {
+  // The other half of the fork. Without this, a build that simply showed the
+  // complaint box to everybody would pass every test above.
+  const { context, page } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 5 });
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByText(/What went wrong\?/i).count(), 0,
+      'a rave does not get interrogated on the way out');
+  } finally { await context.close(); }
+});
+
+test('the tap through to Google is recorded as a tap, not as permission', async () => {
+  // routed_to_google used to be written from the star count before the guest
+  // had done anything — a record of who the app was willing to let leave. It is
+  // now stamped by this tap, so the dashboard number means what its label says.
+  const { context, page, ratingCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 5 });
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+
+    assert.equal(ratingCalls.filter((c) => c.action === 'routed').length, 0, 'nothing stamped before the tap');
+    await google.click();
+
+    await page.getByText(/Thank you/i).waitFor({ timeout: 10000 });
+    const routed = ratingCalls.filter((c) => c.action === 'routed');
+    assert.equal(routed.length, 1, 'the tap was recorded');
+    assert.equal(routed[0].rating_id, 'rat_test_1');
+
+    assert.deepEqual(await openedUrls(page), [RESTAURANT.google_review_url],
+      'and the guest actually went to the listing');
+  } finally { await context.close(); }
+});
+
+test('a low rating that taps through is recorded too — it is not a contradiction', async () => {
+  // The case the old model could not represent. Under `stars > threshold` a
+  // two-star guest reaching Google was impossible by construction; it is now
+  // simply a thing that can happen, and the row has to be able to say so.
+  const { context, page, ratingCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 2 });
+    await page.getByRole('button', { name: /^Skip$/ }).click();
+    await page.getByRole('button', { name: /Review us on Google/i }).click();
+
+    await page.getByText(/Thank you/i).waitFor({ timeout: 10000 });
+    assert.equal(ratingCalls.filter((c) => c.action === 'routed').length, 1);
+    assert.deepEqual(await openedUrls(page), [RESTAURANT.google_review_url]);
+  } finally { await context.close(); }
+});
+
+test('the complaint box promises speed, not secrecy', async () => {
+  // The old copy said "this goes straight to the manager — not online", which
+  // was only keepable by withholding the link on the next screen. Saying it
+  // now would be a promise the very next tap breaks.
+  const { context, page } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 1 });
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+
+    const sheet = await page.getByRole('dialog').innerText();
+    assert.doesNotMatch(sheet, /not online|stays private|instead of a review|won't be posted/i,
+      `the complaint screen must not promise the rating stays off the internet:\n${sheet}`);
+  } finally { await context.close(); }
+});
+
+test('a restaurant with no review link set disables the button rather than lying', async () => {
+  // The unpaid and the not-yet-configured case, which getPublicRestaurant
+  // signals by nulling the URL. The guest must still be thanked — they are not
+  // the party who failed to set it up.
+  const { context, page, errors } = await phone({
+    hostSession: RESTAURANT_SESSION,
+    hostAllowed: false,
+    restaurant: { ...RESTAURANT, google_review_url: null },
+  });
+  try {
+    await toRating(page, { stars: 5 });
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+    assert.equal(await google.isEnabled(), false, 'nowhere to send them, so the button says so');
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+// ── The failure paths, where a gate could hide by accident ─────────────────
+//
+// The screens above are the deliberate behaviour. These are the ones nobody
+// designs: an outage must not strand a guest on the complaint screen, because
+// a guest who is asked what went wrong and then never offered the link is
+// exactly the thing this branch removed — whether that happened on purpose or
+// because a write failed.
+
+test('a rating that never saved still gets the guest to the link', async () => {
+  // pickStars swallows this by design — "never block the guest on our
+  // bookkeeping" — but it is also the call that mints ratingId, which the
+  // alert and the routed stamp both need. Failing softly has to mean the guest
+  // still moves, not that they quietly stop.
+  const { context, page, errors } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT, failRating: true,
+  });
+  try {
+    await toRating(page, { stars: 1 });
+    await page.getByText(/What went wrong\?/i).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: /^Skip$/ }).click();
+
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+    assert.ok(await google.isEnabled(), 'an outage must not read as a withheld link');
+
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('an alert that could not be delivered does not strand the guest either', async () => {
+  // The operator's page is the paid half and this is the moment it fails. The
+  // guest cannot be left holding a spinner over it: their rating is already
+  // stored, and the send button is not theirs to retry.
+  const { context, page, alertCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT, failAlert: true,
+  });
+  try {
+    await toRating(page, { stars: 2 });
+    await page.locator('textarea').fill('Nobody came back to the table.');
+    await page.getByRole('button', { name: /Send to the manager/i }).click();
+
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+    assert.equal(alertCalls.length, 1, 'it was attempted');
+  } finally { await context.close(); }
+});
+
+test('the Google button cannot be double-tapped into two tabs', async () => {
+  // goToGoogle is deliberately synchronous — awaiting before window.open loses
+  // the user-gesture and Safari eats the popup — which also means nothing
+  // awaits between the tap and the next tap being possible.
+  const { context, page, ratingCalls } = await phone({
+    hostSession: RESTAURANT_SESSION, hostAllowed: false, restaurant: RESTAURANT,
+  });
+  try {
+    await toRating(page, { stars: 5 });
+    const google = page.getByRole('button', { name: /Review us on Google/i });
+    await google.waitFor({ timeout: 10000 });
+
+    await google.dispatchEvent('click');
+    await google.dispatchEvent('click').catch(() => {});
+
+    await page.getByText(/Thank you/i).waitFor({ timeout: 10000 });
+    assert.deepEqual(await openedUrls(page), [RESTAURANT.google_review_url],
+      'a guest gets one tab, not one per tap');
+    assert.equal(ratingCalls.filter((c) => c.action === 'routed').length, 1,
+      'and the tap is counted once');
+  } finally { await context.close(); }
 });

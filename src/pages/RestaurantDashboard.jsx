@@ -30,10 +30,10 @@ export default function RestaurantDashboard() {
   const [contacts, setContacts] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
-  // rating_threshold four, matching DEFAULT_RATING_THRESHOLD in
-  // worker/routes/functions.js. A form that opened on three would quietly save
-  // three the first time an operator pressed Save for any other reason.
-  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 4 });
+  // rating_threshold three, matching DEFAULT_RATING_THRESHOLD in
+  // worker/routes/functions.js. A form that opens on the wrong number quietly
+  // saves it the first time an operator presses Save for any other reason.
+  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3 });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
@@ -61,7 +61,7 @@ export default function RestaurantDashboard() {
           google_review_url: r.google_review_url || "",
           alert_email: r.alert_email || "",
           alert_phone: r.alert_phone || "",
-          rating_threshold: r.rating_threshold ?? 4,
+          rating_threshold: r.rating_threshold ?? 3,
         });
       }
       setRatings(res?.data?.ratings || []);
@@ -141,13 +141,26 @@ export default function RestaurantDashboard() {
     }
   };
 
+  /**
+   * The two counts are no longer complements of each other, and should not be.
+   *
+   * `routed_to_google` used to be written at rating time as `stars > threshold`
+   * — a record of which guests the app was willing to let review the place, so
+   * every rating fell into exactly one of these buckets. It now records the
+   * guest's own tap, which most happy guests will not make, and the low queue
+   * comes off the alert threshold instead. A rating can sit in both (a two-star
+   * guest who posted anyway) or in neither, and both of those are real.
+   */
   const stats = useMemo(() => {
     const n = ratings.length;
     const avg = n ? ratings.reduce((s, r) => s + (r.stars || 0), 0) / n : 0;
     const routed = ratings.filter((r) => r.routed_to_google).length;
-    const low = ratings.filter((r) => !r.routed_to_google);
+    // The same number the guest's screen and the alert both read. Three matches
+    // DEFAULT_RATING_THRESHOLD in worker/routes/functions.js.
+    const alertAt = restaurant?.rating_threshold ?? 3;
+    const low = ratings.filter((r) => (r.stars || 0) <= alertAt);
     return { n, avg, routed, low };
-  }, [ratings]);
+  }, [ratings, restaurant]);
 
   // One source for the header line and the billing card, so the two cannot say
   // different things about the same row — which is what they did. See
@@ -322,8 +335,8 @@ export default function RestaurantDashboard() {
           <Stat label="Average rating" accent={GOLD}
             value={stats.n ? stats.avg.toFixed(1) : "—"}
             hint={`${stats.n} rating${stats.n === 1 ? "" : "s"}`} />
-          <Stat label="Sent to Google" accent="#00c896" value={stats.routed} hint="Happy guests routed" />
-          <Stat label="Caught early" accent="#ff8080" value={stats.low.length} hint="Never went public" />
+          <Stat label="Went to Google" accent="#00c896" value={stats.routed} hint="Tapped through to your listing" />
+          <Stat label="Paged you" accent="#ff8080" value={stats.low.length} hint="Heard before they left" />
           <Stat label="Guest emails" accent="#60a5fa" value={contacts.length} hint="Your list" />
         </div>
 
@@ -513,6 +526,16 @@ export default function RestaurantDashboard() {
                     <option key={n} value={n} style={{ background: "#0a0e1a" }}>{n} star{n > 1 ? "s" : ""}</option>
                   ))}
                 </select>
+                {/*
+                  Spelled out because this setting used to do a second thing
+                  nobody was told about: below it, the guest was never shown the
+                  Google link. An operator who set it to 4 to get more alerts
+                  was, without knowing, switching off four-star reviews.
+                */}
+                <p className="mt-1.5 text-xs" style={{ color: "rgba(255,255,255,.4)" }}>
+                  Sets when we page you, nothing else. Every guest is shown your
+                  Google link either way.
+                </p>
               </div>
               {formError && <p className="text-sm" style={{ color: "#ff8080" }} role="alert">{formError}</p>}
               <button onClick={save} disabled={saving}
