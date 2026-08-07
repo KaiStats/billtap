@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { invoke } from "@/api/functions";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { getHostKey } from "@/lib/hostKey";
 import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { QRCodeSVG } from "qrcode.react";

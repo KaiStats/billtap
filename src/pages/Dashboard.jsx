@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { invoke } from "@/api/functions";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Plus, Receipt, CheckCircle2, Clock, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSaveScroll } from "@/hooks/useTabHistory";

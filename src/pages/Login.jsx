@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { QrCode, Mail } from "lucide-react";
 import { getSupabase, authConfigured } from "@/lib/supabase";
 

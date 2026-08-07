@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 
 // Detect Android/Cordova environment
 const isAndroid = () => {

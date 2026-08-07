@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import * as Sentry from "@sentry/react";
 import { invoke } from "@/api/functions";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Upload, Loader2, Wand2, X, Plus, AlertCircle, Zap, Pencil, Check, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

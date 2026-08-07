@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 

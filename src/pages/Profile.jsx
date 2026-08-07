@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { invoke } from "@/api/functions";
 import { listSplits } from "@/lib/splitHistory";
 import { useAuth } from "@/lib/AuthContext";

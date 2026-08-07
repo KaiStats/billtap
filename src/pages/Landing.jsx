@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock } from "lucide-react";
 import Seo from "@/components/Seo";
 import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/lib/landing-assets";

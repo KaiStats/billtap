@@ -5,7 +5,7 @@ import { Check, Loader2, ExternalLink, Copy, Smartphone, Search, CheckCheck } fr
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useMutationOptimistic } from "@/hooks/useMutationOptimistic";
 import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { isHostOf } from "@/lib/hostKey";

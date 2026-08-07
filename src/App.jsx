@@ -2,7 +2,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
-import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';

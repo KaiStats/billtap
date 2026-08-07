@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 /**
  * There was an auth lookup here, and a panel below it that read "this could

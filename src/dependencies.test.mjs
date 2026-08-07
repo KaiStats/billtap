@@ -101,63 +101,87 @@ test('js-yaml is pinned above the omap advisory', () => {
 });
 
 /**
- * ── react-router: NOT upgraded, deliberately ───────────────────────────────
+ * ── react-router: upgraded, and what it actually cost ──────────────────────
  *
  * GHSA-qwww-vcr4-c8h2, high, react-router >=7.12.0 <8.3.0: "RSC Mode CSRF
- * Bypass Allows Action Execution Before 400 Response".
+ * Bypass Allows Action Execution Before 400 Response". Closed by moving to
+ * react-router 8.3.0.
  *
- * The vulnerable surface is React Server Components mode — a server receiving a
- * router action and executing it before rejecting the request. This app is a
- * Vite SPA. It mounts BrowserRouter with declarative <Routes>, has no data
- * router, no loaders, no actions, and no server rendering of any kind: the only
- * server is worker/index.js, which serves prerendered HTML and JSON and has
- * never heard of a router action.
+ * It was deliberately NOT taken for a while, and the reasoning was sound at
+ * the time: the vulnerable surface is React Server Components mode, and this
+ * app is a Vite SPA with declarative <Routes>, no data router, no loaders, no
+ * actions and no server rendering. GitHub's own note on the alert said as
+ * much — "This only affects your application if you are using the unstable
+ * RSC APIs."
  *
- * The fix is react-router 8.3.0, which now exists — and it is not a version
- * bump. React Router 8 folds react-router-dom back into react-router and stops
- * publishing the former: the latest react-router-dom is 7.18.2 and there is no
- * 8.x of it, so "upgrading" means rewriting the import in all 22 files that
- * name react-router-dom, on the routing layer of a live app, to close a hole in
- * a mode this app does not enable. That is more risk than the advisory carries.
+ * ── The trap that made it worth doing properly ─────────────────────────────
  *
- * Written down because the alert will keep appearing and the obvious next move
- * — `npm i react-router-dom@8` — fails with a confusing error rather than
- * telling you the package was retired.
+ * GitHub's suggested remedy was an override pinning react-router to a patched
+ * version. That override installs cleanly, reports `found 0 vulnerabilities`,
+ * builds with exit 0, and passes every unit test in this repository — and it
+ * ships an app that crashes on load for every visitor.
  *
- * This test fails the day that stops being true — which is the point. If
- * anybody adopts createBrowserRouter, a loader, an action, or RSC, the
- * reasoning above expires and the upgrade becomes real work that has to happen.
+ * react-router 8 requires React >= 19.2.7. Forced under React 18 it imports
+ * `useOptimistic`, a hook that does not exist there, and the module throws at
+ * evaluation time. Nothing in this repo catches that, because no unit test
+ * mounts a router: the failure is only visible in a browser.
+ *
+ * So the real cost of this advisory was never the import rewrite. It was
+ * React 18 → 19 alongside it, plus qrcode.react 3 → 4 (the one dependency of
+ * forty-two that did not declare React 19 support). That is what this commit
+ * did, and it is why the two upgrades are inseparable.
  */
-test('react-router is not downgraded to "fix" the advisory', () => {
-  /**
-   * The trap. `npm audit` proposes react-router-dom 7.11.0, because 7.11.0 is
-   * the last release before the RSC advisory's range opens. Taking that
-   * suggestion trades one unreachable advisory for fourteen, several of which
-   * this app very much can reach:
-   *
-   *   GHSA-wrjc-x8rr-h8h6  open redirect via backslash in <Link> and
-   *                        useNavigate           <7.18.0   - both are used here
-   *   GHSA-2w69-qvjg-hvjx  XSS via open redirects        <=7.11.0
-   *   GHSA-jjmj-jmhj-qwj2  open redirect leading to XSS  <=7.12.0
-   *   GHSA-chx6-hx7r-mcp5  unauthenticated DoS via route matching  <7.18.0
-   *
-   * plus ten more covering SSR hydration, single-fetch and __manifest, which
-   * this app does not run. npm's own verdict flips once you are down there:
-   * fixAvailable becomes react-router-dom 7.18.2, isSemVerMajor false.
-   *
-   * 7.18.0 is the floor where the reachable ones are all closed.
-   */
-  const declared = String(pkg.dependencies?.['react-router-dom'] || '');
+test('react-router is above the RSC advisory range', () => {
+  const declared = String(pkg.dependencies?.['react-router'] || '');
   const [major, minor] = declared.replace(/^[^\d]*/, '').split('.').map(Number);
   assert.ok(
-    major > 7 || (major === 7 && minor >= 18),
-    `react-router-dom is ${declared}. Anything below 7.18.0 carries reachable ` +
-    'open-redirect, XSS and DoS advisories - strictly worse than the one ' +
-    'unreachable RSC advisory that downgrading is meant to silence.',
+    major > 8 || (major === 8 && minor >= 3),
+    `react-router is ${declared}; GHSA-qwww-vcr4-c8h2 covers >=7.12.0 <8.3.0`,
   );
 });
 
-test('nothing has adopted the router mode the advisory is about', () => {
+test('react-router-dom is gone and stays gone', () => {
+  // React Router 8 folds it back into react-router and stops publishing it —
+  // the last release is 7.18.2. Reinstalling it would silently drag a second,
+  // vulnerable copy of react-router into the tree beneath it, which is exactly
+  // how the advisory came back the first time.
+  assert.equal(
+    pkg.dependencies?.['react-router-dom'],
+    undefined,
+    'react-router-dom is retired; import from react-router instead',
+  );
+});
+
+test('React is new enough for the router to actually run', () => {
+  // The trap, pinned. An override that satisfies `npm audit` while leaving
+  // React at 18 produces a green build and a dead app: react-router 8 calls
+  // useOptimistic, which React 18 does not have. Nothing else in this repo
+  // would catch it, so this is the guard.
+  const declared = String(pkg.dependencies?.react || '');
+  const [major, minor] = declared.replace(/^[^\d]*/, '').split('.').map(Number);
+  assert.ok(
+    major > 19 || (major === 19 && minor >= 2),
+    `react is ${declared}; react-router 8 requires >=19.2.7 and fails at import below it`,
+  );
+  assert.equal(
+    String(pkg.dependencies?.['react-dom'] || '').replace(/^[^\d]*/, '').split('.')[0],
+    String(major),
+    'react and react-dom must move together',
+  );
+});
+
+test('qrcode.react is new enough for React 19', () => {
+  // The only package of forty-two peering on React that did not allow 19.
+  // 4.2.0 is the first release that does; the QRCodeSVG export is unchanged.
+  const declared = String(pkg.dependencies?.['qrcode.react'] || '');
+  const [major, minor] = declared.replace(/^[^\d]*/, '').split('.').map(Number);
+  assert.ok(
+    major > 4 || (major === 4 && minor >= 2),
+    `qrcode.react is ${declared}; React 19 support starts at 4.2.0`,
+  );
+});
+
+test('nothing has quietly adopted the data router', () => {
   const walk = (dir) => {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const full = join(dir, e.name);
@@ -180,7 +204,10 @@ test('nothing has adopted the router mode the advisory is about', () => {
   assert.deepEqual(
     offenders,
     [],
-    'the data router is in use, so GHSA-qwww-vcr4-c8h2 may now apply and the ' +
-    'react-router-dom 8 upgrade is no longer optional:\n  ' + offenders.join('\n  '),
+    'the data router is in use. GHSA-qwww-vcr4-c8h2 is closed by react-router 8, ' +
+    'so this is no longer an advisory question — but it is still a change of ' +
+    'architecture, and the RSC surface that advisory was about is reachable ' +
+    'from here. Worth a deliberate decision rather than a drive-by import:\n  ' +
+    offenders.join('\n  '),
   );
 });

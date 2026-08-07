@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { QrCode, Calendar } from "lucide-react";
 import Seo from "@/components/Seo";
 

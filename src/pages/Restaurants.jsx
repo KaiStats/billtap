@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, Check, X, Star, Bell, Mail, BarChart3, Smartphone,

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { sessionPath } from '@/lib/sessionLinks';
 
 export default function Home() {
