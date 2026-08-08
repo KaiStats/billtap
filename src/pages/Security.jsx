@@ -1,5 +1,8 @@
 import Seo from "@/components/Seo";
-import { Link } from "react-router-dom";
+import MarketingNav from "@/components/marketing/MarketingNav";
+import MarketingFooter from "@/components/marketing/MarketingFooter";
+import { mkt } from "@/components/marketing/tokens";
+import "@/components/marketing/marketing.css";
 
 /**
  * /security
@@ -25,21 +28,21 @@ import { Link } from "react-router-dom";
 
 const Section = ({ title, children }) => (
   <section className="space-y-3">
-    <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+    <h2 className="text-xl font-bold" style={{ color: mkt.text }}>{title}</h2>
     {children}
   </section>
 );
 
 const Fact = ({ children }) => (
   <li className="flex gap-3">
-    <span aria-hidden="true" className="text-emerald-600 font-bold shrink-0">✓</span>
+    <span aria-hidden="true" className="font-bold shrink-0" style={{ color: mkt.accent }}>✓</span>
     <span>{children}</span>
   </li>
 );
 
 const Gap = ({ children }) => (
   <li className="flex gap-3">
-    <span aria-hidden="true" className="text-amber-600 font-bold shrink-0">○</span>
+    <span aria-hidden="true" className="font-bold shrink-0" style={{ color: mkt.accent }}>○</span>
     <span>{children}</span>
   </li>
 );
@@ -47,21 +50,23 @@ const Gap = ({ children }) => (
 const SECURITY_EMAIL = "security@billtap.app";
 
 const Security = () => (
-  <div className="min-h-screen bg-white px-5 py-16">
+  <div className="min-h-screen font-body" style={{ background: mkt.bg, color: mkt.text }}>
     <Seo
       path="/security"
       title="Security | BillTap"
       description="How BillTap protects restaurant and diner data: payment isolation, access control, signed QR codes, testing, incident response, and how to report a vulnerability."
     />
 
-    <div className="max-w-3xl mx-auto space-y-10 text-slate-700 leading-relaxed">
+    <MarketingNav />
+
+    <div className="max-w-3xl mx-auto space-y-10 leading-relaxed px-5 py-16">
       <header className="space-y-3">
-        <h1 className="text-3xl font-black text-slate-900">Security</h1>
-        <p className="text-slate-600">
+        <h1 className="text-3xl font-black" style={{ color: mkt.text }}>Security</h1>
+        <p style={{ color: mkt.muted }}>
           BillTap sits between a restaurant and its guests at the moment money changes hands. This
           page describes what we actually do to protect that, in enough detail to be checked.
         </p>
-        <p className="text-sm text-slate-500">Last reviewed: 2 August 2026</p>
+        <p className="text-sm" style={{ color: mkt.dim }}>Last reviewed: 2 August 2026</p>
       </header>
 
       <Section title="Payment data never reaches us">
@@ -264,20 +269,20 @@ const Security = () => (
           post it publicly before contacting us.
         </p>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-3">
-          <p className="font-semibold text-slate-900">
-            Email <a className="text-emerald-700 underline" href={`mailto:${SECURITY_EMAIL}`}>{SECURITY_EMAIL}</a>
+        <div className="rounded-xl border p-5 space-y-3" style={{ background: mkt.card, borderColor: mkt.border }}>
+          <p className="font-semibold" style={{ color: mkt.text }}>
+            Email <a className="underline" style={{ color: mkt.accent }} href={`mailto:${SECURITY_EMAIL}`}>{SECURITY_EMAIL}</a>
           </p>
-          <p className="text-sm">
+          <p className="text-sm" style={{ color: mkt.muted }}>
             Machine-readable contact details are published at{" "}
-            <a className="text-emerald-700 underline" href="/.well-known/security.txt">
+            <a className="underline" style={{ color: mkt.accent }} href="/.well-known/security.txt">
               /.well-known/security.txt
             </a>{" "}
             per RFC 9116.
           </p>
         </div>
 
-        <h3 className="font-semibold text-slate-900 pt-2">What to include</h3>
+        <h3 className="font-semibold pt-2" style={{ color: mkt.text }}>What to include</h3>
         <ul className="list-disc pl-5 space-y-1">
           <li>What the issue is and roughly how severe you think it is.</li>
           <li>The steps to reproduce it, and the URL or endpoint involved.</li>
@@ -340,12 +345,9 @@ const Security = () => (
         </p>
       </Section>
 
-      <footer className="pt-4 border-t border-slate-200 text-sm text-slate-500 space-x-4">
-        <Link className="underline" to="/privacy">Privacy Policy</Link>
-        <Link className="underline" to="/terms">Terms of Service</Link>
-        <Link className="underline" to="/">Home</Link>
-      </footer>
     </div>
+
+    <MarketingFooter />
   </div>
 );
 
