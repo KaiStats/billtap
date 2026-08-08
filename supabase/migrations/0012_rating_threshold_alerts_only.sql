@@ -1,0 +1,67 @@
+-- Point rating_threshold back at the alert, and back to three.
+--
+-- ── What the number used to do, and why that was a problem ──────────────────
+--
+-- 0009 moved this default from three to four, on the reasoning that a four-star
+-- rating does not lift a 4.3 average and that the guest behind it has something
+-- worth hearing. Both of those are true. But the number was doing two jobs at
+-- once: `submitGuestRating` stored `routed_to_google = stars > rating_threshold`
+-- and `RatingCapture.jsx` used the same comparison to decide whether the guest
+-- was shown the restaurant's Google link at all. Raising it to four did not just
+-- widen the alert. It raised the bar a guest had to clear before the app would
+-- let them review the place in public.
+--
+-- That is review gating — soliciting reviews and then showing the link only to
+-- the guests expected to say something nice. The FTC's rule on consumer reviews
+-- treats suppressing solicited negative reviews as a deceptive practice, and
+-- Google's own policy names it and removes what it catches, which in practice
+-- takes the neighbouring good reviews with it. A restaurant paying $149 a month
+-- for reviews was buying reviews that could be deleted for the way they were
+-- collected.
+--
+-- It also cost the thing the restaurant is actually buying. Review count and
+-- recency carry more local-ranking weight than the last tenth of a star, and at
+-- a threshold of four every four-star guest — a happy guest, one who would have
+-- written something warm — was never asked. Mariposa has two ratings. That is
+-- not an average problem.
+--
+-- ── What it does now ───────────────────────────────────────────────────────
+--
+-- One job: at or below this many stars, the guest is asked what went wrong and
+-- the operator is paged while that guest is still in the building. Everyone
+-- sees the same Google link afterwards, including the guest who just typed a
+-- complaint and the guest who skipped the question. The alert is untouched and
+-- is still the paid half of the product.
+--
+-- Three, because that is what "alert me at or below" has always said on the
+-- settings screen and it is the number an operator would pick reading only the
+-- label.
+
+alter table restaurants alter column rating_threshold set default 3;
+
+-- ── Why existing rows are left alone ───────────────────────────────────────
+--
+-- Same reasoning 0009 used, and it survives the change of meaning. A restaurant
+-- sitting at four may have chosen four, and under the new meaning four is a
+-- perfectly sensible setting: page me about anything that isn't a rave. It
+-- costs that operator some extra alerts, not a guest a link, so there is no
+-- longer anything harmful about leaving it.
+--
+-- What was harmful was the second job, and that is gone from the code rather
+-- than from the data.
+--
+-- Who is above the default, for whoever wants to ask:
+--
+--   select name, alert_email, rating_threshold
+--   from restaurants
+--   where rating_threshold > 3
+--   order by name;
+
+-- ── guest_ratings.routed_to_google ─────────────────────────────────────────
+--
+-- Deliberately no backfill. The column now means "this guest tapped through to
+-- the listing", stamped by the guest's own tap, where it used to mean "the app
+-- was willing to let this guest leave". Rows written before this migration hold
+-- the old meaning and nothing distinguishes them from the new ones, so rewriting
+-- them would be inventing tap-throughs that were never observed. The dashboard
+-- counts what it has; the number simply starts telling the truth from here.

@@ -90,24 +90,35 @@ const PARTICIPANT_RE = /^p_\d+_[a-z0-9]+$/;
 // ── Restaurant settings ─────────────────────────────────────────────────────
 
 /**
- * Where the line falls between "tell the operator" and "let it go public".
+ * At or below how many stars the operator gets paged.
  *
- * `routed_to_google` is `stars > threshold`, so a threshold of four sends only
- * five-star guests to Google and hands everyone else to the operator first.
+ * This number decides one thing: whether a guest is asked what went wrong, and
+ * whether that pages the manager while the guest is still in the building. It
+ * does not decide whether they are shown the Google link. Every guest is shown
+ * the Google link.
  *
- * It used to be three, which routed every four-star guest straight out. That is
- * the wrong side of the line twice over: it publishes a mediocre rating against
- * the average the restaurant is paying to raise, and it spends the one moment
- * that guest would have told them what was almost right — which is the half of
- * this product an operator cannot buy anywhere else.
+ * It briefly meant the other thing. `routed_to_google` used to be stored as
+ * `stars > threshold` and RatingCapture used the same comparison to decide
+ * whether the Google button existed at all, so raising this to four was raising
+ * the bar a guest had to clear before they were allowed to review the place in
+ * public. That is review gating: soliciting reviews only from the guests you
+ * expect to like you. The FTC's rule on consumer reviews treats suppressing
+ * solicited negative reviews as a deceptive practice, and Google's own policy
+ * calls it out by name and removes the reviews it catches — including, in
+ * practice, the good ones sitting next to them.
  *
- * Changing it means changing it in five places at once: here, the client
- * fallback in src/components/RatingCapture.jsx, the dashboard form's initial
- * state, and the column default in both schema files. The server and the client
- * disagreeing about this is an operator not being paged about a rating the
- * screen told the guest was a complaint.
+ * It also cost volume, which is the thing the restaurant is actually buying. A
+ * four-star guest is a happy guest who would have written something warm, and
+ * at a threshold of four they were never asked.
+ *
+ * So: back to three, and back to meaning what the settings screen has always
+ * called it — "alert me at or below". Changing it means changing it in four
+ * places at once: here, the client fallback in src/components/RatingCapture.jsx,
+ * the dashboard form's initial state, and the column default in the schema. The
+ * server and the client disagreeing about this is an operator not being paged
+ * about a complaint the app showed the guest making.
  */
-export const DEFAULT_RATING_THRESHOLD = 4;
+export const DEFAULT_RATING_THRESHOLD = 3;
 
 /**
  * The threshold a stored row actually means, as a number.
@@ -117,26 +128,25 @@ export const DEFAULT_RATING_THRESHOLD = 4;
  * `numeric` and a driver is entitled to hand that back as a string; the read in
  * submitGuestRating tested `Number.isFinite` on the raw value, which is false
  * for the string "3" — so the same row could be a three on the settings screen
- * and a four to the code deciding `routed_to_google`.
+ * and a four to the code deciding whether to page anyone.
  *
  * That is the precise divergence every comment in this file says must not
- * exist: a guest shown "sorry about that, tell us more" whose rating went to
- * Google anyway, or an operator never paged about a complaint the app showed
- * the guest making. Whether any driver in this stack really does stringify a
- * numeric is beside the point — one of the two readings was wrong about it, and
- * a single function cannot be wrong in two directions at once.
+ * exist: an operator never paged about a complaint the app showed the guest
+ * making. Whether any driver in this stack really does stringify a numeric is
+ * beside the point — one of the two readings was wrong about it, and a single
+ * function cannot be wrong in two directions at once.
  *
  * Null, undefined and empty are the default. Anything that will not coerce to a
- * finite number is the default too, rather than NaN — `stars > NaN` is false
- * for every rating, which would route nobody to Google and look like nothing
- * was wrong.
+ * finite number is the default too, rather than NaN — `stars <= NaN` is false
+ * for every rating, which would page nobody about anything and look like a
+ * quiet night.
  */
 export function ratingThreshold(value) {
   // Numbers and strings only, and `Number()` after that rather than around it.
   // `Number([])` is 0 and `Number(' ')` is 0, both finite, and zero is the one
-  // value that must never be arrived at by accident: `routed_to_google` is
-  // `stars > threshold`, so a zero publishes every rating to Google including
-  // the one-star complaints this product exists to catch first.
+  // value that must never be arrived at by accident: the alert fires on
+  // `stars <= threshold`, so a zero means a one-star guest walks out without
+  // the manager ever hearing about it — the exact page this product is sold on.
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return DEFAULT_RATING_THRESHOLD;
@@ -315,9 +325,10 @@ export function restaurantPatch(body, { creating = false } = {}) {
 
   if (has('rating_threshold')) {
     const threshold = Number(body.rating_threshold);
-    // One to four, matching the form. Five would mean nothing is ever routed to
-    // Google, which is the product switched off rather than configured, and a
-    // value the dashboard cannot produce should not arrive by another door.
+    // One to four, matching the form. Five would page the operator about every
+    // rating they ever get, raves included, which is the alert trained out of
+    // usefulness rather than configured — and a value the dashboard cannot
+    // produce should not arrive by another door.
     if (!Number.isInteger(threshold) || threshold < 1 || threshold > 4) {
       return { error: 'Alert threshold must be between 1 and 4 stars.' };
     }
@@ -945,10 +956,10 @@ const HANDLERS = {
          * The stored value is untouched. Paying turns the button back on.
          */
         google_review_url: isEntitled(r) ? r.google_review_url : null,
-        // The third reading of this column, and the one RatingCapture decides
-        // which screen a guest sees from. Through the same function as the
-        // other two: the guest-facing branch and the server's routed_to_google
-        // disagreeing is the failure ratingThreshold exists to make impossible.
+        // The second reading of this column, and the one a guest actually
+        // meets: RatingCapture asks what went wrong at or below it. Through the
+        // same function as ownerView, so the number the operator set on the
+        // settings screen is the number that decides whether their phone rings.
         rating_threshold: ratingThreshold(r.rating_threshold),
       },
     });
@@ -1263,23 +1274,50 @@ const HANDLERS = {
       const existing = await svc.entity('GuestRating').filter({ session_id });
       if (existing.length) return json({ rating_id: existing[0].id, existing: true });
 
-      let threshold = DEFAULT_RATING_THRESHOLD;
-      try {
-        const rows = await svc.entity('Restaurant').filter({ id: session.restaurant_id });
-        // Through the same reading ownerView uses, so the number deciding
-        // routed_to_google here and the number the settings screen shows the
-        // operator are the same number. See ratingThreshold.
-        if (rows[0]) threshold = ratingThreshold(rows[0].rating_threshold);
-      } catch { /* default stands */ }
-
+      /**
+       * False at creation for every rating, including the five-star ones.
+       *
+       * This column used to be written here as `stars > threshold`, which was
+       * not a record of anything that happened — it was a record of permission,
+       * decided before the guest had done a thing. Under it, "sent to Google"
+       * on the dashboard counted guests the app had *allowed* to leave, and the
+       * complement counted guests it had talked out of it.
+       *
+       * Nobody is talked out of it now: every guest is offered the link, so
+       * permission is not a fact worth storing. What is worth storing is
+       * whether they took it, which only the guest's tap can say — see the
+       * 'routed' action below. Rows written before this change still hold the
+       * old meaning, and there is no way to tell them apart, so leave them.
+       */
       const row = await svc.entity('GuestRating').create({
         restaurant_id: session.restaurant_id,
         session_id,
         stars,
-        routed_to_google: stars > threshold,
+        routed_to_google: false,
         created_at: Date.now(),
       });
       return json({ rating_id: row.id });
+    }
+
+    /**
+     * The guest actually tapped through to the restaurant's Google listing.
+     *
+     * Separate from 'contact' because it has to fire whether or not they typed
+     * an email, and because it is the one thing on this screen that is a fact
+     * rather than an intention. Idempotent: the flag only ever goes true, so a
+     * double-tap or a retry costs a write and changes nothing.
+     */
+    if (action === 'routed') {
+      const { rating_id } = body;
+      if (!rating_id || typeof rating_id !== 'string') {
+        return json({ error: 'rating_id is required' }, 400);
+      }
+      const ratings = await svc.entity('GuestRating').filter({ id: rating_id });
+      if (!ratings[0]) return json({ error: 'Rating not found' }, 404);
+      if (!ratings[0].routed_to_google) {
+        await svc.entity('GuestRating').update(rating_id, { routed_to_google: true });
+      }
+      return json({ ok: true });
     }
 
     if (action === 'contact') {
@@ -1330,7 +1368,7 @@ const HANDLERS = {
       return json({ ok: true });
     }
 
-    return json({ error: "action must be 'rate' or 'contact'" }, 400);
+    return json({ error: "action must be 'rate', 'contact' or 'routed'" }, 400);
   },
 
   /**

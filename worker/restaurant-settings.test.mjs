@@ -289,7 +289,7 @@ test('a first save creates the row, on trial, owned by the caller', async () => 
     assert.equal(row.plan, 'trial');
     assert.ok(row.trial_ends_at > Date.now(), 'a trial that has already ended is not a trial');
     assert.equal(row.alert_email, 'gm@harrys.example');
-    assert.equal(row.rating_threshold, 4, 'the default the whole product agrees on');
+    assert.equal(row.rating_threshold, 3, 'the default the whole product agrees on');
 
     assert.equal(audited[0].action, ACTIONS.RESTAURANT_CREATED);
     assert.equal(audited[0].actorUserId, OWNER);
@@ -491,12 +491,12 @@ test('the dashboard read returns the row the settings form populates from', asyn
 
 // ── The threshold, read the same way everywhere ─────────────────────────────
 
-test('one reading of rating_threshold, so the three call sites cannot disagree', async () => {
-  // The column is `numeric`. ownerView coerced it and the read in
-  // submitGuestRating tested Number.isFinite on the raw value — false for the
-  // string "3" — so the same row could be a three on the settings screen and a
-  // four to the code deciding routed_to_google. A guest told "sorry about that,
-  // tell us more" whose rating went to Google anyway is that gap.
+test('one reading of rating_threshold, so the call sites cannot disagree', async () => {
+  // The column is `numeric`. ownerView coerced it and the guest-facing read
+  // tested Number.isFinite on the raw value — false for the string "3" — so the
+  // same row could be a three on the settings screen and a four to the code
+  // deciding who gets paged. An operator who never hears about a complaint the
+  // app showed the guest making is that gap.
   assert.equal(ratingThreshold('3'), 3, 'a numeric handed back as a string is still a three');
   assert.equal(ratingThreshold(3), 3);
   assert.equal(ratingThreshold('4.0'), 4);
@@ -506,23 +506,24 @@ test('one reading of rating_threshold, so the three call sites cannot disagree',
     assert.equal(ratingThreshold(empty), DEFAULT_RATING_THRESHOLD);
   }
 
-  // Unparseable is the default too, never NaN: `stars > NaN` is false for every
-  // rating, which routes nobody to Google and looks like nothing is wrong.
+  // Unparseable is the default too, never NaN: `stars <= NaN` is false for
+  // every rating, which pages nobody about anything and looks like a quiet
+  // night.
   //
   // The two that matter most are `[]` and `' '`, because `Number()` makes both
-  // of them 0 rather than NaN — and zero is the worst value this can hold.
-  // `routed_to_google` is `stars > threshold`, so a zero sends every rating to
-  // Google, one-star complaints included. Coercing without checking the type
-  // first is how a threshold ends up there.
+  // of them 0 rather than NaN — and zero is the worst value this can hold. The
+  // alert fires on `stars <= threshold`, so a zero means a one-star guest walks
+  // out with the manager never hearing about it. Coercing without checking the
+  // type first is how a threshold ends up there.
   for (const junk of ['four', {}, [], ' ', true, NaN, Infinity, () => 3]) {
     assert.equal(ratingThreshold(junk), DEFAULT_RATING_THRESHOLD, `${String(junk)}`);
   }
 });
 
-test('the guest-facing read sends the same number the server routes on', async () => {
-  // getPublicRestaurant feeds RatingCapture, which picks the guest's next
-  // screen from it. It is the third reading of the column and the one a guest
-  // actually meets.
+test('the guest-facing read sends the same number the operator set', async () => {
+  // getPublicRestaurant feeds RatingCapture, which decides from it whether to
+  // ask what went wrong and page the manager. It is the second reading of the
+  // column and the one a guest actually meets.
   const stringy = { ...MARIPOSA(), owner_id: OTHER, rating_threshold: '3' };
   await withStub({ restaurants: [stringy] }, async () => {
     const res = await HANDLERS.getPublicRestaurant({
