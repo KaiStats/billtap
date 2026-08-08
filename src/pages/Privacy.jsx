@@ -1,7 +1,7 @@
 import Seo from "@/components/Seo";
 const Section = ({ title, children }) => (
   <section className="space-y-3">
-    <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+    <h2 className="text-xl font-bold text-foreground">{title}</h2>
     {children}
   </section>
 );
@@ -24,42 +24,42 @@ const COLLECTION_ROWS = [
 ];
 
 const TableHead = ({ cols }) => (
-  <thead className="bg-slate-50 text-slate-600 font-semibold">
+  <thead className="bg-surface text-muted-foreground font-semibold">
     <tr>
       {cols.map((c) => (
-        <th key={c} className="text-left px-4 py-3 border-b border-slate-200">{c}</th>
+        <th key={c} className="text-left px-4 py-3 border-b border-border">{c}</th>
       ))}
     </tr>
   </thead>
 );
 
 const Privacy = () => (
-  <div className="min-h-screen bg-white px-5 py-16">
+  <div className="min-h-screen bg-background px-5 py-16">
     <Seo
       path="/privacy"
       title="Privacy Policy | BillTap"
       description="What BillTap collects, how long it is kept, and how it is deleted. Includes the full data retention schedule."
     />
     <div className="max-w-2xl mx-auto">
-      <a href="/" className="text-violet-600 text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
-      <h1 className="text-4xl font-black text-slate-900 mb-2">Privacy Policy</h1>
-      <p className="text-slate-500 text-sm mb-2">Last updated: June 9, 2026</p>
-      <p className="text-slate-500 text-sm mb-10">
+      <a href="/" className="text-primary text-sm font-medium mb-8 block hover:underline">← Back to BillTap</a>
+      <h1 className="text-4xl font-black text-foreground mb-2">Privacy Policy</h1>
+      <p className="text-muted-foreground text-sm mb-2">Last updated: June 9, 2026</p>
+      <p className="text-muted-foreground text-sm mb-10">
         This policy applies to BillTap (&ldquo;we&rdquo;, &ldquo;us&rdquo;) and describes how we collect, use, retain, and delete personal information in compliance with the California Consumer Privacy Act (CCPA) and other applicable privacy laws.
       </p>
 
-      <div className="space-y-10 text-slate-700 leading-relaxed text-[15px]">
+      <div className="space-y-10 text-muted-foreground leading-relaxed text-[15px]">
 
         <Section title="1. Information We Collect">
           <p>We collect the following categories of personal information:</p>
           <div className="overflow-x-auto mt-2">
-            <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
               <TableHead cols={["Category", "Examples", "Collected?"]} />
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {COLLECTION_ROWS.map(([cat, ex, col]) => (
                   <tr key={cat}>
-                    <td className="px-4 py-3 font-medium text-slate-800">{cat}</td>
-                    <td className="px-4 py-3 text-slate-500">{ex}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{cat}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{ex}</td>
                     <td className="px-4 py-3">{col}</td>
                   </tr>
                 ))}
@@ -82,20 +82,20 @@ const Privacy = () => (
         <Section title="3. Data Retention">
           <p>We apply the following retention schedule:</p>
           <div className="overflow-x-auto mt-2">
-            <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
               <TableHead cols={["Data Type", "Retention Period", "What Happens After"]} />
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {RETENTION_ROWS.map(([type, period, after]) => (
                   <tr key={type}>
-                    <td className="px-4 py-3 font-medium text-slate-800">{type}</td>
-                    <td className="px-4 py-3 text-slate-500">{period}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{type}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{period}</td>
                     <td className="px-4 py-3">{after}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-sm text-slate-500">Automated cleanup runs nightly. The 30-day clock starts when a session reaches <em>completed</em> status.</p>
+          <p className="mt-3 text-sm text-muted-foreground">Automated cleanup runs nightly. The 30-day clock starts when a session reaches <em>completed</em> status.</p>
         </Section>
 
         <Section title="4. Your Privacy Rights (CCPA)">
@@ -109,7 +109,7 @@ const Privacy = () => (
           </ul>
           <p className="mt-3">
             To exercise any right, email{" "}
-            <a href="mailto:privacy@billtap.app" className="text-violet-600 hover:underline">privacy@billtap.app</a>
+            <a href="mailto:privacy@billtap.app" className="text-primary hover:underline">privacy@billtap.app</a>
             {" "}with the subject line <em>&ldquo;Privacy Request&rdquo;</em>. We will respond within <strong>45 days</strong> as required by the CCPA.
           </p>
         </Section>
@@ -123,7 +123,7 @@ const Privacy = () => (
           </ul>
           <p className="mt-2">
             You may also email{" "}
-            <a href="mailto:privacy@billtap.app" className="text-violet-600 hover:underline">privacy@billtap.app</a>
+            <a href="mailto:privacy@billtap.app" className="text-primary hover:underline">privacy@billtap.app</a>
             {" "}to request deletion if you cannot access your account.
           </p>
         </Section>
@@ -145,7 +145,7 @@ const Privacy = () => (
         <Section title="8. Security">
           <p>
             We use industry-standard security measures including encrypted connections (HTTPS/TLS), access controls, and automated data minimization. No system is 100% secure — if you believe your data has been compromised, contact us immediately at{" "}
-            <a href="mailto:security@billtap.app" className="text-violet-600 hover:underline">security@billtap.app</a>.
+            <a href="mailto:security@billtap.app" className="text-primary hover:underline">security@billtap.app</a>.
           </p>
         </Section>
 
@@ -155,9 +155,9 @@ const Privacy = () => (
 
         <Section title="10. Contact Us">
           <p>For any privacy questions or to exercise your rights:</p>
-          <div className="mt-3 p-4 bg-slate-50 rounded-xl text-sm space-y-1">
+          <div className="mt-3 p-4 bg-surface rounded-xl text-sm space-y-1">
             <p><strong>BillTap</strong></p>
-            <p>Email: <a href="mailto:privacy@billtap.app" className="text-violet-600 hover:underline">privacy@billtap.app</a></p>
+            <p>Email: <a href="mailto:privacy@billtap.app" className="text-primary hover:underline">privacy@billtap.app</a></p>
             <p>Response time: within 45 days of verified request</p>
           </div>
         </Section>

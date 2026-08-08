@@ -110,14 +110,14 @@ export default function Profile() {
       {/* Hero Header */}
       <div
         className="relative overflow-hidden px-5 pt-8 pb-8"
-        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 100%)' }}
       >
         <div className="absolute inset-0 pointer-events-none">
-          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '40vw', height: '40vw', maxWidth: 220, maxHeight: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(102,126,234,0.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '40vw', height: '40vw', maxWidth: 220, maxHeight: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,150,0.28) 0%, transparent 70%)', filter: 'blur(40px)' }} />
         </div>
         <div className="relative z-10 max-w-lg mx-auto flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
-            <User className="w-8 h-8 text-white" aria-hidden="true" />
+          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shrink-0 shadow-glow">
+            <User className="w-8 h-8 text-primary-foreground" aria-hidden="true" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight">{user?.full_name || "You"}</h1>
@@ -150,7 +150,7 @@ export default function Profile() {
         {/* Sign Out Button */}
         <button
           onClick={handleLogoutClick}
-          className="w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-semibold text-destructive transition-all text-left"
+          className="press w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-semibold text-destructive transition-all text-left"
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(239,68,68,0.2)' }}
           onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(239,68,68,0.4)'}
           onMouseLeave={e => e.currentTarget.style.border = '1px solid rgba(239,68,68,0.2)'}

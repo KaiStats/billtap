@@ -188,10 +188,10 @@ export default function ReceiptDetail() {
       {/* Hero Summary */}
       <div
         className="relative overflow-hidden px-5 pt-6 pb-6"
-        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 100%)' }}
       >
         <div className="absolute inset-0 pointer-events-none">
-          <div style={{ position: 'absolute', top: '-30%', right: '-10%', width: '40vw', height: '40vw', maxWidth: 220, maxHeight: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(102,126,234,0.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div style={{ position: 'absolute', top: '-30%', right: '-10%', width: '40vw', height: '40vw', maxWidth: 220, maxHeight: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,150,0.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
         </div>
         <div className="relative z-10 max-w-2xl mx-auto">
           {/* All Settled Banner. Gated on the money adding up as well as the
@@ -222,7 +222,7 @@ export default function ReceiptDetail() {
               <div className="flex items-center gap-3 text-white/60 text-sm flex-wrap">
                 <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" aria-hidden="true" /> {total} people</span>
                 <span className="flex items-center gap-1"><Receipt className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span className="text-white font-bold">${(session.total_amount || 0).toFixed(2)}</span>
+                  <span className="mono text-white font-bold tabular-nums">${(session.total_amount || 0).toFixed(2)}</span>
                 </span>
               </div>
               <div className="flex items-center gap-3 text-sm flex-wrap">
@@ -248,12 +248,12 @@ export default function ReceiptDetail() {
           <div>
             <div className="flex justify-between text-xs text-white/40 mb-1">
               <span>
-                <span className="text-white font-semibold">${collected.toFixed(2)}</span> of ${billTotal.toFixed(2)} collected
+                <span className="mono text-white font-semibold tabular-nums">${collected.toFixed(2)}</span> of <span className="mono tabular-nums">${billTotal.toFixed(2)}</span> collected
               </span>
               <span>{paidPct}%</span>
             </div>
             <div role="progressbar" aria-valuenow={paid} aria-valuemin={0} aria-valuemax={total} aria-label={`${paid} of ${total} payments confirmed`} className="w-full bg-white/10 rounded-full h-2">
-              <div className="h-2 rounded-full transition-all" style={{ width: `${paidPct}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
+              <div className="h-2 rounded-full transition-all" style={{ width: `${paidPct}%`, background: 'linear-gradient(90deg, #00c896, #2ee6b0)' }} />
             </div>
             {/* Everyone ticked off and the bill still not covered. It happens
                 when a diner claims more after being confirmed, and it is the
@@ -297,22 +297,22 @@ export default function ReceiptDetail() {
                         </div>
                       )}
                     </div>
-                    <span className="font-semibold text-foreground shrink-0 ml-4">${(item.price * (item.quantity || 1)).toFixed(2)}</span>
+                    <span className="mono font-semibold text-foreground shrink-0 ml-4 tabular-nums">${(item.price * (item.quantity || 1)).toFixed(2)}</span>
                   </div>
                 );
               })}
               {session.tax > 0 && (
                 <div className="flex justify-between text-sm text-muted-foreground pt-2 border-t border-border">
-                  <span>Tax</span><span>${session.tax.toFixed(2)}</span>
+                  <span>Tax</span><span className="mono tabular-nums">${session.tax.toFixed(2)}</span>
                 </div>
               )}
               {session.tip > 0 && (
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Tip</span><span>${session.tip.toFixed(2)}</span>
+                  <span>Tip</span><span className="mono tabular-nums">${session.tip.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-black text-base pt-2 border-t border-border">
-                <span>Total</span><span className="text-brand">${(session.total_amount || 0).toFixed(2)}</span>
+              <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
+                <span>Total</span><span className="mono text-primary tabular-nums">${(session.total_amount || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -346,7 +346,7 @@ export default function ReceiptDetail() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-semibold text-foreground truncate">{p.name}</div>
-                      <div className="text-brand font-black text-xl mt-0.5">
+                      <div className="mono text-primary font-semibold text-xl mt-0.5 tabular-nums">
                         ${(settled ? (p.paid_amount ?? owes) : owes).toFixed(2)}
                       </div>
                       {drift > 0 && (

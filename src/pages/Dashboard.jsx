@@ -27,21 +27,21 @@ function SessionCard({ session, onClick }) {
     <button
       onClick={onClick}
       aria-label={`${session.title}: $${(session.total_amount || 0).toFixed(2)} - ${paid} of ${total} paid`}
-      className="w-full text-left rounded-2xl p-4 flex items-center justify-between transition-all"
+      className="press w-full text-left rounded-2xl p-4 flex items-center justify-between transition-[transform,border-color,background-color] duration-200 ease-out-expo hover:-translate-y-0.5 hover:bg-white/[0.05]"
       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-      onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.15)'}
-      onMouseLeave={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.07)'}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'hsl(var(--primary) / 0.35)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}
     >
       <div className="flex items-center gap-4">
-        <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shrink-0">
-          <Receipt className="w-5 h-5 text-white" aria-hidden="true" />
+        <div className="w-11 h-11 bg-primary/10 ring-hairline rounded-xl flex items-center justify-center shrink-0">
+          <Receipt className="w-5 h-5 text-primary" aria-hidden="true" />
         </div>
         <div>
           <div className="font-bold text-foreground text-base">{session.title}</div>
           <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
             <Users className="w-3.5 h-3.5" aria-hidden="true" />
             {total} people ·{' '}
-            <span className="text-brand font-semibold">${(session.total_amount || 0).toFixed(2)}</span>
+            <span className="mono text-primary font-semibold tabular-nums">${(session.total_amount || 0).toFixed(2)}</span>
           </div>
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function Dashboard() {
   }, [sessions, myId]);
 
   const statCards = [
-    { label: "Bills Split", value: sessions.length, icon: Receipt, color: "from-violet-500 to-purple-600" },
+    { label: "Bills Split", value: sessions.length, icon: Receipt, color: "from-sky-400 to-cyan-500" },
     { label: isAuthenticated ? "Outstanding" : "You owe", value: `$${totalOwed.toFixed(2)}`, icon: Clock, color: "from-amber-400 to-orange-400" },
     { label: isAuthenticated ? "Collected" : "You paid", value: `$${totalCollected.toFixed(2)}`, icon: CheckCircle2, color: "from-emerald-400 to-teal-500" },
   ];
@@ -186,8 +186,7 @@ export default function Dashboard() {
               <button
                 onClick={() => navigate("/new-receipt")}
                 aria-label="Create new bill split"
-                className="flex items-center gap-2 px-4 h-11 text-white font-bold rounded-xl text-sm shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0"
-                style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+                className="press flex items-center gap-2 px-4 h-11 bg-primary text-primary-foreground font-semibold rounded-xl text-sm shadow-glow transition hover:brightness-110"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" /> New Split
               </button>
@@ -205,7 +204,7 @@ export default function Dashboard() {
                   <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-3`}>
                     <Icon className="w-4 h-4 text-white" aria-hidden="true" />
                   </div>
-                  <div className="text-xl font-black text-foreground">{value}</div>
+                  <div className="mono text-xl font-semibold tabular-nums text-foreground">{value}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
                 </div>
               ))}
@@ -217,8 +216,8 @@ export default function Dashboard() {
                 className="text-center py-16 rounded-2xl"
                 style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
-                  <Receipt className="w-8 h-8 text-white" aria-hidden="true" />
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 ring-hairline flex items-center justify-center mx-auto mb-4">
+                  <Receipt className="w-8 h-8 text-primary" aria-hidden="true" />
                 </div>
                 <h2 className="text-xl font-bold text-foreground mb-2">No bills yet</h2>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
@@ -226,7 +225,8 @@ export default function Dashboard() {
                 </p>
                 <Button
                   onClick={() => navigate("/new-receipt")}
-                  className="bg-brand hover:bg-brand/90 text-brand-foreground font-bold rounded-xl"
+                  size="lg"
+                  className="shadow-glow"
                 >
                   Split your first bill
                 </Button>

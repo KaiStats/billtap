@@ -4,19 +4,19 @@ import Seo from "@/components/Seo";
 
 export default function About() {
   return (
-    <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+    <div className="min-h-screen" style={{ background: "#070b16", color: "#f2f2f4" }}>
       <Seo
         path="/about"
         title="About BillTap — Why We Built It"
         description="BillTap started with one annoying question at the end of every meal: who owes what? Here's how we set out to answer it in under a minute."
       />
       <style>{`
-        .font-heading { font-family: 'Space Grotesk', sans-serif; }
+        .font-heading { font-family: 'Inter Tight', 'Inter', sans-serif; }
         .font-body { font-family: 'Inter', sans-serif; }
       `}</style>
 
       {/* Nav */}
-      <nav className="border-b" style={{ borderColor: "#2d3748" }}>
+      <nav className="border-b" style={{ borderColor: "#232d3f" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#00c896" }}>
@@ -24,7 +24,7 @@ export default function About() {
             </div>
             <span className="font-heading font-bold text-lg" style={{ color: "#00c896" }}>BillTap</span>
           </div>
-          <Link to="/" className="text-sm font-medium hover:text-green-400 transition-colors" style={{ color: "#8b90a8" }}>
+          <Link to="/" className="text-sm font-medium hover:text-primary transition-colors" style={{ color: "#8390ae" }}>
             ← Back to Home
           </Link>
         </div>
@@ -34,17 +34,17 @@ export default function About() {
       <section className="py-16 md:py-24">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="font-heading font-bold text-4xl md:text-5xl mb-6" style={{ color: "#f2f2f4" }}>About BillTap</h1>
-          <p className="text-lg md:text-xl leading-relaxed" style={{ color: "#8b90a8" }}>
+          <p className="text-lg md:text-xl leading-relaxed" style={{ color: "#8390ae" }}>
             BillTap was born from a simple frustration: splitting bills should be easy, but it's always awkward.
           </p>
         </div>
       </section>
 
       {/* Story */}
-      <section className="py-16" style={{ background: "#111827" }}>
+      <section className="py-16" style={{ background: "#0c1220" }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="font-heading font-bold text-2xl md:text-3xl mb-6" style={{ color: "#f2f2f4" }}>The Story</h2>
-          <div className="space-y-4 text-base leading-relaxed" style={{ color: "#8b90a8" }}>
+          <div className="space-y-4 text-base leading-relaxed" style={{ color: "#8390ae" }}>
             <p>
               After yet another dinner where we spent 20 minutes calculating who owes what, downloading yet another app, 
               and still forgetting someone's Venmo request, I knew there had to be a better way.
@@ -69,10 +69,10 @@ export default function About() {
       <section className="py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="font-heading font-bold text-2xl md:text-3xl mb-6" style={{ color: "#f2f2f4" }}>Try It Free</h2>
-          <p className="text-lg mb-8" style={{ color: "#8b90a8" }}>
+          <p className="text-lg mb-8" style={{ color: "#8390ae" }}>
             Split your first bill in under 2 minutes. No credit card. No account needed.
           </p>
-          <Link to="/NewReceipt" className="inline-block px-8 py-4 rounded-xl font-bold text-lg transition-all hover:opacity-90" style={{ background: "#00c896", color: "#0a0e1a" }}>
+          <Link to="/NewReceipt" className="inline-block px-8 py-4 rounded-xl font-bold text-lg transition-all hover:opacity-90" style={{ background: "#00c896", color: "#070b16" }}>
             Split a Bill Now →
           </Link>
         </div>

@@ -41,14 +41,14 @@ const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
 
 const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0e1a' }}>
-    <div className="flex flex-col items-center gap-3">
-      <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: '#00c896' }}>
-        <span className="text-white font-black text-lg">B</span>
+  <div className="min-h-screen flex items-center justify-center" style={{ background: '#070b16' }}>
+    <div className="flex flex-col items-center gap-3.5">
+      <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: '#00c896', boxShadow: '0 12px 40px -8px rgba(0,200,150,0.5)' }}>
+        <span className="font-black text-lg" style={{ color: '#04140f' }}>B</span>
       </div>
       <div className="flex gap-1.5">
         {[0,1,2].map(i => (
-          <div key={i} className="w-2 h-2 rounded-full" style={{ background: '#00c896', animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />
+          <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: '#00c896', animation: `pulse 1.2s cubic-bezier(0.23,1,0.32,1) ${i*0.2}s infinite` }} />
         ))}
       </div>
       <style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}`}</style>

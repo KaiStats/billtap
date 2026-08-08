@@ -4,10 +4,27 @@ module.exports = {
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
   	extend: {
+  		fontFamily: {
+  			sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+  			display: ['"Inter Tight"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
+  			sm: 'calc(var(--radius) - 4px)',
+  			'2xl': 'calc(var(--radius) + 6px)',
+  			'3xl': 'calc(var(--radius) + 14px)'
+  		},
+  		boxShadow: {
+  			card: 'var(--shadow-md)',
+  			float: 'var(--shadow-lg)',
+  			glow: 'var(--glow-teal)',
+  		},
+  		transitionTimingFunction: {
+  			'out-expo': 'cubic-bezier(0.23, 1, 0.32, 1)',
+  			'in-out-expo': 'cubic-bezier(0.77, 0, 0.175, 1)',
+  			drawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
   		},
   		colors: {
   			background: 'hsl(var(--background))',

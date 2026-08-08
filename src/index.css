@@ -81,7 +81,7 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -107,11 +107,19 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     --error-color: #b91c1c;
     --warning-color: #b45309;
 
-    /* App brand + semantic tokens */
-    --brand: 262 83% 58%;
+    /* App brand + semantic tokens (teal). :root is not the live theme — the
+       app is dark-locked — but these keep it coherent if ever read. */
+    --brand: 165 100% 34%;
     --brand-foreground: 0 0% 100%;
-    --brand-muted: 262 83% 95%;
-    --brand-muted-foreground: 262 60% 35%;
+    --brand-muted: 165 70% 92%;
+    --brand-muted-foreground: 165 80% 24%;
+    --shadow-sm: 0 1px 2px hsl(224 20% 40% / 0.15);
+    --shadow-md: 0 10px 30px -12px hsl(224 20% 30% / 0.25);
+    --shadow-lg: 0 30px 70px -16px hsl(224 20% 30% / 0.3);
+    --glow-teal: 0 12px 40px -8px hsl(165 100% 39% / 0.35);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
     --success: 142 71% 45%;
     --success-muted: 142 71% 93%;
     --success-muted-foreground: 142 60% 25%;
@@ -142,76 +150,92 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     --container-2xl: min(100%, 80rem);
   }
 
+  /*
+   * ─────────────────────────────────────────────────────────────────────
+   * BillTap — "Ledger at midnight" navy + electric-teal system (dark-only)
+   * ─────────────────────────────────────────────────────────────────────
+   * The app is locked to .dark (see index.html + ThemeProvider). This block
+   * is therefore the live theme, not an alternate. Deep-space navy ground,
+   * one committed electric-teal accent (#00c896) that carries every action,
+   * and secondary text tinted from the navy hue rather than dead grey so it
+   * still reads as part of the surface. Teal is light enough that its
+   * foreground is deep navy, not white — that is the premium-fintech tell
+   * (Cash App green, Vercel) and the only way it passes AA as a button.
+   */
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 224 47% 5%;          /* #070b16 deep space navy */
+    --foreground: 210 40% 98%;         /* #f7f9fc */
+    --card: 223 39% 8%;                /* #0c1220 */
+    --card-foreground: 210 40% 98%;
+    --popover: 223 40% 9%;             /* #0e1526 */
+    --popover-foreground: 210 40% 98%;
+    --primary: 165 100% 39%;           /* #00c896 electric teal — the action colour */
+    --primary-foreground: 224 60% 5%;  /* deep navy on teal → AA */
+    --secondary: 222 30% 14%;          /* #19212f neutral raised control */
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 28% 12%;              /* #151c29 */
+    --muted-foreground: 216 22% 66%;   /* #97a3bd navy-tinted, AA on ground */
+    --accent: 222 27% 15%;             /* hover surface */
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;          /* #dc3b3b */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 26% 17%;             /* #232d3f hairline */
+    --input: 220 24% 20%;
+    --ring: 165 100% 42%;              /* teal focus ring */
+    --chart-1: 165 100% 39%;           /* teal */
+    --chart-2: 190 95% 45%;            /* cyan */
+    --chart-3: 217 91% 60%;            /* blue */
+    --chart-4: 38 95% 55%;             /* amber */
+    --chart-5: 280 65% 62%;            /* violet */
+    --sidebar-background: 223 40% 7%;
+    --sidebar-foreground: 216 22% 72%;
+    --sidebar-primary: 165 100% 39%;
+    --sidebar-primary-foreground: 224 60% 5%;
+    --sidebar-accent: 222 27% 14%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 26% 15%;
+    --sidebar-ring: 165 100% 42%;
 
-    /* WCAG AA Compliant Text Colors (dark)
-     *
-     * These existed only under :root. body sets `color: var(--text-primary)` as
-     * a hard declaration, which beats the `text-foreground` utility on the very
-     * same rule — so everything inheriting from body got #0f172a whether or not
-     * the dark class was present. Against the app's own near-black chrome that
-     * is a contrast ratio of 1.11:1. Scanned receipt items, their prices, the
-     * bill title: all rendering correctly, none of them readable.
-     *
-     * The ramp is inverted here rather than deleted, because the light values
-     * are still what a light theme would need if the pages ever stop
-     * hard-coding their own hex. */
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-tertiary: #94a3b8;
-    --text-placeholder: #64748b;
-    --text-disabled: #475569;
+    /* Text ramp — tinted toward the navy hue, never flat grey. */
+    --text-primary: #f7f9fc;
+    --text-secondary: #b7c2da;
+    --text-tertiary: #8390ae;
+    --text-placeholder: #8794b4;     /* AA (~4.7:1) on the navy input surface */
+    --text-disabled: #4a5573;
 
-    /* App brand + semantic tokens (dark) */
-    --brand: 262 83% 68%;
-    --brand-foreground: 0 0% 100%;
-    --brand-muted: 262 50% 18%;
-    --brand-muted-foreground: 262 60% 80%;
-    --success: 142 71% 45%;
-    --success-muted: 142 40% 15%;
-    --success-muted-foreground: 142 60% 75%;
-    --warning: 38 95% 53%;
-    --warning-muted: 38 60% 15%;
-    --warning-muted-foreground: 38 80% 75%;
-    --info: 217 91% 60%;
-    --info-muted: 217 60% 15%;
-    --info-muted-foreground: 217 80% 80%;
-    --danger-muted: 0 50% 15%;
-    --danger-muted-foreground: 0 80% 75%;
-    --surface: 0 0% 10%;
-    --surface-raised: 0 0% 14.9%;
+    /* Brand + semantic tokens. Brand IS the teal; success stays a distinct
+       grass-green so "paid" never reads as just another accent. */
+    --brand: 165 100% 39%;
+    --brand-foreground: 224 60% 5%;
+    --brand-muted: 168 55% 11%;
+    --brand-muted-foreground: 165 72% 70%;
+    --success: 152 72% 45%;
+    --success-muted: 152 45% 12%;
+    --success-muted-foreground: 152 65% 72%;
+    --warning: 38 95% 55%;
+    --warning-muted: 38 55% 13%;
+    --warning-muted-foreground: 38 90% 72%;
+    --info: 205 95% 55%;
+    --info-muted: 205 60% 13%;
+    --info-muted-foreground: 205 85% 76%;
+    --danger-muted: 0 55% 13%;
+    --danger-muted-foreground: 0 85% 76%;
+    --surface: 223 38% 8%;             /* #0c1220 flush surface */
+    --surface-raised: 222 33% 11%;     /* #131b2b raised surface */
+
+    /* Elevation — every shadow carries an offset AND a soft blur, plus a
+       teal glow reserved for the primary action so depth reads as light,
+       not a flat halo. */
+    --shadow-sm: 0 1px 2px hsl(224 60% 2% / 0.5);
+    --shadow-md: 0 10px 30px -12px hsl(224 60% 2% / 0.7), 0 3px 8px -3px hsl(224 60% 2% / 0.5);
+    --shadow-lg: 0 30px 70px -16px hsl(224 70% 1% / 0.75), 0 10px 24px -10px hsl(224 60% 2% / 0.6);
+    --glow-teal: 0 12px 40px -8px hsl(165 100% 39% / 0.5), 0 3px 12px -4px hsl(165 100% 39% / 0.35);
+
+    /* Motion — strong custom curves; the built-ins are too weak to feel
+       intentional (Emil Kowalski). */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }
 }
 
@@ -230,6 +254,10 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   body {
     @apply bg-background text-foreground;
     color: var(--text-primary);
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     overscroll-behavior: none;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -238,6 +266,13 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     padding-right: env(safe-area-inset-right);
     font-size: 1rem;
   }
+
+  /* Display headings — Inter Tight, tightened tracking for the fintech voice. */
+  h1, h2, h3, .h1, .h2, .h3 {
+    font-family: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  h1, .h1 { letter-spacing: -0.035em; }
 
   /* Fluid Container Widths */
   .container {
@@ -380,17 +415,13 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     outline: none;
   }
 
-  /* Add custom visible focus indicator */
+  /* Visible focus indicator — the brand teal ring (hsl(var(--ring))), with a
+     2px offset so it reads as a halo even around a teal button. One committed
+     accent, everywhere: focus no longer flashes an off-brand indigo. */
   *:focus-visible {
-    outline: 3px solid #667eea;
+    outline: 3px solid hsl(var(--ring));
     outline-offset: 2px;
-    border-radius: 4px;
-  }
-
-  /* For dark backgrounds */
-  .dark *:focus-visible,
-  [data-theme="dark"] *:focus-visible {
-    outline-color: #ffffff;
+    border-radius: 6px;
   }
 
   /* Specific interactive elements */
@@ -402,7 +433,7 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   [role="button"]:focus-visible,
   [role="checkbox"]:focus-visible,
   [tabindex]:focus-visible {
-    outline: 3px solid #667eea;
+    outline: 3px solid hsl(var(--ring));
     outline-offset: 2px;
   }
 
@@ -410,14 +441,14 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   input:focus-visible,
   textarea:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
-    border-color: #667eea;
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.4);
+    border-color: hsl(var(--ring));
   }
 
   /* Make sure focus is visible in all states */
   button:focus-visible:active,
   button:focus-visible:hover {
-    outline: 3px solid #667eea;
+    outline: 3px solid hsl(var(--ring));
     outline-offset: 2px;
   }
 
@@ -534,4 +565,176 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
       padding: 8px 12px;
     }
   }
+}
+/* ─────────────────────────────────────────────────────────────────────────
+   Premium fintech materials — navy + electric teal
+   Intentional materials, used deliberately (glass for floating chrome, glow
+   reserved for the primary action, aurora for the one atmospheric moment).
+   ───────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Tabular, ledger-style numerals for money and data. */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+    letter-spacing: -0.01em;
+  }
+  .mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Frosted navy glass — floating chrome only (nav, sticky headers, dialogs). */
+  .glass {
+    background: hsl(var(--surface-raised) / 0.72);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid hsl(var(--border) / 0.7);
+  }
+  .glass-strong {
+    background: hsl(var(--surface-raised) / 0.9);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid hsl(var(--border) / 0.8);
+  }
+
+  /* Elevation utilities driven by the tokens above. */
+  .shadow-card { box-shadow: var(--shadow-md); }
+  .shadow-float { box-shadow: var(--shadow-lg); }
+  .glow-teal { box-shadow: var(--glow-teal); }
+
+  /* One-pixel hairline that reads as light catching an edge. */
+  .hairline { border: 1px solid hsl(var(--border) / 0.8); }
+  .ring-hairline { box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.7); }
+
+  /* The single atmospheric moment: a teal aurora rising off the ground.
+     Used once per surface (hero / page top), never as wallpaper. */
+  .bg-aurora {
+    background:
+      radial-gradient(70% 55% at 50% -8%, hsl(165 100% 39% / 0.16), transparent 68%),
+      radial-gradient(48% 42% at 88% 8%, hsl(190 95% 50% / 0.10), transparent 64%),
+      radial-gradient(45% 45% at 8% 18%, hsl(217 91% 60% / 0.07), transparent 64%),
+      hsl(var(--background));
+  }
+  /* A faint dotted grid for empty ground — the ledger paper. */
+  .bg-grid {
+    background-image: radial-gradient(hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Gradient border via mask — a teal-lit edge without a border-left costume. */
+  .border-glow {
+    position: relative;
+  }
+  .border-glow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, hsl(165 100% 45% / 0.7), hsl(190 95% 50% / 0.25) 40%, transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Entrance: rise from an already-visible-but-lower position (never scale-0). */
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes rise-sm {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-rise { animation: rise 0.6s var(--ease-out) both; }
+  .animate-rise-sm { animation: rise-sm 0.45s var(--ease-out) both; }
+
+  /* Row settling into a ledger (never from scale-0 — starts already-shaped). */
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(6px) scale(0.99); filter: blur(1px); }
+    to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  .animate-settle { animation: settle 0.5s var(--ease-out) both; }
+
+  /* A confirmation mark popping in — starts visible-but-small (Emil). */
+  @keyframes pop-in {
+    0%   { opacity: 0; transform: scale(0.6); }
+    60%  { opacity: 1; transform: scale(1.12); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  .animate-pop { animation: pop-in 0.32s var(--ease-out) both; }
+
+  /* Scroll reveal target. Progressive enhancement via the `scripting` media
+     feature: the hidden start applies only where JS actually runs to un-hide it
+     (scripting: enabled). A no-JS browser, an old browser without the feature,
+     or a crawler falls through to fully visible — and because this is a live
+     media query, not a JS-added class, the prerendered HTML never bakes in the
+     hidden state. */
+  .reveal { transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); will-change: opacity, transform; }
+  @media (scripting: enabled) {
+    .reveal:not(.is-in) { opacity: 0; transform: translateY(18px); }
+  }
+
+  /* A single light sweep across the CTA on hover — a response to intent, not a
+     perpetual loop that tugs at attention. Touch devices (no hover) rely on the
+     press feedback instead. */
+  @keyframes sheen {
+    from { transform: translateX(-140%); }
+    to   { transform: translateX(240%); }
+  }
+  .sheen {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .sheen::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 40%;
+    background: linear-gradient(100deg, transparent, hsl(0 0% 100% / 0.2), transparent);
+    transform: translateX(-140%);
+    pointer-events: none;
+    z-index: 1;
+  }
+  @media (hover: hover) {
+    .sheen:hover::after { animation: sheen 0.9s var(--ease-out) 1; }
+  }
+
+  /* Slow teal pulse for live/active status dots. */
+  @keyframes ping-soft {
+    0%   { box-shadow: 0 0 0 0 hsl(165 100% 45% / 0.5); }
+    70%  { box-shadow: 0 0 0 8px hsl(165 100% 45% / 0); }
+    100% { box-shadow: 0 0 0 0 hsl(165 100% 45% / 0); }
+  }
+  .pulse-teal { animation: ping-soft 2.2s var(--ease-out) infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rise, .animate-rise-sm, .sheen::after, .pulse-teal,
+    .animate-settle, .animate-pop {
+      animation: none !important;
+    }
+    .animate-rise, .animate-rise-sm, .animate-settle, .animate-pop {
+      opacity: 1 !important; transform: none !important; filter: none !important;
+    }
+    .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  }
+
+  /* Press feedback the whole app can opt into (Emil: buttons must feel heard). */
+  .press { transition: transform 0.16s var(--ease-out); }
+  .press:active { transform: scale(0.97); }
+
+  /* Premium loading skeleton — a light sweep across a raised navy base, rather
+     than a flat opacity pulse. Reduced motion falls back to a still surface. */
+  @keyframes skeleton-sweep { 100% { transform: translateX(100%); } }
+  .skeleton { position: relative; overflow: hidden; background: hsl(var(--surface-raised)); }
+  .skeleton::after {
+    content: "";
+    position: absolute; inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.07), transparent);
+    animation: skeleton-sweep 1.5s var(--ease-in-out) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 }

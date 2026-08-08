@@ -38,7 +38,7 @@ function MoneyRow({ label, amount, muted }) {
       <span className={`text-[15px] leading-snug ${muted ? "text-muted-foreground" : "text-foreground"}`}>
         {label}
       </span>
-      <span className="font-semibold text-[15px] text-foreground tabular-nums shrink-0">
+      <span className="mono font-semibold text-[15px] text-foreground tabular-nums shrink-0">
         ${amount.toFixed(2)}
       </span>
     </div>
@@ -426,10 +426,10 @@ export default function NewReceipt() {
       {/* Hero Header */}
       <div
         className="relative overflow-hidden px-5 pt-10 pb-8"
-        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #302b63 60%, #1a1535 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 55%, #070b16 100%)' }}
       >
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '45vw', height: '45vw', maxWidth: 280, maxHeight: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(102,126,234,0.45) 0%, transparent 70%)', filter: 'blur(45px)' }} />
+          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '45vw', height: '45vw', maxWidth: 280, maxHeight: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,150,0.45) 0%, transparent 70%)', filter: 'blur(45px)' }} />
         </div>
         <div className="relative z-10 max-w-2xl mx-auto">
           <h1 className="text-2xl font-black text-white tracking-tight">New Split</h1>
@@ -440,7 +440,7 @@ export default function NewReceipt() {
           <div className="flex gap-4 mt-4">
             {["Take a photo", "Check it"].map((s, i) => (
               <div key={s} className={`flex items-center gap-2 text-sm font-semibold ${step === i + 1 ? "text-white" : step > i + 1 ? "text-emerald-400" : "text-white/30"}`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${step === i + 1 ? "bg-white text-purple-700" : step > i + 1 ? "bg-emerald-500 text-white" : "bg-white/10 text-white/30"}`}>{i + 1}</div>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${step === i + 1 ? "bg-primary text-primary-foreground" : step > i + 1 ? "bg-emerald-500 text-white" : "bg-white/10 text-white/30"}`}>{i + 1}</div>
                 {s}
                 {i < 1 && <span className="text-white/20 ml-1">›</span>}
               </div>
@@ -504,7 +504,7 @@ export default function NewReceipt() {
               <div
                 className="absolute left-0 right-0 h-0.5"
                 style={{
-                  background: 'linear-gradient(90deg, transparent, #667eea, #f093fb, transparent)',
+                  background: 'linear-gradient(90deg, transparent, #00c896, transparent)',
                   animation: 'scanline 1.8s ease-in-out infinite',
                   top: '0%',
                 }}
@@ -517,12 +517,12 @@ export default function NewReceipt() {
                 {[0, 1, 2].map(i => (
                   <div
                     key={i}
-                    className="w-2 h-2 rounded-full bg-brand"
-                    style={{ animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
+                    className="w-1.5 h-1.5 rounded-full bg-primary"
+                    style={{ animation: `dotpulse 1.2s cubic-bezier(0.23,1,0.32,1) ${i * 0.2}s infinite` }}
                   />
                 ))}
               </div>
-              <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }`}</style>
+              <style>{`@keyframes dotpulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }`}</style>
             </div>
           </div>
         )}
@@ -533,10 +533,10 @@ export default function NewReceipt() {
           <button
             onClick={() => setShowQuickEven(v => !v)}
             className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left transition-all active:scale-[0.99]"
-            style={{ background: 'rgba(102,126,234,0.08)', border: '1px solid rgba(102,126,234,0.2)' }}
+            style={{ background: 'rgba(0,200,150,0.08)', border: '1px solid rgba(0,200,150,0.2)' }}
           >
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}>
-              <Zap className="w-5 h-5 text-white" aria-hidden="true" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-primary shadow-glow">
+              <Zap className="w-5 h-5 text-primary-foreground" aria-hidden="true" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-white text-sm">Skip setup → Just split evenly</p>
@@ -546,7 +546,7 @@ export default function NewReceipt() {
           </button>
 
           {showQuickEven && (
-            <div ref={quickEvenRef} className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.15)' }}>
+            <div ref={quickEvenRef} className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.15)' }}>
               <div className="space-y-2">
                 <Label htmlFor="quick-name" className="text-xs text-white/50">Restaurant / occasion name</Label>
                 <Input id="quick-name" value={title} onChange={e => handleTitleChange(e.target.value)} placeholder="e.g. Dinner at Chipotle" className="rounded-xl" />
@@ -558,8 +558,7 @@ export default function NewReceipt() {
               <button
                 onClick={handleQuickEvenCreate}
                 disabled={saving || !quickTotal || parseFloat(quickTotal) <= 0}
-                className="w-full h-12 text-white font-black rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 active:scale-[0.99]"
-                style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}
+                className="press w-full h-12 bg-primary text-primary-foreground font-bold rounded-xl flex items-center justify-center gap-2 shadow-glow transition hover:brightness-110 disabled:opacity-50 disabled:shadow-none"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Zap className="w-4 h-4" /> Generate QR Code →</>}
               </button>
@@ -594,8 +593,7 @@ export default function NewReceipt() {
             <button
               onClick={handleParseReceipt}
               disabled={!imageFile || uploading || parsing}
-              className="w-full h-14 text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
+              className="press w-full h-14 bg-primary text-primary-foreground font-bold text-base rounded-2xl flex items-center justify-center gap-2 shadow-glow transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               {uploading ? <><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Uploading…</> :
                parsing   ? <><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Analyzing receipt…</> :
@@ -643,7 +641,7 @@ export default function NewReceipt() {
                     <Label htmlFor="bill-title" className="text-sm text-muted-foreground">Where were you?</Label>
                     <Input id="bill-title" value={title} onChange={e => handleTitleChange(e.target.value)} className="mt-1 rounded-xl" autoComplete="off" />
                     {titleSuggestions.length > 0 && (
-                      <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: '#1a1535', border: '1px solid rgba(255,255,255,0.12)' }}>
+                      <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: '#131b2b', border: '1px solid rgba(255,255,255,0.12)' }}>
                         {titleSuggestions.map(s => (
                           <button
                             key={s}
@@ -719,7 +717,7 @@ export default function NewReceipt() {
                 {tip > 0 && <MoneyRow label="Tip" amount={tip} muted />}
                 <div className="flex items-baseline justify-between gap-4 pt-3 mt-2 border-t border-white/10">
                   <span className="font-bold text-foreground">Total</span>
-                  <span className="font-black text-3xl text-brand tabular-nums">${total.toFixed(2)}</span>
+                  <span className="mono font-semibold text-3xl text-primary tabular-nums">${total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -745,8 +743,7 @@ export default function NewReceipt() {
             <button
               onClick={handleCreateSession}
               disabled={saving || (splitMode === "itemized" && items.length === 0)}
-              className="w-full h-14 text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
+              className="press w-full h-14 bg-primary text-primary-foreground font-bold text-base rounded-2xl flex items-center justify-center gap-2 shadow-glow transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               {saving
                 ? <><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Making your code…</>

@@ -40,9 +40,9 @@ export default function Home() {
   const activeSessions = sessions.filter(s => s.status !== 'completed').length;
 
   const stats = [
-    { icon: Users, label: 'Sessions', value: totalSessions || '0', color: 'from-violet-500 to-purple-600' },
+    { icon: Users, label: 'Sessions', value: totalSessions || '0', color: 'from-sky-400 to-cyan-500' },
     { icon: TrendingUp, label: 'Completed', value: completedSessions || '0', color: 'from-emerald-400 to-teal-500' },
-    { icon: Clock, label: 'Active', value: activeSessions || '0', color: 'from-pink-500 to-rose-400' },
+    { icon: Clock, label: 'Active', value: activeSessions || '0', color: 'from-primary to-emerald-500' },
   ];
 
   const statusLabel = (status) => {
@@ -56,18 +56,17 @@ export default function Home() {
       {/* Hero Header */}
       <div
         className="relative overflow-hidden px-5 pt-10 pb-8"
-        style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #302b63 60%, #1a1535 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 55%, #070b16 100%)' }}
       >
-        {/* Glow blobs */}
+        {/* Glow blobs — teal aurora */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '50vw', height: '50vw', maxWidth: 300, maxHeight: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(102,126,234,0.4) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-          <div style={{ position: 'absolute', bottom: '-30%', left: '-10%', width: '40vw', height: '40vw', maxWidth: 250, maxHeight: 250, borderRadius: '50%', background: 'radial-gradient(circle, rgba(245,87,108,0.3) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '50vw', height: '50vw', maxWidth: 300, maxHeight: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,150,0.28) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+          <div style={{ position: 'absolute', bottom: '-30%', left: '-10%', width: '40vw', height: '40vw', maxWidth: 250, maxHeight: 250, borderRadius: '50%', background: 'radial-gradient(circle, rgba(56,189,248,0.16) 0%, transparent 70%)', filter: 'blur(40px)' }} />
         </div>
 
         <div className="relative z-10 max-w-4xl mx-auto">
-          <p className="text-white/50 text-sm font-medium mb-1 uppercase tracking-widest">Welcome back</p>
-          <h1 className="text-3xl font-black text-white tracking-tight leading-tight mb-1">
-            {user?.full_name ? user.full_name.split(' ')[0] : 'Hey there'} 👋
+          <h1 className="font-display text-3xl font-bold text-white tracking-tight leading-tight mb-1.5">
+            Welcome back, {user?.full_name ? user.full_name.split(' ')[0] : 'friend'} 👋
           </h1>
           <p className="text-white/60 text-base">Split bills with friends in seconds</p>
         </div>
@@ -78,8 +77,7 @@ export default function Home() {
         {/* CTA Button */}
         <button
           onClick={() => navigate('/new-receipt')}
-          className="w-full h-16 text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0"
-          style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb, #667eea)' }}
+          className="press w-full h-16 bg-primary text-primary-foreground font-bold text-lg rounded-2xl flex items-center justify-center gap-3 shadow-glow transition hover:brightness-110"
         >
           <Plus className="w-6 h-6" />
           Create New Split
@@ -100,7 +98,7 @@ export default function Home() {
                     <Icon className="w-4 h-4 text-white" aria-hidden="true" />
                   </div>
                   <div>
-                    <p className="text-2xl font-black text-foreground">{stat.value}</p>
+                    <p className="mono text-2xl font-semibold tabular-nums text-foreground">{stat.value}</p>
                     <p className="text-xs text-muted-foreground">{stat.label}</p>
                   </div>
                 </div>
@@ -120,21 +118,21 @@ export default function Home() {
                   <button
                     key={session.id}
                     onClick={() => navigate(sessionPath('/receipt-detail', session.id, { host: 1 }))}
-                    className="w-full rounded-2xl p-4 text-left flex items-center justify-between transition-all group"
+                    className="press w-full rounded-2xl p-4 text-left flex items-center justify-between transition-[transform,border-color,background-color] duration-200 ease-out-expo hover:-translate-y-0.5 hover:bg-white/[0.05] group"
                     style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-                    onMouseEnter={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.15)'}
-                    onMouseLeave={e => e.currentTarget.style.border = '1px solid rgba(255,255,255,0.07)'}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'hsl(var(--primary) / 0.35)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}
                   >
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-foreground truncate">{session.title}</h3>
                       <p className="text-sm text-muted-foreground mt-0.5">
                         {session.participants?.length || 0} people ·{' '}
-                        <span className="text-brand font-semibold">${session.total_amount?.toFixed(2) || '0.00'}</span>
+                        <span className="mono text-primary font-semibold tabular-nums">${session.total_amount?.toFixed(2) || '0.00'}</span>
                       </p>
                     </div>
                     <div className="flex items-center gap-2 ml-3 shrink-0">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`}>{label}</span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
                     </div>
                   </button>
                 );
@@ -146,8 +144,8 @@ export default function Home() {
         {/* Empty State */}
         {recentSessions.length === 0 && (
           <div className="text-center py-14 rounded-2xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-white" aria-hidden="true" />
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 ring-hairline flex items-center justify-center mx-auto mb-4">
+              <Users className="w-8 h-8 text-primary" aria-hidden="true" />
             </div>
             <h3 className="text-xl font-bold text-foreground mb-2">No splits yet</h3>
             <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">

@@ -134,7 +134,7 @@ function SessionHostComponent() {
       celebratedRef.current = true;
       setAllPaidCelebrated(true);
       if (navigator.vibrate) navigator.vibrate([50, 50, 100]);
-      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ['#667eea', '#f093fb', '#f5576c', '#00c896', '#d4af37'] });
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ['#00c896', '#2ee6b0', '#38bdf8', '#f8fafc', '#00c896'] });
       setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { y: 0.3 } }), 400);
     }
   }, [session]);
@@ -235,12 +235,12 @@ function SessionHostComponent() {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-5 relative overflow-hidden"
-      style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 55%, #070b16 100%)' }}
     >
       {/* Glow blobs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div style={{ position:'absolute', top:'-10%', left:'-15%', width:'60vw', height:'60vw', maxWidth:400, maxHeight:400, borderRadius:'50%', background:'radial-gradient(circle, rgba(102,126,234,0.35) 0%, transparent 70%)', filter:'blur(60px)' }} />
-        <div style={{ position:'absolute', bottom:'-10%', right:'-15%', width:'55vw', height:'55vw', maxWidth:350, maxHeight:350, borderRadius:'50%', background:'radial-gradient(circle, rgba(245,87,108,0.28) 0%, transparent 70%)', filter:'blur(60px)' }} />
+        <div style={{ position:'absolute', top:'-10%', left:'-15%', width:'60vw', height:'60vw', maxWidth:400, maxHeight:400, borderRadius:'50%', background:'radial-gradient(circle, rgba(0,200,150,0.35) 0%, transparent 70%)', filter:'blur(60px)' }} />
+        <div style={{ position:'absolute', bottom:'-10%', right:'-15%', width:'55vw', height:'55vw', maxWidth:350, maxHeight:350, borderRadius:'50%', background:'radial-gradient(circle, rgba(0,200,150,0.28) 0%, transparent 70%)', filter:'blur(60px)' }} />
       </div>
 
       <div className="relative z-10 max-w-sm w-full space-y-5">
@@ -249,7 +249,7 @@ function SessionHostComponent() {
           <div className="text-4xl mb-2">🎉</div>
           <h1 className="text-2xl font-black text-white tracking-tight">Your bill is ready!</h1>
           <p className="text-white/60 mt-1 text-sm">{session.title} ·{' '}
-            <span className="text-white font-bold">${(session.total_amount || 0).toFixed(2)}</span>
+            <span className="mono text-white font-bold tabular-nums">${(session.total_amount || 0).toFixed(2)}</span>
           </p>
         </div>
 
@@ -335,7 +335,7 @@ function SessionHostComponent() {
           {/* QR Code */}
           <div className="flex flex-col items-center gap-3">
             <div className="bg-white p-4 rounded-2xl shadow-xl" role="img" aria-label={`QR code to join: ${session.title}`}>
-              <QRCodeSVG value={claimUrl} size={200} fgColor="#302b63" level="H" includeMargin={false} />
+              <QRCodeSVG value={claimUrl} size={200} fgColor="#0a1120" level="H" includeMargin={false} />
             </div>
             <p className="text-white/60 font-medium text-sm text-center">Have everyone scan this 📱</p>
           </div>
@@ -356,7 +356,7 @@ function SessionHostComponent() {
           {/* Live Participants */}
           <div
             className="flex items-center justify-between rounded-xl p-3"
-            style={{ background: 'rgba(102,126,234,0.15)', border: '1px solid rgba(102,126,234,0.25)' }}
+            style={{ background: 'rgba(0,200,150,0.15)', border: '1px solid rgba(0,200,150,0.25)' }}
           >
             <div className="flex items-center gap-2 text-white/80 font-semibold text-sm">
               <Users className="w-4 h-4" aria-hidden="true" />
@@ -364,7 +364,7 @@ function SessionHostComponent() {
             </div>
             <div className="flex gap-1">
               {participants.slice(0, 6).map((p, i) => (
-                <div key={i} aria-label={p.name || "Guest"} className="w-7 h-7 bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-sm">
+                <div key={i} aria-label={p.name || "Guest"} className="w-7 h-7 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-sm ring-2 ring-background">
                   {(p.name || "?")[0].toUpperCase()}
                 </div>
               ))}
@@ -388,9 +388,9 @@ function SessionHostComponent() {
 
           {/* Split Mode Indicator */}
           {session.split_mode === "custom" && (
-            <div className="rounded-xl p-3 bg-purple-500/10 border border-purple-500/20">
+            <div className="rounded-xl p-3 bg-info-muted border border-info/20">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-purple-300 font-semibold text-sm">
+                <div className="flex items-center gap-2 text-info-muted-foreground font-semibold text-sm">
                   <Settings className="w-4 h-4" />
                   Custom Split Active
                 </div>
@@ -434,7 +434,7 @@ function SessionHostComponent() {
                       width: `${pct}%`,
                       background: allDone
                         ? 'linear-gradient(90deg, #00c896, #34d399)'
-                        : 'linear-gradient(90deg, #667eea, #f093fb)',
+                        : 'linear-gradient(90deg, #00c896, #2ee6b0)',
                     }}
                   />
                 </div>
@@ -449,7 +449,7 @@ function SessionHostComponent() {
                 <span>Items claimed</span><span>{claimedItems}/{totalItems}</span>
               </div>
               <div role="progressbar" aria-valuenow={claimedItems} aria-valuemin={0} aria-valuemax={totalItems} aria-label="Items claimed" className="w-full bg-white/10 rounded-full h-2">
-                <div className="h-2 rounded-full transition-all" style={{ width: `${(claimedItems / totalItems) * 100}%`, background: 'linear-gradient(90deg, #667eea, #f093fb)' }} />
+                <div className="h-2 rounded-full transition-all" style={{ width: `${(claimedItems / totalItems) * 100}%`, background: 'linear-gradient(90deg, #00c896, #2ee6b0)' }} />
               </div>
             </div>
           )}
@@ -479,8 +479,7 @@ function SessionHostComponent() {
             aria-label={session.status === "claiming"
               ? "View Progress — see who has claimed and paid"
               : "Claim My Items from the bill"}
-            className="w-full h-14 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-2xl transition-all hover:-translate-y-0.5 active:translate-y-0"
-            style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+            className="press w-full h-14 bg-primary text-primary-foreground font-bold rounded-2xl flex items-center justify-center gap-2 shadow-glow transition hover:brightness-110"
           >
             {session.status === "claiming" ? "View Progress" : "Claim My Items"}
             <ArrowRight className="w-5 h-5" aria-hidden="true" />
@@ -496,7 +495,7 @@ function SessionHostComponent() {
                 <div
                   className="w-full max-w-sm rounded-3xl p-6 space-y-4 text-center"
                   onClick={e => e.stopPropagation()}
-                  style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)', border: '1px solid rgba(255,255,255,0.12)' }}
+                  style={{ background: 'linear-gradient(165deg, #070b16 0%, #0d1728 100%)', border: '1px solid rgba(255,255,255,0.12)' }}
                 >
                   <div className="text-4xl">🎉</div>
                   <div className="space-y-1">
@@ -510,7 +509,7 @@ function SessionHostComponent() {
                       { label: minutesTaken ? `${minutesTaken}min ⚡` : "Done", value: "Paid ✓" },
                     ].map(({ label, value }) => (
                       <div key={label} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        <div className="text-white font-black text-lg">{value}</div>
+                        <div className="mono text-white font-semibold text-lg tabular-nums">{value}</div>
                         <div className="text-white/40 text-xs">{label}</div>
                       </div>
                     ))}
@@ -524,8 +523,7 @@ function SessionHostComponent() {
                           navigator.clipboard.writeText(summaryText);
                         }
                       }}
-                      className="flex-1 h-12 rounded-xl font-bold text-white text-sm transition-all active:scale-95"
-                      style={{ background: 'linear-gradient(135deg, #f5576c, #f093fb)' }}
+                      className="press flex-1 h-12 rounded-xl font-bold bg-primary text-primary-foreground text-sm shadow-glow transition hover:brightness-110"
                     >
                       Share Summary
                     </button>
