@@ -2175,3 +2175,58 @@ test('the complaint box stays reachable with the keyboard up', async () => {
     );
   } finally { await context.close(); }
 });
+
+// ── The Name Gate, the first screen most guests ever see ────────────────────
+//
+// A fresh phone with no stored name lands here straight off a table's QR
+// code — before the receipt, before the split, before anything else in this
+// file's coverage. Same fixed-overlay-plus-autoFocus-input shape as the two
+// screens above, found by the 13-layer audit as the one instance of that bug
+// this session's earlier pass missed.
+
+test('the name gate fits a phone at every width a guest might hold', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION, hostAllowed: false });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('dialog', { name: "What's your name?" }).waitFor({ timeout: 10000 });
+
+    for (const width of PHONE_WIDTHS) {
+      await page.setViewportSize({ width, height: 844 });
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(overflow <= 1, `name gate overflowed by ${overflow}px at ${width}px`);
+    }
+  } finally { await context.close(); }
+});
+
+test('the name gate stays reachable with the keyboard up', async () => {
+  const { context, page } = await phone({ hostSession: HOST_SESSION, hostAllowed: false });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('dialog', { name: "What's your name?" }).waitFor({ timeout: 10000 });
+
+    // Shorter than RatingCapture's 374px benchmark on purpose: this screen has
+    // no textarea, so its ~287px of content fits at 374px with or without the
+    // cap and a test at that height would exercise nothing. 230px stands in
+    // for a landscape phone, or an Android keyboard with a suggestion bar
+    // riding on top of it — both real, both shorter than this content.
+    await page.setViewportSize({ width: 320, height: 230 });
+
+    const panel = page.locator('[role="dialog"]');
+    const box = await panel.boundingBox();
+    const reachable = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"]');
+      for (let n = el; n; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return true;
+        if (s.position === 'fixed') break;
+      }
+      return false;
+    });
+
+    assert.ok(
+      box.y >= -1 || reachable,
+      `the name gate starts ${Math.round(box.y)}px above the viewport and nothing scrolls — ` +
+      'a guest cannot see what they are being asked their name for',
+    );
+  } finally { await context.close(); }
+});

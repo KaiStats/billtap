@@ -679,10 +679,24 @@ export default function Claim() {
         </div>
       )}
 
-      {/* Name Gate Modal */}
+      {/*
+        Name Gate Modal
+
+        max-h-[100dvh] + overflow-y-auto on the content column for the same
+        reason RatingCapture's feedback phase and SessionHost's payment-setup
+        modal needed it (see those for the measured failure): this is a fixed
+        overlay with an autoFocus input, so the keyboard is up the moment it
+        opens, and a fixed element has nothing to scroll to bring off-screen
+        content back once the keyboard has claimed the bottom of a small
+        phone. This is the first screen most guests ever see after scanning a
+        table's QR code — higher-traffic than either of the other two.
+      */}
       {showNameGate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'linear-gradient(160deg, #0f0c29 0%, #1a1535 100%)' }}>
-          <div className="w-full max-w-sm space-y-6 text-center">
+          <div
+            role="dialog" aria-modal="true" aria-label="What's your name?"
+            className="w-full max-w-sm space-y-6 text-center max-h-[100dvh] overflow-y-auto overscroll-contain"
+          >
             <div className="flex justify-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'linear-gradient(135deg, #667eea, #f093fb)' }}>
                 BT

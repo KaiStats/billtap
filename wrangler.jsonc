@@ -330,15 +330,23 @@
 
   // The bucket the backup writes to.
   //
-  // COMMENTED OUT because no bucket exists yet. Create one and uncomment:
+  // LIVE, not commented out — and that sentence would not have needed writing
+  // if the previous one had not been wrong for two days. This binding was
+  // restored by a merge-conflict resolution (2b633d6a, 2026-08-06) that kept
+  // the JSON block below without touching the comment above it, which until
+  // this edit still said "COMMENTED OUT because no bucket exists yet." A
+  // stale comment describing a live control as off is worth correcting before
+  // anything else, because the next person reads it before they read the
+  // config — the 13-layer audit that caught this found it independently five
+  // times over, once per layer that happened to look at this file.
   //
-  //     npx wrangler r2 bucket create billtap-backups
-  //
-  // Until then the cron fires, throws "BACKUP_BUCKET is not bound", and the
-  // invocation is marked failed — deliberately. The failure this replaces was a
-  // backup that reported success and stored nothing, so an unconfigured backup
-  // has to be loud rather than quiet. src/RUNBOOK.md states plainly that there
-  // is no restorable backup; keep that warning until this binding is live.
+  // What is still NOT confirmed: whether the bucket named below actually
+  // exists and whether the nightly cron has produced a manifest with
+  // `complete: true`. Neither this comment nor src/RUNBOOK.md's warning can
+  // assert that from the repo — someone has to open R2 and look. See
+  // RUNBOOK.md's "Backups" section for exactly what to check and why it
+  // still says "unconfirmed" rather than either "there is no backup" or
+  // "there is a restorable backup."
   //
   "r2_buckets": [
     { "binding": "BACKUP_BUCKET", "bucket_name": "billtap-backups" }

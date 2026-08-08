@@ -261,10 +261,34 @@ curl -s "$SUPABASE_URL/rest/v1/sessions?select=id&limit=1" \
 3. **Escalate to Supabase** with the project ref, the table names, and the
    approximate time. Point-in-time recovery is a paid-plan feature — confirm
    whether this project has it **before** you need it, not during.
-### ⚠️ There is no restorable backup. Do not spend incident time looking for one.
+### ⚠️ Whether there is a restorable backup is UNCONFIRMED. Check R2 before an incident, not during one.
 
-The Base44 `nightlyBackup` this section was written about never produced a
-recoverable artefact (its replacement is described further down):
+This warning has said two different wrong things at two different times, and
+the second one is worth naming so it does not happen a third time. It used to
+say plainly that no backup existed — true when written. On 2026-08-06 a
+merge-conflict resolution quietly turned the `BACKUP_BUCKET` R2 binding in
+`wrangler.jsonc` live again without anyone coming back to this section, so
+that sentence sat here being false for two days: the exact failure mode this
+whole page exists to prevent, a runbook that sends the first minutes of an
+incident on a story that stopped being true.
+
+**The honest current state, as of the 13-layer audit that caught the drift:**
+the binding is live and a deploy log this session listed it as bound. Neither
+that nor this document is proof the nightly cron has actually produced a
+restorable backup — an R2 binding existing says nothing about whether a
+manifest with `complete: true` has ever landed inside it.
+
+**Before you trust or dismiss the idea of a backup, check R2 directly:**
+open the `billtap-backups` bucket and look for a dated prefix (see the
+example below) with a `manifest.json` whose `complete` field is `true`. If
+one exists, delete this whole warning and replace it with the restore
+procedure described further down. If R2 is empty or every manifest says
+`complete: false`, escalate to Supabase immediately per the section above —
+do not spend incident time on a backup that was never confirmed to exist.
+
+The Base44 `nightlyBackup` this section was originally written about never
+produced a recoverable artefact — described here for history, not because it
+is still relevant:
 
 - It writes to `/tmp` inside an ephemeral Deno isolate. That filesystem is gone
   the moment the invocation ends, so nothing is readable afterwards — not hours
@@ -325,16 +349,19 @@ It does nothing until a bucket exists:
 npx wrangler r2 bucket create billtap-backups
 ```
 
-then uncomment the `r2_buckets` block in `wrangler.jsonc` and deploy. Until
-then the cron fires, throws `BACKUP_BUCKET is not bound`, and the invocation is
-marked failed — on purpose. The failure being designed against is a backup that
-reports success and stores nothing, so an unconfigured one has to be loud.
+`wrangler.jsonc`'s `r2_buckets` block is live now — see the comment above it
+for when and how that happened. If the bucket named there
+(`billtap-backups`) was never actually created with the command above, the
+binding still deploys (Cloudflare does not require the bucket to exist at
+bind time) and the cron fails at runtime instead, throwing
+`BACKUP_BUCKET is not bound` or an R2 "bucket does not exist" error — which
+is one of the two things to rule out per the warning above.
 
-**Delete this whole warning once the bucket is live and you have confirmed a
-prefix for today's date exists with `complete: true` in its manifest**, and
-replace it with the restore procedure — read the manifest, fetch each entity
-object it lists, then re-import per entity as service role. Do not write that
-procedure before you have restored from it once.
+**Delete the warning above once you have confirmed a prefix for today's date
+exists with `complete: true` in its manifest**, and replace it with the
+restore procedure — read the manifest, fetch each entity object it lists,
+then re-import per entity as service role. Do not write that procedure
+before you have restored from it once.
 
 ### Data Loss Triage Matrix
 | Scope | Likely Cause | Owner |
