@@ -22,12 +22,13 @@ import { serviceRole, currentUser, dataMisconfiguration, backendName } from '../
 // Straight from db.js rather than through the backend switch: storage is
 // Supabase's and there is no Base44 equivalent to route to. createReceiptUpload
 // checks the backend itself before calling this.
-import { createSignedUpload } from '../lib/db.js';
+import { createSignedUpload, supabaseUrl } from '../lib/db.js';
 import { validateReceiptParse as computeParse } from '../../shared/receipt-math.js';
 import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
 import { isEntitled } from '../../shared/entitlement.js';
+import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 
 /**
  * The audit hook when nobody supplied one.
@@ -2324,6 +2325,99 @@ const HANDLERS = {
         }
         : {}),
     });
+  },
+
+  /**
+   * Removes the caller's ability to sign in. Src/pages/Profile.jsx has called
+   * this since before there was a handler for it — the 13-layer audit found
+   * that every attempt has always 404'd as unknown_function, which is safe
+   * (nothing was ever half-deleted) but is not what "type DELETE and confirm"
+   * promised anyone.
+   *
+   * ── What this does not do, and why ──────────────────────────────────────
+   *
+   * It does not delete the Restaurant row, its ratings, its guest contacts,
+   * or any audit history. compliance/nexus-thresholds.json and
+   * compliance/registrations.json exist because this app tracks economic
+   * nexus from the customer list — tax records carry a retention obligation
+   * that outlives any one operator's account, and erasing them on request
+   * would be destroying evidence a state audit can legally ask for later.
+   * `owner_id` is cleared instead, which is the same orphaned state
+   * findOrAdoptRestaurant already understands: the restaurant is adoptable
+   * again by whoever next proves they run the place, and nothing about its
+   * history changes.
+   *
+   * This is a conservative, minimum-scope implementation, not a full data
+   * subject erasure policy — questions like a mandatory grace period, an
+   * email confirmation step, or whether the operator should be told what was
+   * retained and why are product and legal decisions, not ones a bug fix
+   * should make unilaterally.
+   */
+  async deleteAccount({ env, request, audit = NO_AUDIT }) {
+    // Checked before auth, matching createReceiptUpload's precedent: whether
+    // this operation exists on the current backend at all is more
+    // fundamental than who is asking, and answering it first means an
+    // operation that is going to be refused regardless never triggers an
+    // auth lookup for it. Base44 is its own account system with no Supabase
+    // user to delete — acting here would either do nothing real or delete
+    // the wrong thing.
+    if (backendName(env) !== 'supabase') {
+      throw new AppError('not_supported', 'Account deletion is not available yet.', 501);
+    }
+
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+
+    const svc = serviceRole(env);
+    const owned = await svc.entity('Restaurant').filter({ owner_id: user.id }, { order: 'created_date' });
+
+    for (const restaurant of owned) {
+      // Best-effort and non-blocking: a deleted account should not go on
+      // being charged, but Stripe being briefly unreachable must not be the
+      // reason someone's deletion request fails outright.
+      if (restaurant.stripe_subscription_id && env.STRIPE_SECRET_KEY) {
+        try {
+          await fetchWithTimeout(
+            `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(restaurant.stripe_subscription_id)}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
+            TIMEOUTS.payment,
+          );
+        } catch (err) {
+          console.error('deleteAccount: could not cancel Stripe subscription', restaurant.id, err?.message);
+        }
+      }
+      await svc.entity('Restaurant').update(restaurant.id, { owner_id: null });
+    }
+
+    await audit({
+      action: ACTIONS.ACCOUNT_DELETED,
+      actorUserId: user.id,
+      detail: { restaurants_detached: owned.length },
+    });
+
+    // The irreversible step, last, so every reversible one above it has
+    // already happened even if this throws.
+    const res = await fetchWithTimeout(
+      `${supabaseUrl(env)}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        },
+      },
+      TIMEOUTS.auth,
+    );
+    if (!res.ok) {
+      throw new AppError(
+        'account_delete_failed',
+        'Could not delete your account. Try again, or contact support.',
+        502,
+        { detail: { status: res.status } },
+      );
+    }
+
+    return json({ ok: true });
   },
 };
 

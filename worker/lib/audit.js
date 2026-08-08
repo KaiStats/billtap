@@ -77,6 +77,12 @@ export const ACTIONS = {
   // and neither is answerable from the row itself, which keeps only the
   // current plan.
   BILLING_RECONCILED: 'billing.reconciled',
+  // Irreversible from this side: once it fires, the Supabase Auth user is
+  // gone and the same email signing up again is a new, unrelated id. "Did
+  // this operator actually ask for this" is a question only this row answers
+  // — the restaurant it detached is not deleted and carries no trace of who
+  // used to own it once owner_id is cleared.
+  ACCOUNT_DELETED: 'account.deleted',
   // Deliberately absent: auth.failed. Sign-in is still Base44's and moving to
   // Supabase, so there is no point in this codebase that sees a failed login.
   // Listing it would imply a coverage the code does not have — add it with the
