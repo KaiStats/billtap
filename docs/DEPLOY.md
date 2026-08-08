@@ -68,13 +68,20 @@ Nothing breaks; you just do not get the saving.
 ## 3. Check it locally
 
 ```bash
-npm test        # 20 tests: worker routing, security headers, route drift
+npm test        # unit + boundary + browser + e2e — the full suite, several minutes
 npm run lint
 npm run build:static
 npm run preview
 ```
 
-`build:static` should report `7/7 routes prerendered`. If it reports fewer, the
+Not a specific count on purpose — the last one written here said 20 and was
+wrong for a long while after the suite grew past it, which is worse than no
+number at all. `npm run test:unit` alone is the fast local loop; save the full
+`npm test` for before a deploy.
+
+`build:static` should report every route as prerendered — check its own count
+in the output rather than trusting a number here, for the same reason. If it
+reports fewer than the full set, the
 prerender could not mount React for those routes — fix that before deploying,
 because those pages will fall back to the empty-shell HTML crawlers cannot read.
 
@@ -126,6 +133,59 @@ The `<title>` check is the important one. If it returns
 `More Google Reviews for Your Restaurant | BillTap`, prerendering is live and
 crawlers are getting real HTML. If it returns
 `BillTap — Split Bills in 30 Seconds`, you deployed a plain `npm run build`.
+
+## 4b. Deploy via GitHub Actions, `.github/workflows/deploy.yml`
+
+A second deploy path exists, and it is worth understanding *why* before using
+either. Cloudflare's own Git-integration build (Settings → Build in the
+dashboard, wired to `wrangler.jsonc`'s `build.command`) runs in a sandbox with
+no apt/root access — it can download Chromium but cannot install the shared
+libraries (`libatk`, etc.) needed to actually launch it. Prerendering there
+either silently degrades to the client-rendered shell (if `PRERENDER_OPTIONAL=1`
+is set on that environment) or fails the deploy outright (if it is not). Neither
+outcome is "prerendering worked."
+
+`deploy.yml` exists because GitHub Actions' runner is a full Ubuntu box —
+`playwright install --with-deps` genuinely installs those libraries there, the
+same way `ci.yml`'s browser suite already proves works. Running the real build
+there and shipping the result with `wrangler deploy` is how this branch's
+production deploy actually got real prerendered snapshots, after Cloudflare's
+own build kept quietly giving up on them.
+
+**It is `workflow_dispatch` only** — nothing runs it automatically on push.
+Trigger it from the repo's **Actions** tab → **Deploy** → **Run workflow**.
+Deploys stay a person's decision either way, same as `npm run deploy` above.
+
+**Required secrets**, set as repository or environment secrets under
+**Settings → Secrets and variables → Actions** (the workflow declares
+`environment: production`, so an environment named exactly `production` is
+checked first, falling back to repository-level secrets if none exists):
+
+| Secret | What it is |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token. See the permissions gotchas below — the two most likely to bite are not obvious from the token creation screen. |
+| `CLOUDFLARE_ACCOUNT_ID` | Found on the Workers & Pages overview page in the Cloudflare dashboard. |
+| `VITE_SUPABASE_URL` | Same value as the Cloudflare dashboard's build variable. |
+| `VITE_SUPABASE_ANON_KEY` | Same. The **anon** key, never the service role key — `scripts/check-env.mjs` already refuses a build that confuses the two, but do not rely on that as the only check. |
+| `VITE_SENTRY_DSN` | Optional. Only needed if source-map upload / error tagging matters for this deploy. |
+
+**Token permission gotchas, found the hard way:**
+
+- **Client IP Address Filtering must be off (or include no restriction).**
+  GitHub Actions runners draw from a huge, constantly-changing IP pool — there
+  is no practical allowlist. A token scoped to a home/office IP fails with
+  `Cannot use the access token from location: <ip> [code: 9109]`, and the
+  error gives no hint that IP filtering is the cause.
+- **The token needs `Zone → Workers Routes → Edit`, not just Workers Scripts
+  edit.** Without it, the Worker script itself uploads successfully — you'll
+  see `Uploaded billtap` in the log — and then the deploy fails on a separate
+  call to `/zones/.../workers/routes` with `Authentication error [code: 10000]`.
+  This is easy to mistake for the same IP-restriction error since the message
+  is nearly identical; it isn't — check zone resource scope specifically.
+
+If a run fails, the job log names exactly which of the two authentication
+errors above it hit — read past `Authentication error [code: 10000]` to the
+line naming which API call it was on.
 
 ## 5. Google Search Console
 
