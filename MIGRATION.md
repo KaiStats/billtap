@@ -1,4 +1,21 @@
-# Migrating BillTap off Base44
+# Migrating BillTap off Base44 (superseded)
+
+**This is the original plan, not what shipped.** The app is on Supabase, not
+D1 — see `docs/SUPABASE-MIGRATION.md` and `docs/CUTOVER.md` for the migration
+that actually happened. Realtime is `useLiveSplit` polling every few seconds,
+not a Durable Object per session; the API is a single Cloudflare Worker
+(`worker/routes/*.js`), not Pages Functions. `migrations/0001_init.sql`, the
+D1 schema this document describes below, was deleted as orphaned — nothing
+in `wrangler.jsonc` ever bound a D1 database, and its schema had already
+drifted from what the app's data model became (compare against
+`supabase/migrations/0001_initial_schema.sql` for the real one).
+
+Kept for the reasoning that is still accurate — which entities were coupled
+to what, and why each staged step was ordered the way it was — not as
+instructions to follow. Do not run the commands under "Applying the schema"
+below; there is no D1 database to apply them to.
+
+---
 
 Target: Cloudflare end to end — D1 for data, R2 for receipt images, Pages
 Functions for the API, Durable Objects for realtime, Claude for receipt parsing.

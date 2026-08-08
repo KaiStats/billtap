@@ -1548,6 +1548,20 @@ test('the security page is in the prerendered HTML, not only after React boots',
   assert.match(html, /penetration test/i);
 });
 
+test('the deferred Sentry Replay chunk is not baked into the prerendered landing page', async () => {
+  // src/main.jsx loads this 123 KB chunk on requestIdleCallback specifically
+  // so it never competes with first paint. scripts/prerender.mjs's own idle
+  // browser sitting still during its scroll-and-settle wait is exactly the
+  // condition that callback fires on, so without the strip in prerender.mjs
+  // this chunk's <link rel="modulepreload"> ends up in the static HTML every
+  // crawler and cold-load browser receives — turning the deferral into an
+  // eager fetch for everyone, permanently, from one idle moment during a
+  // build.
+  const res = await fetch(`${base}/index-prerendered.html`);
+  const html = await res.text();
+  assert.doesNotMatch(html, /sentry-replay/i);
+});
+
 // ── How long a scan takes ───────────────────────────────────────────────────
 //
 // "Scanning takes too long" has been the standing complaint about this product.

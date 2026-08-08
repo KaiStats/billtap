@@ -27,7 +27,7 @@ input, textarea, select {
 }
 
 /* ── FIX 4: Touch interactions ── */
-button, a, [role="button"], [role="checkbox"], .item-claim {
+button, a, [role="button"] {
   touch-action: manipulation;
 }
 
@@ -35,24 +35,11 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
 @media (hover: none) {
   button:hover,
   a:hover,
-  .item:hover,
   .card-hover:hover {
     opacity: 1 !important;
     transform: none !important;
     box-shadow: none !important;
   }
-}
-
-/* Scrollable containers */
-.item-list, .participant-list {
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* QR container — prevent text selection / accidental copy */
-.qr-container {
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 @layer base {
@@ -278,31 +265,6 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     }
   }
 
-  /* Fluid Typography Utility Classes */
-  .text-fluid-sm {
-    font-size: var(--font-sm);
-  }
-
-  .text-fluid-base {
-    font-size: var(--font-base);
-  }
-
-  .text-fluid-lg {
-    font-size: var(--font-lg);
-  }
-
-  .text-fluid-xl {
-    font-size: var(--font-xl);
-  }
-
-  .text-fluid-2xl {
-    font-size: var(--font-2xl);
-  }
-
-  .text-fluid-3xl {
-    font-size: var(--font-3xl);
-  }
-
   /* Heading Fluid Scales */
   h1, .h1 {
     font-size: var(--font-3xl);
@@ -335,15 +297,6 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Text color classes */
-  .text-secondary {
-    color: var(--text-secondary);
-  }
-
-  .text-muted {
-    color: var(--text-tertiary);
-  }
-
   input::placeholder,
   textarea::placeholder {
     color: var(--text-placeholder);
@@ -363,18 +316,6 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     color: var(--link-hover);
   }
 
-  .success-text {
-    color: var(--success-color);
-  }
-
-  .error-text {
-    color: var(--error-color);
-  }
-
-  .warning-text {
-    color: var(--warning-color);
-  }
-
   /* Remove default outline */
   *:focus {
     outline: none;
@@ -388,8 +329,7 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   }
 
   /* For dark backgrounds */
-  .dark *:focus-visible,
-  [data-theme="dark"] *:focus-visible {
+  .dark *:focus-visible {
     outline-color: #ffffff;
   }
 
@@ -400,7 +340,6 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   textarea:focus-visible,
   select:focus-visible,
   [role="button"]:focus-visible,
-  [role="checkbox"]:focus-visible,
   [tabindex]:focus-visible {
     outline: 3px solid #667eea;
     outline-offset: 2px;
@@ -426,14 +365,7 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   a,
   input[type="button"],
   input[type="submit"],
-  input[type="checkbox"],
-  input[type="radio"],
-  [role="button"],
-  [role="checkbox"],
-  [role="radio"],
-  [role="tab"],
-  .clickable,
-  .tappable {
+  [role="button"] {
     min-height: 48px;
     min-width: 48px;
   }
@@ -473,65 +405,4 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
     }
   }
 
-  /* Primary action buttons larger on mobile */
-  .btn-primary,
-  .primary-button,
-  [data-primary="true"] {
-    min-height: 56px;
-    padding: 16px 32px;
-  }
-
-  /* Constrain primary buttons on desktop */
-  @media (min-width: 1024px) {
-    .btn-primary,
-    .primary-button,
-    [data-primary="true"] {
-      max-height: 48px;
-      padding: 12px 24px;
-    }
-  }
-
-  /* Icon-only buttons */
-  .icon-button,
-  .close-button,
-  .back-button {
-    min-height: 48px;
-    min-width: 48px;
-    padding: 12px;
-  }
-
-  /* Constrain icon buttons on desktop */
-  @media (min-width: 1024px) {
-    .icon-button,
-    .close-button,
-    .back-button {
-      max-height: 40px;
-      max-width: 40px;
-    }
-  }
-
-  /* Checkbox and radio */
-  input[type="checkbox"],
-  input[type="radio"] {
-    width: 24px;
-    height: 24px;
-  }
-
-  /* List items */
-  .list-item,
-  .claim-item,
-  .participant-item {
-    min-height: 56px;
-    padding: 12px 16px;
-  }
-
-  /* Constrain list items on desktop */
-  @media (min-width: 1024px) {
-    .list-item,
-    .claim-item,
-    .participant-item {
-      min-height: 48px;
-      padding: 8px 12px;
-    }
-  }
 }

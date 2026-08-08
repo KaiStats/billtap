@@ -197,6 +197,23 @@ for (const { route, file } of ROUTES) {
       for (const img of document.querySelectorAll('img')) {
         if (img.style.display === 'none') img.style.removeProperty('display');
       }
+
+      // Same category of artifact, for the same reason: src/main.jsx loads
+      // Sentry Session Replay's 123 KB chunk via requestIdleCallback
+      // specifically so it never competes with first paint — see its own
+      // comment for why (313 KB parsed if it had been a static import). A
+      // real browser sitting idle during this script's own scroll-and-wait
+      // above is exactly the condition that callback fires on, so Vite
+      // injects a <link rel="modulepreload"> for that chunk into the live
+      // DOM before the snapshot below is taken. Baking that into the static
+      // HTML every crawler and cold-load browser receives would make the
+      // eager fetch happen on every single page load — undoing the
+      // deferral for everyone, permanently, because a headless prerender
+      // pass happened to be idle for a moment a real user's browser is not.
+      for (const link of document.querySelectorAll('link[href*="sentry-replay"]')) {
+        link.remove();
+      }
+
       return '<!doctype html>\n' + document.documentElement.outerHTML;
     });
 

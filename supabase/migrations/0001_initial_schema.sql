@@ -86,6 +86,13 @@ create index if not exists restaurants_legacy_owner_idx on restaurants (legacy_o
 create table if not exists sessions (
   id                  text primary key default billtap_id(),
   title               text not null,
+  -- Confirmed unused by current code (13-layer audit, 2026-08): nothing in
+  -- worker/ reads or writes this column — a session carries its own items
+  -- and image_url directly rather than joining to a separate Receipt
+  -- record. Left in place rather than dropped here, since this migration
+  -- is already applied and a column drop against live production data
+  -- deserves its own reviewed migration, not an edit to a historical one.
+  -- The `receipts` table below is the same story — see its comment.
   receipt_id          text,
   split_mode          text not null default 'itemized'
                       check (split_mode in ('itemized', 'even', 'custom')),
@@ -194,6 +201,16 @@ create table if not exists waitlist (
 
 create unique index if not exists waitlist_email_idx on waitlist (lower(email));
 
+-- Confirmed unused by current code (13-layer audit, 2026-08): no route
+-- handler ever calls .entity('Receipt'), and TABLES.Receipt in
+-- worker/lib/db.js maps a name nothing constructs. This is schema debris
+-- from a data model the app moved away from — sessions.items and
+-- sessions.image_url hold what this table was meant to. Not the same
+-- thing as the 'receipts' Supabase Storage bucket (worker/routes/retention.js,
+-- createSignedUpload), which is very much live for receipt image uploads;
+-- only this SQL table is dead. Left in place for the same reason
+-- sessions.receipt_id above is: a drop against live production data
+-- deserves a reviewed migration of its own.
 create table if not exists receipts (
   id           text primary key default billtap_id(),
   session_id   text references sessions(id) on delete cascade,
