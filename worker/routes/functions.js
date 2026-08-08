@@ -977,7 +977,10 @@ const HANDLERS = {
    */
   async validateReceiptParse({ body }) {
     const result = computeParse(body);
-    if (result.error) return json(result, 400);
+    if (result.error) {
+      // Consistent error response shape: { error: "..." }
+      return json({ error: result.error }, 400);
+    }
     return json(result);
   },
 
@@ -1340,24 +1343,56 @@ const HANDLERS = {
       if (Object.keys(patch).length) await svc.entity('GuestRating').update(rating_id, patch);
 
       if (validEmail) {
-        const contacts = await svc.entity('GuestContact').filter({
-          restaurant_id: rating.restaurant_id, email,
-        });
-        if (contacts.length) {
-          await svc.entity('GuestContact').update(contacts[0].id, {
-            visits: (contacts[0].visits || 1) + 1,
-            last_seen: Date.now(),
-          });
-        } else {
-          await svc.entity('GuestContact').create({
-            restaurant_id: rating.restaurant_id,
-            email,
-            opted_in: true,
-            visits: 1,
-            first_seen: Date.now(),
-            last_seen: Date.now(),
-          });
-        }
+        // Upsert guest contact with atomic visits counter.
+        // Two concurrent requests could both read the contact as missing, then both
+        // create, resulting in duplicate rows. Two concurrent updates to the same
+        // contact could both read the same visits value, then both write back the
+        // same incremented value, losing one update.
+        // Fix: Try to create. If it fails (constraint violation), read and update
+        // with ifMatch guard on visits to ensure atomicity.
+        const createOrUpdate = async () => {
+          try {
+            await svc.entity('GuestContact').create({
+              restaurant_id: rating.restaurant_id,
+              email,
+              opted_in: true,
+              visits: 1,
+              first_seen: Date.now(),
+              last_seen: Date.now(),
+            });
+          } catch {
+            // Create failed (likely duplicate key): read the existing contact and update
+            const contacts = await svc.entity('GuestContact').filter({
+              restaurant_id: rating.restaurant_id, email,
+            });
+            if (contacts.length) {
+              const contact = contacts[0];
+              const newVisits = (contact.visits || 1) + 1;
+              // Use ifMatch to ensure atomic increment: only succeed if visits hasn't changed
+              const updated = await svc.entity('GuestContact').update(
+                contact.id,
+                { visits: newVisits, last_seen: Date.now() },
+                { ifMatch: { visits: contact.visits || 1 } }
+              );
+              // If update returned null, another request won the race. Retry once.
+              if (!updated) {
+                const retried = await svc.entity('GuestContact').filter({
+                  restaurant_id: rating.restaurant_id, email,
+                });
+                if (retried.length) {
+                  const r = retried[0];
+                  const rv = (r.visits || 1) + 1;
+                  await svc.entity('GuestContact').update(
+                    r.id,
+                    { visits: rv, last_seen: Date.now() },
+                    { ifMatch: { visits: r.visits || 1 } }
+                  );
+                }
+              }
+            }
+          }
+        };
+        await createOrUpdate();
       }
       // A guest handing over their email address, and it being kept. Recorded
       // because "why are you emailing me" deserves an answer with a date on it.
@@ -1490,15 +1525,20 @@ const HANDLERS = {
      * makes the answer correct. It costs one pass over at most 101 rows when
      * the database has already done the narrowing.
      */
-    if (!user && restaurantId) {
+    // Rate-limit guests whenever they provide a restaurant_slug OR when
+    // they create an unauthenticated split with no restaurant. This prevents
+    // an attacker from bypassing the cap by sending a bogus slug.
+    if (!user && (restaurantId || restaurant_slug)) {
       try {
         const since = Date.now() - 60 * 60 * 1000;
-        const recent = svc.queryOperators
+        const recent = restaurantId && svc.queryOperators
           ? await svc.entity('Session').filter(
               { restaurant_id: restaurantId, created_date: { gte: new Date(since).toISOString() } },
               { select: 'id,created_date', limit: 101 },
             )
-          : await svc.entity('Session').filter({ restaurant_id: restaurantId });
+          : restaurantId
+            ? await svc.entity('Session').filter({ restaurant_id: restaurantId })
+            : [];
         const inWindow = recent.filter((s) => {
           const t = new Date(s.created_date).getTime();
           return !Number.isNaN(t) && t >= since;
