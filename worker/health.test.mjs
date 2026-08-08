@@ -5,10 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequestGet } from './routes/health.js';
 
-test('shallow health check includes reachability, not just env vars', async () => {
-  // Before fix: ok was true if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY were
-  // set, even if Supabase was completely unreachable. Now: one quick check is
-  // made with a 3-second timeout, so /api/health can catch real outages.
+test('deep health check detects unreachable Supabase', async () => {
+  // Shallow check costs zero subrequests (just env vars), but the deep check
+  // (?deep=1) verifies actual connectivity with a database query.
   let fetchCalls = [];
   const original = globalThis.fetch;
 
@@ -20,7 +19,7 @@ test('shallow health check includes reachability, not just env vars', async () =
 
   try {
     const res = await onRequestGet({
-      request: new Request('https://billtap.app/api/health'),
+      request: new Request('https://billtap.app/api/health?deep=1'),
       env: {
         SUPABASE_URL: 'https://p.supabase.co',
         SUPABASE_SERVICE_ROLE_KEY: 'key',
@@ -32,15 +31,15 @@ test('shallow health check includes reachability, not just env vars', async () =
     const body = await res.json();
     assert.equal(body.ok, false, 'overall ok should be false');
     assert.equal(body.configured, true, 'env vars were present (configured=true)');
-    assert.equal(body.reachable, false, 'but Supabase was not reachable');
+    assert.equal(body.database.ok, false, 'database connectivity check failed');
     assert.ok(fetchCalls.length > 0, 'should have made a fetch call to verify reachability');
   } finally {
     globalThis.fetch = original;
   }
 });
 
-test('shallow health check returns 200 when Supabase is reachable', async () => {
-  // Verify the happy path: when Supabase responds, health check is ok
+test('deep health check returns 200 when Supabase is reachable', async () => {
+  // Verify the happy path: when Supabase responds to the deep check, overall ok is true
   let fetchCalls = [];
   const original = globalThis.fetch;
 
@@ -52,7 +51,7 @@ test('shallow health check returns 200 when Supabase is reachable', async () => 
 
   try {
     const res = await onRequestGet({
-      request: new Request('https://billtap.app/api/health'),
+      request: new Request('https://billtap.app/api/health?deep=1'),
       env: {
         SUPABASE_URL: 'https://p.supabase.co',
         SUPABASE_SERVICE_ROLE_KEY: 'key',
@@ -63,7 +62,7 @@ test('shallow health check returns 200 when Supabase is reachable', async () => 
     assert.equal(res.status, 200, 'should return 200 when Supabase is reachable');
     const body = await res.json();
     assert.equal(body.ok, true, 'overall ok should be true');
-    assert.equal(body.reachable, true, 'Supabase was reachable');
+    assert.equal(body.database.ok, true, 'database connectivity check succeeded');
   } finally {
     globalThis.fetch = original;
   }

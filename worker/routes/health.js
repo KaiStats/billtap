@@ -38,10 +38,9 @@ import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 /**
  * The shallow answer: this Worker is running and its bindings are present.
  *
- * Before: checked only env vars, cost nothing but could not detect real
- * Supabase outages (rotated key, project paused, region down). Now does
- * one fast connectivity check with a short timeout, so a monitor using
- * the default /api/health can catch infrastructure failures.
+ * This is a zero-cost check (no subrequests) suitable for polling every thirty
+ * seconds. It checks only that env vars are configured, not whether they actually
+ * work. For connectivity verification, use ?deep=1.
  */
 async function shallow(env) {
   const backend = backendName(env);
@@ -49,39 +48,13 @@ async function shallow(env) {
     ? Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY)
     : Boolean(env.BASE44_APP_ID && env.BASE44_MASTER_KEY);
 
-  let reachable = true;
-  if (configured && backend === 'supabase') {
-    // One lightweight request with a fast timeout. Proves the service-role key
-    // is still valid and Supabase is answering — enough to catch credential
-    // rotations, project pauses, and outages. Uses a 3-second timeout instead
-    // of the full TIMEOUTS.database (30s), so this is still cheap to call
-    // every 30 seconds from a monitor.
-    try {
-      const res = await fetchWithTimeout(
-        `${env.SUPABASE_URL}/rest/v1/restaurants?select=id&limit=1`,
-        {
-          headers: {
-            apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-        },
-        3000, // 3-second timeout, vs TIMEOUTS.database (~30s)
-      );
-      reachable = res.ok;
-    } catch {
-      // Timeout or connection failure: consider Supabase unreachable
-      reachable = false;
-    }
-  }
-
   return {
-    ok: configured && reachable,
+    ok: configured,
     environment: environmentName(env),
     backend,
     // Booleans, not values. "Is a key present" is the operable question; which
     // key it is belongs in the dashboard, not on a public URL.
     configured,
-    reachable,
   };
 }
 

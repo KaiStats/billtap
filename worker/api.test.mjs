@@ -65,7 +65,18 @@ function stub({ entities = {}, users = {} } = {}) {
       return new Response(JSON.stringify(row), { status: 200 });
     }
     if (method === 'POST') {
-      const row = { id: `${entity.toLowerCase()}_${rows.length + 1}`, created_date: new Date().toISOString(), ...JSON.parse(init.body) };
+      const body = JSON.parse(init.body);
+      // Simulate unique constraints for GuestContact (restaurant_id, email)
+      if (entity === 'GuestContact' && body.restaurant_id && body.email) {
+        const duplicate = rows.find(
+          (r) => r.restaurant_id === body.restaurant_id && r.email === body.email
+        );
+        if (duplicate) {
+          // Simulate unique constraint violation like Supabase would
+          throw new Error('duplicate key value violates unique constraint');
+        }
+      }
+      const row = { id: `${entity.toLowerCase()}_${rows.length + 1}`, created_date: new Date().toISOString(), ...body };
       rows.push(row);
       return new Response(JSON.stringify(row), { status: 200 });
     }
