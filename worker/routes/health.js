@@ -38,23 +38,50 @@ import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 /**
  * The shallow answer: this Worker is running and its bindings are present.
  *
- * Costs nothing — no subrequests, no database — which is what makes it safe to
- * poll every thirty seconds forever. A monitor pointed here is asking "is the
- * edge serving", and that is the question that is true or false most often.
+ * Before: checked only env vars, cost nothing but could not detect real
+ * Supabase outages (rotated key, project paused, region down). Now does
+ * one fast connectivity check with a short timeout, so a monitor using
+ * the default /api/health can catch infrastructure failures.
  */
-function shallow(env) {
+async function shallow(env) {
   const backend = backendName(env);
   const configured = backend === 'supabase'
     ? Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY)
     : Boolean(env.BASE44_APP_ID && env.BASE44_MASTER_KEY);
 
+  let reachable = true;
+  if (configured && backend === 'supabase') {
+    // One lightweight request with a fast timeout. Proves the service-role key
+    // is still valid and Supabase is answering — enough to catch credential
+    // rotations, project pauses, and outages. Uses a 3-second timeout instead
+    // of the full TIMEOUTS.database (30s), so this is still cheap to call
+    // every 30 seconds from a monitor.
+    try {
+      const res = await fetchWithTimeout(
+        `${env.SUPABASE_URL}/rest/v1/restaurants?select=id&limit=1`,
+        {
+          headers: {
+            apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        },
+        3000, // 3-second timeout, vs TIMEOUTS.database (~30s)
+      );
+      reachable = res.ok;
+    } catch {
+      // Timeout or connection failure: consider Supabase unreachable
+      reachable = false;
+    }
+  }
+
   return {
-    ok: configured,
+    ok: configured && reachable,
     environment: environmentName(env),
     backend,
     // Booleans, not values. "Is a key present" is the operable question; which
     // key it is belongs in the dashboard, not on a public URL.
     configured,
+    reachable,
   };
 }
 
@@ -110,7 +137,7 @@ async function deep(env) {
  * @param {{ request: Request, env: any }} context
  */
 export async function onRequestGet({ request, env }) {
-  const base = shallow(env);
+  const base = await shallow(env);
   const wantsDeep = new URL(request.url).searchParams.get('deep') === '1';
 
   const database = wantsDeep ? await deep(env) : { checked: false };
