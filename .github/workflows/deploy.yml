@@ -17,6 +17,11 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    # Only allow manual deploys from the main branch, never from feature branches.
+    # This prevents accidental deployments of incomplete or untested code and
+    # ensures only the production branch can be deployed.
+    branches:
+      - main
 
 permissions:
   contents: read
