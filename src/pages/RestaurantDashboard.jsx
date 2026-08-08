@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
 import { invoke } from "@/api/functions";
+import { accessToken } from "@/lib/supabase";
 import { planSummary } from "@/lib/plan";
 
 const GOLD = "#f0b429";
@@ -99,9 +100,17 @@ export default function RestaurantDashboard() {
     (async () => {
       setBilling("verifying");
       try {
+        // The route now requires proof of who is asking — see
+        // worker/routes/verify-checkout.js's header comment — so this call
+        // carries the operator's own Supabase session the same way invoke()
+        // does for /api/fn/*.
+        const token = await accessToken();
         const res = await fetch("/api/verify-checkout", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ session_id: param }),
         });
         const data = await res.json();
@@ -128,10 +137,18 @@ export default function RestaurantDashboard() {
   const startCheckout = async () => {
     setBilling("starting");
     try {
+      // No restaurant_id here on purpose. create-checkout resolves the
+      // caller's own restaurant from their Supabase session — see its header
+      // comment — so sending one would only be a value the route ignores; the
+      // email is a prefill Stripe uses if the account itself carries none.
+      const token = await accessToken();
       const res = await fetch("/api/create-checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurant_id: restaurant.id, email: restaurant.alert_email }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ email: restaurant.alert_email }),
       });
       const data = await res.json();
       if (data.url) { window.location.href = data.url; return; }

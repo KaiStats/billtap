@@ -456,7 +456,7 @@ async function reserveSlug(svc, name) {
  * a duplicate that can be merged by hand and one whose dashboard changes
  * between refreshes.
  */
-async function findOrAdoptRestaurant(svc, user, audit = NO_AUDIT) {
+export async function findOrAdoptRestaurant(svc, user, audit = NO_AUDIT) {
   const owned = await svc.entity('Restaurant')
     .filter({ owner_id: user.id }, { order: 'created_date' });
   if (owned[0]) return owned[0];

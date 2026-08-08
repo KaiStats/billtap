@@ -85,6 +85,18 @@ const LIMITED = new Set([
   // but a table is one NAT, so it is keyed per participant below rather than
   // per address.
   '/api/scan-receipt',
+
+  /**
+   * Money-bearing and previously reachable by anyone at any rate at all.
+   *
+   * Neither call goes through invoke(), so neither carries a participant
+   * header — both are address-keyed, same as scan-receipt and waitlist above.
+   * An operator's dashboard calls each once per real action (starting
+   * checkout, landing back from Stripe), so a normal session is nowhere near
+   * the limit.
+   */
+  '/api/create-checkout',
+  '/api/verify-checkout',
 ]);
 
 /**
@@ -274,6 +286,9 @@ const COSTLY = new Set([
   '/api/scan-receipt',
   // Signs an upload, which is what permits an object to be created.
   '/api/fn/createReceiptUpload',
+  // Opens a real Stripe Checkout session per call — the same standing as any
+  // other call that reaches a paid third party.
+  '/api/create-checkout',
 ]);
 
 /** Which binding a path draws from. */
