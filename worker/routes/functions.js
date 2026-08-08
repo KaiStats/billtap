@@ -1381,7 +1381,14 @@ const HANDLERS = {
     const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = body;
     const user = await currentUser(env, request);
 
-    if (!user && !restaurant_slug) return json({ error: 'Unauthorized' }, 401);
+    // No sign-in gate. An account-less host is the product's premise — "split a
+    // bill, no account" — and this function already mints a host_key and stores
+    // created_by_id: null, while the whole host-key path (generateQRSignature,
+    // getSessionAsHost, confirmPayment, updateSplitSettings) authorises those
+    // splits without an account. Requiring a user OR a restaurant_slug here was
+    // the single place that broke it: a guest who tapped "Split a bill" got a
+    // 401 and could never reach the QR the table was meant to scan. Abuse is
+    // bounded by the per-address rate limit on /api/fn/createSession.
     if (!title || typeof title !== 'string' || !title.trim()) {
       return json({ error: 'title is required' }, 400);
     }

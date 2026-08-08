@@ -429,10 +429,14 @@ test('QR_SIGNING_SECRET takes precedence over the master key', async () => {
 
 const create = (env, request, b) => HANDLERS.createSession({ env, request, body: b });
 
-test('a guest with no table tent cannot create a split', async () => {
+test('a guest with no table tent can still create a split, because that is the premise', async () => {
+  // "Split a bill, no account" — an account-less host who tapped Split a bill,
+  // not one who scanned a restaurant's table tent. They are issued a host key
+  // and reach the QR the table scans, same as everyone else.
   await withStub({}, async ({ env }) => {
     const res = await create(env, req(), { title: 'Dinner', items: [] });
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 200);
+    assert.ok((await body(res)).host_key, 'an account-less host is issued a host key');
   });
 });
 
