@@ -153,11 +153,13 @@ export function buildRow(error, { id, route, method, request, body, env, status 
  * worker/lib/audit.js does it: db.js throws on a non-2xx, and this must not.
  */
 export function recordError(env, ctx, error, context = {}) {
-  const url = env?.SUPABASE_URL;
+  const rawUrl = env?.SUPABASE_URL;
   const key = env?.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return false;
+  if (!rawUrl || !key) return false;
 
   try {
+    // Normalize URL: strip trailing slashes to avoid double-slash in path
+    const url = String(rawUrl).trim().replace(/\/+$/, '');
     const row = buildRow(error, { ...context, env });
 
     const write = fetchWithTimeout(
