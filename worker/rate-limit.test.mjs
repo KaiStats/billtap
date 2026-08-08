@@ -173,6 +173,48 @@ test('an unbound limiter lets the request through rather than refusing it', asyn
   assert.equal(await rateLimit(new Request('https://billtap.app/api/rating-alert'), {}, '/api/rating-alert'), null);
 });
 
+test('a missing limiter binding logs an error alert', async () => {
+  // Capture console.error calls
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(args);
+
+  try {
+    await rateLimit(new Request('https://billtap.app/api/rating-alert'), {}, '/api/rating-alert');
+
+    assert.ok(logged.length > 0, 'Missing limiter should log an error');
+    const error = logged[0][0];
+    assert.ok(
+      typeof error === 'string' && error.includes('Rate limiter binding missing') ||
+      (typeof error === 'object' && error.error === 'Rate limiter binding missing'),
+      'Error should mention missing binding'
+    );
+  } finally {
+    console.error = original;
+  }
+});
+
+test('missing limiter binding alerts with severity level for costly paths', async () => {
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(args);
+
+  try {
+    // Test a costly path (rating-alert sends SMS)
+    await rateLimit(new Request('https://billtap.app/api/rating-alert'), {}, '/api/rating-alert');
+
+    assert.ok(logged.length > 0);
+    const error = logged[0][0];
+    assert.ok(
+      (typeof error === 'string' && error.includes('critical')) ||
+      (typeof error === 'object' && error.severity === 'critical'),
+      'Missing limiter on money-bearing endpoint should alert as critical'
+    );
+  } finally {
+    console.error = original;
+  }
+});
+
 test('a limiter that throws does not take the endpoint down with it', async () => {
   const env = { API_RATE_LIMITER_COSTLY: { limit: async () => { throw new Error('binding down'); } } };
   const result = await rateLimit(new Request('https://billtap.app/api/rating-alert'), env, '/api/rating-alert');

@@ -352,12 +352,30 @@ export async function firstInWindow(env, key) {
  *
  * A limiter that throws must not take the endpoint down with it — being unable
  * to check the limit is not a reason to refuse a paying restaurant's diner.
+ *
+ * However, a missing limiter binding is a configuration error and must be alerted
+ * on, not silently ignored. The binding is required for all limited paths that
+ * spend money, so a missing binding means rate limiting is completely offline
+ * and an attacker can exhaust budgets.
  */
 export async function rateLimit(request, env, path) {
   if (!isLimited(path)) return null;
 
   const limiter = limiterFor(env, path);
-  if (!limiter) return null;
+  if (!limiter) {
+    // Missing binding is a configuration error. Alert loudly so it's noticed.
+    const isCostly = COSTLY.has(path);
+    console.error(JSON.stringify({
+      error: 'Rate limiter binding missing',
+      path,
+      costly: isCostly,
+      severity: isCostly ? 'critical' : 'warning',
+      message: isCostly
+        ? 'CRITICAL: Money-bearing endpoint has no rate limit protection. API_RATE_LIMITER binding is missing.'
+        : 'WARNING: Rate-limited endpoint has no rate limit protection. API_RATE_LIMITER binding is missing.',
+    }));
+    return null;
+  }
 
   try {
     const { success } = await limiter.limit({ key: limitKey(request, path) });
