@@ -1,0 +1,64 @@
+/**
+ * Shared styling for the public marketing pages.
+ *
+ * Deliberately restrained compared to what this replaced: no infinite-loop
+ * shimmer/pulse/float animations. The one entrance animation here (fade-up)
+ * runs once on load and finishes — it does not keep moving at someone who is
+ * trying to read. src/index.css already zeroes every animation-duration under
+ * prefers-reduced-motion, so nothing extra is needed here for that.
+ */
+.font-heading { font-family: 'Space Grotesk', sans-serif; }
+.font-body { font-family: 'Inter', sans-serif; }
+
+.mkt-dot-grid {
+  background-image: radial-gradient(circle, rgba(0, 200, 150, 0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.mkt-card-hover {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.mkt-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 200, 150, 0.4);
+}
+
+@keyframes mkt-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mkt-fade-up { animation: mkt-fade-up 0.5s ease both; }
+.mkt-fade-up-1 { animation-delay: 0.05s; }
+.mkt-fade-up-2 { animation-delay: 0.12s; }
+.mkt-fade-up-3 { animation-delay: 0.2s; }
+.mkt-fade-up-4 { animation-delay: 0.3s; }
+
+/* Media band used by the step/mode cards on Landing. Fixed aspect ratio so a
+   row of cards stays on a shared baseline whether or not the art has arrived. */
+.mkt-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(0, 200, 150, 0.1) 0%, rgba(10, 14, 26, 0.9) 70%);
+}
+
+.mkt-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.mkt-img.is-loaded { opacity: 1; }
+
+.mkt-wash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+.mkt-scrim { position: absolute; inset: 0; pointer-events: none; }

@@ -1,6 +1,9 @@
-import { Link } from "react-router-dom";
-import { QrCode, Calendar } from "lucide-react";
+import { Calendar } from "lucide-react";
 import Seo from "@/components/Seo";
+import MarketingNav from "@/components/marketing/MarketingNav";
+import MarketingFooter from "@/components/marketing/MarketingFooter";
+import { mkt } from "@/components/marketing/tokens";
+import "@/components/marketing/marketing.css";
 
 export default function Blog() {
   const posts = [
@@ -25,58 +28,39 @@ export default function Blog() {
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#f2f2f4" }}>
+    <div className="min-h-screen font-body" style={{ background: mkt.bg, color: mkt.text }}>
       <Seo
         path="/blog"
         title="BillTap Blog — Splitting Bills, Reviews & Restaurants"
         description="Notes on splitting checks, getting more Google reviews, and running a restaurant that guests come back to."
       />
-      <style>{`
-        .font-heading { font-family: 'Space Grotesk', sans-serif; }
-        .font-body { font-family: 'Inter', sans-serif; }
-      `}</style>
 
-      {/* Nav */}
-      <nav className="border-b" style={{ borderColor: "#2d3748" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#00c896" }}>
-              <QrCode className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-heading font-bold text-lg" style={{ color: "#00c896" }}>BillTap</span>
-          </div>
-          <Link to="/" className="text-sm font-medium hover:text-green-400 transition-colors" style={{ color: "#8b90a8" }}>
-            ← Back to Home
-          </Link>
-        </div>
-      </nav>
+      <MarketingNav />
 
-      {/* Hero */}
       <section className="py-16 md:py-24">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="font-heading font-bold text-4xl md:text-5xl mb-6" style={{ color: "#f2f2f4" }}>BillTap Blog</h1>
-          <p className="text-lg md:text-xl leading-relaxed" style={{ color: "#8b90a8" }}>
+          <h1 className="font-heading font-bold text-4xl md:text-5xl mb-6" style={{ color: mkt.text }}>BillTap Blog</h1>
+          <p className="text-lg md:text-xl leading-relaxed" style={{ color: mkt.muted }}>
             Stories about building in public, split math, and making dinners less awkward.
           </p>
         </div>
       </section>
 
-      {/* Posts */}
-      <section className="py-16" style={{ background: "#111827" }}>
+      <section className="py-16" style={{ background: mkt.bgAlt }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="space-y-6">
             {posts.map((post, i) => (
-              <article key={i} className="p-6 rounded-2xl border hover:border-green-400/50 transition-colors" style={{ background: "#1e2533", borderColor: "#2d3748" }}>
-                <div className="flex items-center gap-2 text-xs mb-3" style={{ color: "#8b90a8" }}>
+              <article key={i} className="mkt-card-hover p-6 rounded-2xl border" style={{ background: mkt.card, borderColor: mkt.border }}>
+                <div className="flex items-center gap-2 text-xs mb-3" style={{ color: mkt.muted }}>
                   <Calendar className="w-3 h-3" />
                   {post.date}
                 </div>
-                <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>{post.title}</h3>
-                <p className="text-sm mb-4" style={{ color: "#8b90a8" }}>{post.excerpt}</p>
+                <h3 className="font-heading font-bold text-xl mb-2" style={{ color: mkt.text }}>{post.title}</h3>
+                <p className="text-sm mb-4" style={{ color: mkt.muted }}>{post.excerpt}</p>
                 {post.href !== "#" ? (
-                  <a href={post.href} className="text-sm font-semibold hover:text-green-400 transition-colors" style={{ color: "#00c896" }}>Read More →</a>
+                  <a href={post.href} className="text-sm font-semibold hover:text-emerald-400 transition-colors" style={{ color: mkt.accent }}>Read More →</a>
                 ) : (
-                  <span className="text-sm" style={{ color: "#4a5068" }}>Coming Soon</span>
+                  <span className="text-sm" style={{ color: mkt.dim }}>Coming Soon</span>
                 )}
               </article>
             ))}
@@ -84,18 +68,19 @@ export default function Blog() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="font-heading font-bold text-2xl md:text-3xl mb-6" style={{ color: "#f2f2f4" }}>Have a Story Idea?</h2>
-          <p className="text-lg mb-8" style={{ color: "#8b90a8" }}>
+          <h2 className="font-heading font-bold text-2xl md:text-3xl mb-6" style={{ color: mkt.text }}>Have a Story Idea?</h2>
+          <p className="text-lg mb-8" style={{ color: mkt.muted }}>
             This blog is built from user questions. What do you want to learn about bill splitting?
           </p>
-          <a href="mailto:hello@billtap.app" className="inline-block px-8 py-4 rounded-xl font-bold text-lg transition-all hover:opacity-90 border" style={{ borderColor: "#00c896", color: "#00c896" }}>
+          <a href="mailto:hello@billtap.app" className="inline-block px-8 py-4 rounded-xl font-bold text-lg transition-opacity hover:opacity-90 border" style={{ borderColor: mkt.accent, color: mkt.accent }}>
             Send a Topic →
           </a>
         </div>
       </section>
+
+      <MarketingFooter />
     </div>
   );
 }
