@@ -34,7 +34,17 @@
  * a ctx is available, and a rejected fetch is swallowed. An error reporter that
  * can turn a 502 into a hang is worse than no error reporter, and this is the
  * one module in the tree guaranteed to run while something is already wrong.
+ *
+ * ── Error details are redacted before sending to Sentry ─────────────────────
+ *
+ * Unlike worker/lib/errors.js, this module sends errors to a third party, so
+ * error.message and error.stack are redacted using the same rules the client
+ * applies. If the message contains leaked credentials, hostnames, or schema
+ * details, a generic message is sent instead.
  */
+
+import { redactPublic } from '../../shared/redact.js';
+import { fetchWithTimeout, TIMEOUTS } from './http.js';
 
 /**
  * Pulls the ingest URL and public key out of a DSN.
@@ -91,9 +101,13 @@ function eventId() {
  * runs on the path where a split is failing, so the body is a receipt with
  * people's names on it — and an error reporter is the last place that should
  * start a second copy of the data the retention job exists to remove.
+ *
+ * Error message and stack are redacted before sending, so leaked credentials,
+ * hostnames, or database schema never reach Sentry.
  */
 export function buildEvent(error, { id, route, environment, release, extra = {} }) {
   const isApp = error?.name === 'AppError';
+  const safeMessage = redactPublic(error?.message || String(error));
   return {
     event_id: eventId(),
     timestamp: Date.now() / 1000,
@@ -112,7 +126,7 @@ export function buildEvent(error, { id, route, environment, release, extra = {} 
     exception: {
       values: [{
         type: error?.name || 'Error',
-        value: error?.message || String(error),
+        value: safeMessage || 'Leaked error details redacted',
         stacktrace: error?.stack
           ? { frames: parseStack(error.stack) }
           : undefined,
@@ -173,14 +187,14 @@ export function reportError(env, ctx, error, { id, route, extra = {} } = {}) {
       }),
     });
 
-    const send = fetch(parsed.endpoint, {
+    const send = fetchWithTimeout(parsed.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-sentry-envelope',
         'X-Sentry-Auth': `Sentry sentry_version=7, sentry_client=billtap-worker/1.0, sentry_key=${parsed.key}`,
       },
       body,
-    }).catch(() => {
+    }, TIMEOUTS.webhook).catch(() => {
       // Sentry being down must not become a second incident inside the first.
     });
 
