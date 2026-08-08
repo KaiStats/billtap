@@ -24,6 +24,23 @@
  *   precisely a backup that reports success and stores nothing.
  *
  * Bind a bucket in wrangler.jsonc as BACKUP_BUCKET to turn it on.
+ *
+ * ── R2 Lifecycle Policy (CRITICAL) ──────────────────────────────────────
+ *
+ * Backup objects accumulate forever without a lifecycle policy. This job writes
+ * ~8-20 MB of backups per night. After a year, an unmanaged bucket holds ~3 TB
+ * of old snapshots, driving unbounded storage costs.
+ *
+ * Configure an R2 Lifecycle Policy on BACKUP_BUCKET to delete objects after a
+ * retention period (recommended: 90 days). This is NOT configured in code — it
+ * must be set in the Cloudflare dashboard or via the API:
+ *
+ *   - Dashboard: R2 → BACKUP_BUCKET → Settings → Lifecycle rules
+ *   - API: POST /accounts/{account_id}/r2/buckets/{bucket}/rules
+ *
+ * Recommended rule:
+ *   - Prefix: "billtap-backup-"
+ *   - Delete after: 90 days
  */
 
 import { serviceRole, backendName } from '../lib/data.js';
@@ -68,6 +85,13 @@ const SORT_COLUMN = { AuditLog: '-at' };
 
 /** Base44's list() default. Anything larger has to be walked. */
 const PAGE = 200;
+
+/**
+ * Backup retention in days. Recommended minimum is 30 days (in case of
+ * incident discovery lag), maximum depends on compliance and storage budget.
+ * R2 Lifecycle Policy should delete objects after this retention period.
+ */
+const BACKUP_RETENTION_DAYS = 90;
 
 /**
  * ── The three ceilings this job runs into, and what happens at each ─────────
@@ -223,9 +247,19 @@ export async function runBackup(env) {
         );
       }
 
+      // Calculate expiration date for manual cleanup reference
+      const expiresAt = new Date(startedAt.getTime() + BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
       await env.BACKUP_BUCKET.put(key, body, {
         httpMetadata: { contentType: 'application/json' },
-        customMetadata: { exported_at: exportedAt, entity: name, count: String(records.length) },
+        customMetadata: {
+          exported_at: exportedAt,
+          entity: name,
+          count: String(records.length),
+          // Metadata for cleanup job: this backup expires after BACKUP_RETENTION_DAYS
+          expires_at: expiresAt.toISOString(),
+          retention_days: String(BACKUP_RETENTION_DAYS),
+        },
       });
 
       // Prove it landed. A put() that resolves is not the same as an object
@@ -254,12 +288,19 @@ export async function runBackup(env) {
    * that looks complete.
    */
   const manifestKey = `${prefix}/manifest.json`;
+  const expiresAt = new Date(startedAt.getTime() + BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
   await env.BACKUP_BUCKET.put(
     manifestKey,
     JSON.stringify({ exported_at: exportedAt, entities: summary, objects, failed, complete: failed.length === 0 }),
     {
       httpMetadata: { contentType: 'application/json' },
-      customMetadata: { exported_at: exportedAt, complete: String(failed.length === 0) },
+      customMetadata: {
+        exported_at: exportedAt,
+        complete: String(failed.length === 0),
+        expires_at: expiresAt.toISOString(),
+        retention_days: String(BACKUP_RETENTION_DAYS),
+      },
     },
   );
 
