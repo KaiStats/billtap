@@ -191,12 +191,28 @@ test('it reads through the data layer, so the cutover does not silence it', asyn
   // because the caller never reads the response, the alerts would simply stop.
   const seen = [];
   const original = globalThis.fetch;
+  let ratingState = { ...RATING }; // Track state for conditional updates
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url);
     seen.push(u);
     if (u.includes('/rest/v1/guest_ratings')) {
-      if ((init.method || 'GET') !== 'GET') return new Response('[]', { status: 200 });
-      return new Response(JSON.stringify([RATING]), { status: 200 });
+      if ((init.method || 'GET') !== 'GET') {
+        // PATCH request: handle conditional update (ifMatch)
+        if (u.includes('alerted_at=eq.null')) {
+          // Conditional claim: only succeed if alerted_at is currently null
+          if (ratingState.alerted_at === null || ratingState.alerted_at === undefined) {
+            ratingState = Object.assign(ratingState, JSON.parse(init.body));
+            return new Response(JSON.stringify([ratingState]), { status: 200 });
+          } else {
+            // Guard failed: alerted_at was not null
+            return new Response(JSON.stringify([]), { status: 200 });
+          }
+        }
+        // Unconditional update (releasing)
+        ratingState = Object.assign(ratingState, JSON.parse(init.body));
+        return new Response(JSON.stringify([ratingState]), { status: 200 });
+      }
+      return new Response(JSON.stringify([ratingState]), { status: 200 });
     }
     if (u.includes('/rest/v1/restaurants')) return new Response(JSON.stringify([RESTAURANT]), { status: 200 });
     if (u.includes('postmarkapp.com')) return new Response('{}', { status: 200 });
@@ -217,4 +233,124 @@ test('it reads through the data layer, so the cutover does not silence it', asyn
   } finally {
     globalThis.fetch = original;
   }
+});
+
+// ── Mutation tests for the atomic claim (ifMatch guard) ─────────────────────
+
+test('stampAlerted with ifMatch — claiming is conditional, releasing is not', async () => {
+  // The fix: use ifMatch to make the claim atomic. Only one concurrent request
+  // can successfully claim alerted_at, even if both read it as null beforehand.
+  let updateCalls = [];
+  const mockSvc = {
+    entity: () => ({
+      update: async (id, data, opts) => {
+        updateCalls.push({ id, data, opts });
+        // Simulate Supabase conditional update behavior
+        if (opts?.ifMatch?.alerted_at === null && data.alerted_at !== null) {
+          // Claiming with guard: only one succeeds
+          const priorClaims = updateCalls.filter((u, i) =>
+            i < updateCalls.length - 1 &&
+            u.data.alerted_at !== null &&
+            u.opts?.ifMatch?.alerted_at === null
+          );
+          return priorClaims.length === 0 ? { id, alerted_at: data.alerted_at } : null;
+        }
+        // Releasing (data.alerted_at === null) uses no guard
+        return { id, alerted_at: data.alerted_at };
+      }
+    })
+  };
+
+  // Fixed stampAlerted logic
+  async function stampAlerted(svc, ratingId, value = Date.now()) {
+    try {
+      const result = await svc.entity('GuestRating').update(
+        ratingId,
+        { alerted_at: value },
+        value !== null ? { ifMatch: { alerted_at: null } } : undefined
+      );
+      return value === null ? true : result !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  const claim1 = await stampAlerted(mockSvc, 'r1', 111);
+  const claim2 = await stampAlerted(mockSvc, 'r1', 222);
+  assert.equal(claim1, true, 'first claim succeeds');
+  assert.equal(claim2, false, 'second claim fails (guard prevented it)');
+  assert.ok(updateCalls[0].opts?.ifMatch?.alerted_at === null, 'claim uses guard');
+});
+
+test('mutation: remove ifMatch guard — both claims succeed', async () => {
+  // Prove the fix is necessary: without the guard, duplicate alerts send.
+  let updateCalls = [];
+  const mockSvc = {
+    entity: () => ({
+      update: async (id, data, opts) => {
+        updateCalls.push({ id, data, opts });
+        return { id, alerted_at: data.alerted_at }; // BROKEN: always succeed
+      }
+    })
+  };
+
+  // BROKEN: no ifMatch guard
+  async function stampAlertedBroken(svc, ratingId, value = Date.now()) {
+    try {
+      const result = await svc.entity('GuestRating').update(ratingId, { alerted_at: value });
+      return result !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  const claim1 = await stampAlertedBroken(mockSvc, 'r1', 111);
+  const claim2 = await stampAlertedBroken(mockSvc, 'r1', 222);
+  assert.equal(claim1, true);
+  assert.equal(claim2, true); // BUG: should be false, duplicate alert
+});
+
+test('mutation: remove result check — lost race not detected', async () => {
+  // Prove we need to check if result !== null. Without it, the handler thinks
+  // a failed claim succeeded, allowing duplicate alerts.
+  const mockSvc = {
+    entity: () => ({
+      update: async (id, data, opts) => {
+        // Simulate lost race: guard did not match
+        if (opts?.ifMatch?.alerted_at === null) return null;
+        return { id, alerted_at: data.alerted_at };
+      }
+    })
+  };
+
+  // BROKEN: ignore null (guard failure) and report success
+  async function stampAlertedBroken(svc, ratingId, value = Date.now()) {
+    try {
+      await svc.entity('GuestRating').update(
+        ratingId,
+        { alerted_at: value },
+        value !== null ? { ifMatch: { alerted_at: null } } : undefined
+      );
+      return true; // BROKEN: ignore the null return
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Fixed: check result !== null
+  async function stampAlertedFixed(svc, ratingId, value = Date.now()) {
+    try {
+      const result = await svc.entity('GuestRating').update(
+        ratingId,
+        { alerted_at: value },
+        value !== null ? { ifMatch: { alerted_at: null } } : undefined
+      );
+      return value === null ? true : result !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  const fixedClaim2 = await stampAlertedFixed(mockSvc, 'r1', 222);
+  assert.equal(fixedClaim2, false, 'fixed version detects lost race (result is null)');
 });

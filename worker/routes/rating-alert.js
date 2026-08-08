@@ -231,11 +231,22 @@ export async function onRequestPost({ request, env }) {
  * Returns true when the write landed. The caller treats a failure as "do not
  * send", because the whole point of the stamp is that it is the only thing
  * standing between an unauthenticated endpoint and an unbounded SMS bill.
+ *
+ * When claiming (value !== null), uses ifMatch to ensure atomic
+ * compare-and-swap: the update only succeeds if alerted_at was null.
+ * This prevents two concurrent requests from both claiming the same rating
+ * and both sending alerts.
  */
 async function stampAlerted(svc, ratingId, value = Date.now()) {
   try {
-    await svc.entity('GuestRating').update(ratingId, { alerted_at: value });
-    return true;
+    const result = await svc.entity('GuestRating').update(
+      ratingId,
+      { alerted_at: value },
+      value !== null ? { ifMatch: { alerted_at: null } } : undefined
+    );
+    // When claiming (value !== null), the guard must succeed (result !== null).
+    // When clearing/releasing (value === null), unconditional update always succeeds.
+    return value === null ? true : result !== null;
   } catch (error) {
     console.error('rating-alert: alerted_at write failed:', error.message);
     return false;
