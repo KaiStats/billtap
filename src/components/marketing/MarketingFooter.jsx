@@ -29,6 +29,7 @@ const COLUMNS = [
   },
 ];
 
+/** @param {{ label: string, href?: string, to?: string }} props */
 function FooterLink({ label, href, to }) {
   const className = "text-sm transition-colors hover:text-emerald-400";
   if (to) {
