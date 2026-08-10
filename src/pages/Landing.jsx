@@ -26,30 +26,18 @@ import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/
 /**
  * The product demo, framed as a phone because the clip is 9:16.
  *
- * Autoplay is muted and inline or mobile browsers refuse it outright. It is
- * also silent by design: the render carries an audio track, but a landing page
- * that makes noise on arrival is a page people close.
+ * Does not autoplay. The video shows with a poster frame and visible controls,
+ * and the user taps to play. This keeps the 10.5MB clip off the critical path —
+ * the fetch happens only when the user chooses to play, not on page load. The
+ * poster is already on the page as step-photo, so a real frame paints
+ * immediately even before the user taps.
  *
- * `preload="none"` keeps ten seconds of 720p off the critical path. The poster
- * is the still the clip was generated from — already on the page as step-photo —
- * so a real frame paints immediately and the video streams in behind it.
- *
- * Under prefers-reduced-motion nothing plays on its own: the poster stands and
- * the controls appear, so the demo stays reachable by anyone who wants it.
+ * `preload="none"` still applies: metadata only, no frames, until play.
  */
 /** @param {{ name?: any, className?: any, [key: string]: any }} props */
 function DemoVideo({ name, className = "" }) {
-  const [reduced, setReduced] = useState(false);
   const src = video(name);
   const entry = VIDEO_MANIFEST[name];
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (e) => setReduced(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
 
   if (!src || !entry) return null;
 
@@ -59,11 +47,9 @@ function DemoVideo({ name, className = "" }) {
       style={{ aspectRatio: entry.aspect, width: "100%", display: "block", objectFit: "cover" }}
       src={src}
       poster={videoPoster(name) || undefined}
-      autoPlay={!reduced}
-      loop={!reduced}
       muted
       playsInline
-      controls={reduced}
+      controls
       preload="none"
       aria-label="Ten-second demo: a phone scans a paper receipt, the items light up one by one, a QR code appears, friends' phones check off what they ordered, and the payment confirms."
     />
@@ -167,6 +153,7 @@ function Logo({ size = 32 }) {
  * exponential ease-out — the fintech "total landing" tick. Honours reduced
  * motion by snapping straight to the value, and only runs when the element is
  * actually on screen so it isn't already finished by the time it scrolls in.
+ * @returns {[number, import("react").RefObject<any>]}
  */
 function useCountUp(target, duration = 1100) {
   const [value, setValue] = useState(0);

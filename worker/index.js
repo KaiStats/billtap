@@ -489,10 +489,23 @@ async function serve(request, env, ctx, outerId) {
     // Prefer the prerendered snapshot when one was built for this route.
     const snapshot = PRERENDERED[route];
     if (snapshot && request.method === 'GET') {
-      // When the snapshot is absent the assets binding answers with the SPA
-      // shell anyway (not_found_handling), which is precisely the fallback we
-      // want — so this one call covers both cases.
-      const hit = await env.ASSETS.fetch(new Request(new URL(snapshot, url.origin), request));
+      // Ask for the snapshot WITHOUT its .html extension.
+      //
+      // The assets binding runs html_handling, which redirects "/foo.html" to
+      // "/foo" and serves foo.html for "/foo". Requesting the extension gets a
+      // 301, not the file — this check then fails and the route silently falls
+      // through to the SPA shell.
+      //
+      // That is invisible on every route except the root, because html_handling
+      // maps "/restaurants" to restaurants.html by itself. "/" maps to
+      // index.html, the shell, so the root snapshot was never reachable and /
+      // shipped unprerendered while every other route looked fine.
+      //
+      // When the snapshot is absent the binding answers with the SPA shell
+      // anyway (not_found_handling), which is precisely the fallback we want —
+      // so this one call still covers both cases.
+      const assetPath = snapshot.replace(/\.html$/, '');
+      const hit = await env.ASSETS.fetch(new Request(new URL(assetPath, url.origin), request));
       if (hit.status === 200) return withSecurityHeaders(hit);
     }
     const known =
