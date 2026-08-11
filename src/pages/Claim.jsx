@@ -286,6 +286,27 @@ export default function Claim() {
     }
   };
 
+  const expandItem = async (itemId) => {
+    if (!session) return;
+    const item = session.items.find(i => i.id === itemId);
+    if (!item || !item.quantity || item.quantity <= 1) return;
+    haptic([50]);
+    const expandedItems = [];
+    for (let i = 0; i < item.quantity; i++) {
+      expandedItems.push({
+        ...item,
+        id: `${item.id}-${i}`,
+        quantity: 1,
+        claimed_by: [],
+      });
+    }
+    const optimisticItems = session.items
+      .filter(i => i.id !== itemId)
+      .concat(expandedItems);
+    const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
+    claimMutation.mutate({ optimisticItems, optimisticParticipants });
+  };
+
   const claimAll = () => {
     if (!session) return;
     haptic([50, 30, 100]);
@@ -603,9 +624,21 @@ export default function Claim() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0 ml-2">
+                  <div className="text-right shrink-0 ml-2 flex flex-col items-end gap-1">
                     <div className={`mono font-bold text-sm tabular-nums ${isClaimedByOther ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
                     {isMine && claimed.length > 1 && <div className="mono text-xs text-primary font-semibold tabular-nums">You: ${myCost.toFixed(2)}</div>}
+                    {item.quantity > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          expandItem(item.id);
+                        }}
+                        className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors py-1"
+                        aria-label={`Expand ${item.name} into ${item.quantity} individual items`}
+                      >
+                        Expand ↓
+                      </button>
+                    )}
                   </div>
                 </div>
               </button>
