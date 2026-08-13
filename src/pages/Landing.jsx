@@ -458,6 +458,13 @@ export default function Landing() {
               ))}
             </div>
             <div className="flex items-center gap-2.5">
+              {/*
+                /restaurants had no link anywhere on this page — the highest-
+                authority URL on the domain pointed nowhere at the $149/mo
+                product. An owner who hears "BillTap" at a table and types the
+                domain landed on the consumer app with no path to the pitch.
+              */}
+              <Link to="/restaurants" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">For Restaurants</Link>
               <Link to="/login" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">Sign in</Link>
               <button onClick={handleSplitNow} className="press bg-primary text-primary-foreground text-sm font-semibold rounded-lg px-4 py-2 shadow-glow transition hover:brightness-110">
                 Split a bill
@@ -500,6 +507,11 @@ export default function Landing() {
                   </span>
                 ))}
               </div>
+              {/* The one line on this page aimed at an owner instead of a
+                  diner — see the nav link above for the fuller reasoning. */}
+              <p className="animate-rise text-sm mt-6" style={{ animationDelay: ".28s" }}>
+                <Link to="/restaurants" className="text-primary font-medium hover:underline">Own a restaurant? Turn every split into a 5-star review →</Link>
+              </p>
             </div>
             {/* Right: the split, already done */}
             <div className="flex justify-center lg:justify-end animate-rise" style={{ animationDelay: ".2s" }}>

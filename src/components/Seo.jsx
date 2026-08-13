@@ -41,6 +41,20 @@ function meta(name, content, attr = "name") {
   el.setAttribute("content", content);
 }
 
+// Same lookup-or-create shape as meta(): keyed by path + index so a route
+// with multiple schema objects (e.g. SoftwareApplication + FAQPage) gets
+// distinct tags that get replaced, not duplicated, on re-render.
+function jsonLd(id, data) {
+  if (!data) return;
+  const el = tag(`script[data-seo-schema="${id}"]`, () => {
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.setAttribute("data-seo-schema", id);
+    return s;
+  });
+  el.textContent = JSON.stringify(data);
+}
+
 export default function Seo({
   title,
   description,
@@ -48,6 +62,7 @@ export default function Seo({
   image = DEFAULT_IMAGE,
   noindex = false,
   type = "website",
+  schema = null, // a single JSON-LD object, or an array of them
 }) {
   useEffect(() => {
     const url = `${SITE}${path}`;
@@ -76,7 +91,12 @@ export default function Seo({
     meta("twitter:title", title);
     meta("twitter:description", description);
     meta("twitter:image", image);
-  }, [title, description, path, image, noindex, type]);
+
+    if (schema) {
+      const schemas = Array.isArray(schema) ? schema : [schema];
+      schemas.forEach((s, i) => jsonLd(`${path}-${i}`, s));
+    }
+  }, [title, description, path, image, noindex, type, schema]);
 
   return null;
 }

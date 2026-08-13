@@ -206,6 +206,54 @@ export default function Restaurants() {
         title="More Google Reviews for Your Restaurant | BillTap"
         description="Guests split the check from a QR code on the table, then rate you. Every guest gets a one-tap route to your Google listing, and a low rating alerts you while they're still there. 14-day free trial, $149/month."
         image="https://billtap.app/img/og-restaurants.png"
+        schema={[
+          {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "BillTap for Restaurants",
+            applicationCategory: "BusinessApplication",
+            operatingSystem: "Web",
+            description: "Guest bill-splitting that captures Google reviews and customer contact info at the moment of payment, with a real-time alert to owners on low ratings.",
+            url: "https://billtap.app/restaurants",
+            offers: {
+              "@type": "Offer",
+              price: "149",
+              priceCurrency: "USD",
+              eligibleDuration: { "@type": "QuantitativeValue", value: "14", unitCode: "DAY" },
+            },
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: [
+              {
+                "@type": "Question",
+                name: "Does BillTap replace my POS?",
+                acceptedAnswer: { "@type": "Answer", text: "No. BillTap runs alongside whatever POS you already use \u2014 Toast, Clover, Square, or anything else. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders." },
+              },
+              {
+                "@type": "Question",
+                name: "What does my staff have to do differently?",
+                acceptedAnswer: { "@type": "Answer", text: "Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit without a server involved. The only new step is putting a table tent out." },
+              },
+              {
+                "@type": "Question",
+                name: "Where do the 5-star reviews actually go?",
+                acceptedAnswer: { "@type": "Answer", text: "Straight to your Google Business Profile. A happy guest gets a one-tap link to leave a review the moment they finish paying." },
+              },
+              {
+                "@type": "Question",
+                name: "What happens if a guest leaves a bad rating?",
+                acceptedAnswer: { "@type": "Answer", text: "Every guest gets the same Google review link \u2014 BillTap doesn't gate or hide reviews by rating. A low rating instead triggers a real-time alert to the owner while the guest is still at the table, so a manager can address it in person." },
+              },
+              {
+                "@type": "Question",
+                name: "Can I cancel anytime?",
+                acceptedAnswer: { "@type": "Answer", text: "Yes. BillTap offers a 14-day free trial, and the $149/month plan can be canceled anytime with no contract and no cancellation fee." },
+              },
+            ],
+          },
+        ]}
       />
       <style>{`
 
@@ -651,6 +699,78 @@ export default function Restaurants() {
       </section>
 
       {/* ── Footer ──────────────────────────────────────────── */}
+      {/* ── Proof ──────────────────────────────────────
+          Deliberately no invented numbers. Real Mariposa stats (reviews
+          captured, contacts collected, low ratings caught) go here once
+          pulled from the dashboard — tracked as a Week 2 task, not a someday
+          one. Until then this states only what's true today: the product is
+          live at a real restaurant, not a mockup. */}
+      <section id="proof" className="py-16 sm:py-20" style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
+        <div className="max-w-4xl mx-auto px-5 sm:px-8 text-center">
+          <span className="rst-eyebrow inline-block px-3 py-1.5 rounded-full mb-6"
+            style={{ background: "rgba(240,180,41,.1)", color: GOLD, border: "1px solid rgba(240,180,41,.25)" }}>
+            Live in Las Vegas
+          </span>
+          <p className="font-display text-2xl sm:text-3xl leading-snug" style={{ color: "#f5f5f4" }}>
+            Mariposa | Cocina &amp; Cocktails runs BillTap every service.
+          </p>
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6">
+            {[
+              { n: "Live", l: "and taking real tables today" },
+              { n: "30 sec", l: "average time to split & pay" },
+              { n: "$149", l: "flat monthly, no contract" },
+            ].map((s) => (
+              <div key={s.l}>
+                <div className="font-display text-3xl sm:text-4xl" style={{ color: GOLD }}>{s.n}</div>
+                <div className="mt-1.5 text-sm" style={{ color: "rgba(245,245,244,.58)" }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ──────────────────────────────────────
+          Plain stacked Q&A, not an accordion — matches Seo.jsx's own
+          "dependency-free by design" stance: no new state, no new imports for
+          something five owners standing at a host stand will just read once. */}
+      <section id="faq" className="py-16 sm:py-20" style={{ background: "rgba(255,255,255,.02)" }}>
+        <div className="max-w-3xl mx-auto px-5 sm:px-8">
+          <h2 className="font-display text-3xl sm:text-4xl text-center mb-12" style={{ color: "#f5f5f4" }}>
+            Questions owners actually ask
+          </h2>
+          <div className="space-y-8">
+            {[
+              {
+                q: "Does BillTap replace my POS?",
+                a: "No. BillTap runs alongside whatever you already use \u2014 Toast, Clover, Square, anything. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders.",
+              },
+              {
+                q: "What does my staff have to do differently?",
+                a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit \u2014 all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
+              },
+              {
+                q: "Where do the 5-star reviews actually go?",
+                a: "Straight to your Google Business Profile \u2014 the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
+              },
+              {
+                q: "What happens if a guest leaves a bad rating?",
+                a: "Every guest gets the same Google link \u2014 nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
+              },
+              {
+                q: "Can I cancel anytime?",
+                a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever \u2014 no contract, no cancellation fee.",
+              },
+            ].map((item) => (
+              <div key={item.q}>
+                <p className="font-semibold text-lg" style={{ color: "#f5f5f4" }}>{item.q}</p>
+                <p className="mt-2 leading-relaxed" style={{ color: "rgba(245,245,244,.64)" }}>{item.a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ────────────────────────────────────── */}
       <footer style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-12">
           <p className="font-display text-2xl" style={{ color: GOLD }}>
