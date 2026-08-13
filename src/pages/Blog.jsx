@@ -3,24 +3,34 @@ import { QrCode, Calendar } from "lucide-react";
 import Seo from "@/components/Seo";
 
 export default function Blog() {
+  // Ordered by who they're for: the two an owner comparing tools searches for
+  // first, then the two that answer the objection and the "is it worth it".
+  // href drives the <a> below — anything still "#" renders as plain text, which
+  // is why the placeholders that used to sit here were unclickable.
   const posts = [
     {
-      title: "Why I Built BillTap",
-      date: "June 15, 2026",
-      excerpt: "The story behind the app and the problem I'm trying to solve.",
-      href: "#"
+      title: "Podium Alternative for Restaurants",
+      date: "August 2026",
+      excerpt: "Podium asks for reviews by text, days later. BillTap asks at the table, while a manager can still fix the night.",
+      href: "/blog/podium-alternative"
     },
     {
-      title: "How QR Codes Make Bill Splitting Frictionless",
-      date: "Coming Soon",
-      excerpt: "Why guest access without app downloads is the future.",
-      href: "#"
+      title: "QR Code Bill Splitting Without Changing Your POS",
+      date: "August 2026",
+      excerpt: "No integration, no new hardware, nothing for servers to learn. It runs beside Toast or Clover, not inside them.",
+      href: "/blog/qr-without-pos-change"
     },
     {
-      title: "The Math Behind Fair Tip Splitting",
-      date: "Coming Soon",
-      excerpt: "How we prorate tax and tip across itemized claims.",
-      href: "#"
+      title: "Catch a 1-Star Review Before It Gets Posted",
+      date: "August 2026",
+      excerpt: "A low rating pings you while the guest is still in the dining room \u2014 two minutes to make it right in person.",
+      href: "/blog/catch-1-star-early"
+    },
+    {
+      title: "The Math on One Lost Regular",
+      date: "August 2026",
+      excerpt: "A weekly regular is worth four figures a year. Here's what one un-caught bad night actually costs you.",
+      href: "/blog/cost-of-one-lost-regular"
     },
   ];
 

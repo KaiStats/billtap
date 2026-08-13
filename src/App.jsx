@@ -37,6 +37,10 @@ const SessionHost = lazy(() => import('@/pages/SessionHost'));
 const ReceiptDetail = lazy(() => import('@/pages/ReceiptDetail'));
 const About       = lazy(() => import('@/pages/About'));
 const Blog        = lazy(() => import('@/pages/Blog'));
+const BlogPost01PodiumAlternative = lazy(() => import('@/pages/BlogPost01PodiumAlternative'));
+const BlogPost02Catch1StarEarly = lazy(() => import('@/pages/BlogPost02Catch1StarEarly'));
+const BlogPost03QRWithoutPOS = lazy(() => import('@/pages/BlogPost03QRWithoutPOS'));
+const BlogPost04CostOfOneLostRegular = lazy(() => import('@/pages/BlogPost04CostOfOneLostRegular'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
 
@@ -204,6 +208,10 @@ const AuthenticatedApp = () => {
             <Route path="/icon-generator" element={<IconGenerator />} />
             <Route path="/about" element={<About />} />
             <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/podium-alternative" element={<BlogPost01PodiumAlternative />} />
+            <Route path="/blog/catch-1-star-early" element={<BlogPost02Catch1StarEarly />} />
+            <Route path="/blog/qr-without-pos-change" element={<BlogPost03QRWithoutPOS />} />
+            <Route path="/blog/cost-of-one-lost-regular" element={<BlogPost04CostOfOneLostRegular />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
             <Route path="/new-receipt" element={<AnimatedPage direction={direction}><NewReceipt /></AnimatedPage>} />
