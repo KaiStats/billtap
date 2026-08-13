@@ -75,7 +75,7 @@ const WITH = ["More 5-star reviews", "Build your customer list", "Instant bad-ex
 
 const STEPS = [
   { n: "01", img: "step-scan", title: "Guests scan a QR on the table", desc: "No app needed.", alt: "Friends at a table, one leaning in to scan the QR table tent." },
-  { n: "02", img: "step-split", title: "They split the check", desc: "Everyone pays their share in about 30 seconds.", alt: "Four friends laughing as they settle the bill on their phones." },
+  { n: "02", img: "step-split", title: "They split the check", desc: "Everyone's share in about 30 seconds. You still get paid the way you always have.", alt: "Four friends laughing as they settle the bill on their phones." },
   { n: "03", img: "step-rate", title: "They rate you", desc: "Everyone gets your Google link. A low rating pings you instantly.", alt: "A satisfied guest smiling as she rates the meal on her phone." },
 ];
 
@@ -250,6 +250,11 @@ export default function Restaurants() {
                 "@type": "Question",
                 name: "Can I cancel anytime?",
                 acceptedAnswer: { "@type": "Answer", text: "Yes. BillTap offers a 14-day free trial, and the $149/month plan can be canceled anytime with no contract and no cancellation fee." },
+              },
+              {
+                "@type": "Question",
+                name: "Does BillTap handle any of the money?",
+                acceptedAnswer: { "@type": "Answer", text: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so each person knows their share, and tracks who has settled up with whoever is covering the bill. No money moves through BillTap, so there is no merchant account to open, no payout schedule, and nothing extra to reconcile at close." },
               },
             ],
           },
@@ -759,6 +764,10 @@ export default function Restaurants() {
               {
                 q: "Can I cancel anytime?",
                 a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever \u2014 no contract, no cancellation fee.",
+              },
+              {
+                q: "Does BillTap handle any of the money?",
+                a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us \u2014 no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
               },
             ].map((item) => (
               <div key={item.q}>
