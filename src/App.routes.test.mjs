@@ -78,7 +78,7 @@ test('AUTH_GATED_ROUTES contains nothing public', () => {
 
 test('the marketing routes are never auth-gated', () => {
   const gated = declaredGatedRoutes();
-  for (const path of ['/', '/restaurants', '/about', '/blog', '/changelog', '/privacy', '/terms']) {
+  for (const path of ['/', '/restaurants', '/about', '/blog', '/blog/podium-alternative', '/blog/qr-without-pos-change', '/blog/catch-1-star-early', '/blog/cost-of-one-lost-regular', '/changelog', '/privacy', '/terms']) {
     assert.equal(gated.has(path), false, `${path} must paint without waiting for auth`);
   }
 });

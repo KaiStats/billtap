@@ -1064,7 +1064,7 @@ test('the confirm controls are thumb-sized and the screen fits a phone', async (
 
 // ── The rest of the app still boots ─────────────────────────────────────────
 
-for (const route of ['/', '/restaurants', '/about', '/blog', '/changelog', '/privacy', '/terms', '/new-receipt', '/login']) {
+for (const route of ['/', '/restaurants', '/about', '/blog', '/blog/podium-alternative', '/blog/qr-without-pos-change', '/blog/catch-1-star-early', '/blog/cost-of-one-lost-regular', '/changelog', '/privacy', '/terms', '/new-receipt', '/login']) {
   test(`${route} renders on a phone without errors or sideways scroll`, async () => {
     const { context, page, errors } = await phone();
     try {

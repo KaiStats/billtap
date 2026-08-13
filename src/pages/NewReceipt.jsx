@@ -60,6 +60,9 @@ export default function NewReceipt() {
   const [saving, setSaving] = useState(false);
   const [restaurantSlug, setRestaurantSlug] = useState(null);
   const [restaurants, setRestaurants] = useState([]);
+  // Drives the inline picker that replaced a blocking prompt() dialog.
+  const [picking, setPicking] = useState(false);
+  const [restaurantQuery, setRestaurantQuery] = useState("");
   /**
    * The last failure, shown in the page rather than in a modal.
    *
@@ -640,13 +643,7 @@ export default function NewReceipt() {
                     Yes
                   </button>
                   <button
-                    onClick={() => {
-                      const input = prompt("Search for your restaurant:", title);
-                      if (input) {
-                        const match = restaurants.find(r => r.name.toLowerCase().includes(input.toLowerCase()));
-                        setRestaurantSlug(match?.slug || input.toLowerCase().replace(/\s+/g, '-'));
-                      }
-                    }}
+                    onClick={() => { setPicking(true); setRestaurantQuery(title || ""); }}
                     className="flex-1 px-3 py-2 border border-brand text-foreground font-semibold text-sm rounded-xl hover:bg-brand/20 transition"
                   >
                     Find it
@@ -658,6 +655,55 @@ export default function NewReceipt() {
                     ✕
                   </button>
                 </div>
+
+                {/* Inline picker. Filters the list already fetched on mount, so
+                    typing costs no round trip. If nothing matches, the typed
+                    text is still usable — an unlisted restaurant shouldn't be
+                    a dead end at the moment someone is trying to pay. */}
+                {picking && (
+                  <div className="space-y-2">
+                    <input
+                      autoFocus
+                      value={restaurantQuery}
+                      onChange={(e) => setRestaurantQuery(e.target.value)}
+                      placeholder="Type a restaurant name"
+                      className="w-full px-3 py-2 text-sm rounded-xl bg-background border border-brand/40 text-foreground focus:outline-none focus:border-brand"
+                    />
+                    <div className="max-h-44 overflow-y-auto space-y-1">
+                      {restaurants
+                        .filter((r) => r.name.toLowerCase().includes(restaurantQuery.trim().toLowerCase()))
+                        .slice(0, 8)
+                        .map((r) => (
+                          <button
+                            key={r.slug}
+                            onClick={() => { setRestaurantSlug(r.slug); setPicking(false); }}
+                            className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-brand/15 text-foreground transition"
+                          >
+                            {r.name}
+                          </button>
+                        ))}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          const q = restaurantQuery.trim();
+                          if (!q) return;
+                          setRestaurantSlug(q.toLowerCase().replace(/\s+/g, "-"));
+                          setPicking(false);
+                        }}
+                        className="flex-1 px-3 py-2 text-sm font-semibold rounded-xl bg-brand text-brand-foreground hover:bg-brand/90 transition"
+                      >
+                        Use "{restaurantQuery.trim() || "\u2026"}"
+                      </button>
+                      <button
+                        onClick={() => setPicking(false)}
+                        className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

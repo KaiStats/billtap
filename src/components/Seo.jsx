@@ -55,6 +55,19 @@ function jsonLd(id, data) {
   el.textContent = JSON.stringify(data);
 }
 
+// Organization schema. Moved out of index.html, which is guaranteed to carry
+// zero inline <script> blocks so script-src never needs 'unsafe-inline'
+// (src/csp.test.mjs enforces it). Emitting here also reaches further: prerender
+// captures the DOM after this effect runs, so every prerendered route gets it.
+const ORGANIZATION = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "BillTap",
+  url: "https://billtap.app",
+  logo: "https://billtap.app/icons/icon-192.png",
+  email: "hello@billtap.app",
+};
+
 export default function Seo({
   title,
   description,
@@ -91,6 +104,10 @@ export default function Seo({
     meta("twitter:title", title);
     meta("twitter:description", description);
     meta("twitter:image", image);
+
+    // Fixed id, not path-keyed: one Organization tag replaced on navigation
+    // rather than one accumulating per route.
+    jsonLd("seo-organization", ORGANIZATION);
 
     if (schema) {
       const schemas = Array.isArray(schema) ? schema : [schema];

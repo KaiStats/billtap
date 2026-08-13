@@ -172,22 +172,6 @@
 
       defer, because neither vendor needs to run before the page paints.
     -->
-    <!--
-      Organization schema. Lives here rather than in Seo.jsx: every route
-      shares this one HTML file, the data never changes per-route, and a
-      crawler that never executes JS still needs to see it — same reasoning
-      already applied above to the default title/description/OG tags.
-    -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "BillTap",
-      "url": "https://billtap.app",
-      "logo": "https://billtap.app/icons/icon-192.png",
-      "email": "hello@billtap.app"
-    }
-    </script>
     <script defer src="/analytics.js"></script>
   </head>
   <body>
