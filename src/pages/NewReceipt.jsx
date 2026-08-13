@@ -58,6 +58,8 @@ export default function NewReceipt() {
   const [tip, setTip] = useState(0);
   const [splitMode, setSplitMode] = useState("itemized");
   const [saving, setSaving] = useState(false);
+  const [restaurantSlug, setRestaurantSlug] = useState(null);
+  const [restaurants, setRestaurants] = useState([]);
   /**
    * The last failure, shown in the page rather than in a modal.
    *
@@ -103,6 +105,21 @@ export default function NewReceipt() {
     scrollToQuickEven.current = false;
     quickEvenRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [showQuickEven]);
+
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      try {
+        const response = await fetch("/api/fn/list-restaurants", { method: "POST", body: JSON.stringify({}) });
+        if (response.ok) {
+          const data = await response.json();
+          setRestaurants(data.restaurants || []);
+        }
+      } catch (err) {
+        // Silent fail — optional feature
+      }
+    };
+    fetchRestaurants();
+  }, []);
 
   /**
    * The upload, started the moment a photo is chosen.
@@ -388,7 +405,7 @@ export default function NewReceipt() {
     if (!amt || amt <= 0) return;
     setSaving(true);
     try {
-      const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
+      const sessionStorageSlug = sessionStorage.getItem("billtap_restaurant_slug");
       const res = await invoke("createSession", {
         title: title || "Quick Split",
         items: [],
@@ -397,6 +414,7 @@ export default function NewReceipt() {
         split_mode: "even",
         total_amount: amt,
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
+        ...(sessionStorageSlug ? { restaurant_slug: sessionStorageSlug } : {}),
       });
       if (res.data?.error) { setFailure({ data: res.data, status: 400 }); setSaving(false); return; }
       rememberHostKey(res.data.session.id, res.data.host_key);
@@ -606,6 +624,42 @@ export default function NewReceipt() {
 
         {step === 2 && (
           <div className="space-y-4">
+
+            {/* Restaurant confirmation */}
+            {!restaurantSlug && title && (
+              <div className="bg-brand/10 border border-brand/30 rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-foreground">Is this {title}?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const match = restaurants.find(r => r.name.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(r.name.toLowerCase()));
+                      setRestaurantSlug(match?.slug || title.toLowerCase().replace(/\s+/g, '-'));
+                    }}
+                    className="flex-1 px-3 py-2 bg-brand text-brand-foreground font-semibold text-sm rounded-xl hover:bg-brand/90 transition"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => {
+                      const input = prompt("Search for your restaurant:", title);
+                      if (input) {
+                        const match = restaurants.find(r => r.name.toLowerCase().includes(input.toLowerCase()));
+                        setRestaurantSlug(match?.slug || input.toLowerCase().replace(/\s+/g, '-'));
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 border border-brand text-foreground font-semibold text-sm rounded-xl hover:bg-brand/20 transition"
+                  >
+                    Find it
+                  </button>
+                  <button
+                    onClick={() => setTitle("")}
+                    className="px-3 py-2 text-muted-foreground hover:text-foreground transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Only speak up when there is something wrong. A banner on a clean
                 parse trains people to ignore the banner on a bad one. */}

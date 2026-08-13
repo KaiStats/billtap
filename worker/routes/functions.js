@@ -2332,6 +2332,23 @@ const HANDLERS = {
         : {}),
     });
   },
+
+  async listRestaurants({ env }) {
+    const svc = serviceRole(env);
+    try {
+      const restaurants = await svc.entity('Restaurant').filter({}, { select: 'id,name,slug' });
+      return json({
+        restaurants: restaurants.map((r) => ({
+          id: r.id,
+          name: r.name,
+          slug: r.slug,
+        })),
+      });
+    } catch (e) {
+      console.error('listRestaurants failed:', e?.message);
+      return json({ restaurants: [] });
+    }
+  },
 };
 
 export async function onRequestPost({ request, env, ctx, name }) {
