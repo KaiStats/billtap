@@ -585,7 +585,8 @@ export default function Restaurants() {
 
               <ul className="mt-8 space-y-3">
                 {["14-day free trial", "Cancel anytime", "Printed QR table tents included",
-                  "Unlimited tables and covers", "Setup in under 10 minutes"].map((f) => (
+                  "Unlimited tables and covers", "Setup in under 10 minutes",
+                  "No merchant account \u2014 your money never passes through us"].map((f) => (
                   <li key={f} className="flex items-start gap-3">
                     <Check className="w-4 h-4 mt-1 flex-shrink-0" style={{ color: GOLD }} aria-hidden="true" />
                     <span className="text-sm font-light" style={{ color: "rgba(245,245,244,.8)" }}>{f}</span>
