@@ -19,6 +19,11 @@ Disallow: /icon-generator
 # pages — indexing them would strand crawlers on dead splits.
 Disallow: /r/
 
+# The prefix a batch of printed cards used by mistake. It 301s to /r/<slug>, so
+# a crawler that finds one would be sent to a page already disallowed above —
+# listed explicitly so it never spends a crawl budget discovering that.
+Disallow: /f/
+
 # Tracking parameters are deliberately NOT blocked here — paid traffic lands on
 # /restaurants?utm_*, and disallowing those would stop Google crawling the very
 # page the ads point at. The canonical tag consolidates them instead.

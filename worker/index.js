@@ -121,6 +121,16 @@ const SPA_ROUTES = new Set([
 /** Per-table guest links from the QR tents: /r/<slug>. */
 const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
 
+/**
+ * The prefix a batch of printed cards used by mistake — see the redirect below.
+ *
+ * A slug is required. Bare `/f` and `/f/` match nothing here and go on 404ing,
+ * which is right: there is no card that says just `/f`, so a request for one is
+ * a crawler or a typo, and answering it with a redirect to `/r/` would invent a
+ * destination nobody printed.
+ */
+const PRINT_PREFIX_REDIRECT = /^\/f\/([^/]+)\/?$/;
+
 /** Real HTML files that are not SPA routes and must pass through untouched. */
 const STATIC_HTML = new Set(['/offline.html']);
 
@@ -490,6 +500,48 @@ async function serve(request, env, ctx, outerId) {
     const legacy = LEGACY_REDIRECTS[path] || PRERENDERED_ALIASES[path];
     if (legacy) {
       return Response.redirect(new URL(legacy + url.search, url.origin).toString(), 301);
+    }
+
+    /**
+     * Table tents that went to print with the wrong prefix.
+     *
+     * ── What happened ─────────────────────────────────────────────────────
+     *
+     * Cards and flyers were printed carrying `billtap.app/f/<slug>`. This app
+     * has only ever served `/r/<slug>` — one route in src/App.jsx, one pattern
+     * in DYNAMIC_ROUTES above, and nothing anywhere in the repo has ever
+     * emitted an `/f/` URL. So every one of those printed codes fell through
+     * to the SPA shell, missed the known-route check below, and came back 404.
+     * Not degraded: dead, since the first piece came off the press.
+     *
+     * The slug on the cards is correct. Only the letter in front of it is
+     * wrong, which is why nothing needs reprinting.
+     *
+     * ── Why a redirect and not a second route ─────────────────────────────
+     *
+     * Adding `/f/:slug` alongside `/r/:slug` would be fewer moving parts and
+     * it is the wrong shape. `/r/<slug>` is where the slug gets resolved and
+     * the session gets attributed to the restaurant, and that attribution is
+     * what drives contact capture, review routing and the low-rating alert.
+     * Two URLs for one screen means two paths into that, and the second one
+     * only exists because of a printing error. A 301 keeps one canonical
+     * guest page and lets the wrong cards point at it.
+     *
+     * Handled at the edge rather than only in the client because the assets
+     * binding answers before React does — the SPA route added alongside this
+     * covers the dev server and in-app navigation, where nothing sits in
+     * front of the app.
+     *
+     * The query string is carried across. Anything a card or a campaign hangs
+     * on the end — `?table=12`, a utm — belongs to the page being redirected
+     * to, and dropping it silently would lose whatever it was for.
+     */
+    const printed = path.match(PRINT_PREFIX_REDIRECT);
+    if (printed) {
+      return Response.redirect(
+        new URL(`/r/${printed[1]}${url.search}`, url.origin).toString(),
+        301,
+      );
     }
 
     // Treat /about/ and /about as the same route.
