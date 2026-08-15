@@ -53,6 +53,17 @@ export const ENTITIES = [
   'RestaurantLead',
   'Waitlist',
   'AuditLog',
+  /**
+   * Who is on which consumer plan — see migration 0016.
+   *
+   * Small and easy to overlook, and the one table here whose loss is silently
+   * expensive: a restored database without it puts every Pro account back on
+   * free, and nobody finds out until an eleventh person cannot join a split
+   * somebody has already paid for. There is no consumer checkout yet either,
+   * so these rows are granted by hand and there is no Stripe record to rebuild
+   * them from.
+   */
+  'Profile',
 ];
 
 /**

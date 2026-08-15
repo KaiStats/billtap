@@ -734,3 +734,128 @@ test('a junk ticket in the body is ignored rather than stored or refused', async
     });
   }
 });
+
+// ── Party size ──────────────────────────────────────────────────────────────
+//
+// The homepage sold "up to 10 people" on Free and "unlimited party size" on Pro
+// since it was written. joinSession capped everyone at fifty and had no concept
+// of a plan, so Free understated what it gave away and Pro charged for
+// something every free user already had. See supabase/migrations/0016.
+
+const party = (n) => Array.from({ length: n }, (_, i) => ({
+  participant_id: `p_${1000 + i}_x`, name: `G${i}`, payment_status: 'unpaid',
+}));
+
+const join = (env, sessionId, id = 'p_9999_new') => HANDLERS.joinSession({
+  env, body: { session_id: sessionId, participant_id: id, name: 'Newcomer' }, audit: async () => {},
+});
+
+test('a free split stops at ten and says so in words a guest can act on', async () => {
+  await withStub({ user: null }, async (s) => {
+    s.tables.sessions = [{
+      id: 's_free', participants: party(10), items: [], created_by_id: null,
+      expires_at: Date.now() + 86400000,
+    }];
+    const res = await join(ENV, 's_free');
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, 'party_limit');
+    assert.equal(body.limit, 10);
+    // Addressed to the eleventh person at dinner, who did not choose the plan.
+    assert.match(body.error, /Ask whoever started it/);
+  });
+});
+
+test('the tenth person still gets in', async () => {
+  await withStub({ user: null }, async (s) => {
+    s.tables.sessions = [{
+      id: 's_free', participants: party(9), items: [], created_by_id: null,
+      expires_at: Date.now() + 86400000,
+    }];
+    assert.equal((await join(ENV, 's_free')).status, 200);
+  });
+});
+
+test('a restaurant table is exempt — the restaurant already paid $149', async () => {
+  // The line that matters most. A party of twelve in a dining room is the
+  // business the restaurant bought this for, and metering their guests against
+  // a consumer tier would charge the diner for the restaurant's subscription.
+  // It would also break the demo the product is sold with.
+  await withStub({ user: null }, async (s) => {
+    s.tables.sessions = [{
+      id: 's_rest', participants: party(12), items: [], restaurant_id: 'r_real',
+      created_by_id: null, expires_at: Date.now() + 86400000,
+    }];
+    assert.equal((await join(ENV, 's_rest')).status, 200);
+  });
+});
+
+test('a Pro host gets the higher ceiling', async () => {
+  await withStub({ user: null }, async (s) => {
+    s.tables.profiles = [{ id: 'user_pro', plan: 'pro' }];
+    s.tables.sessions = [{
+      id: 's_pro', participants: party(12), items: [], created_by_id: 'user_pro',
+      expires_at: Date.now() + 86400000,
+    }];
+    assert.equal((await join(ENV, 's_pro')).status, 200);
+  });
+});
+
+test('an account with no profile row is free, not broken', async () => {
+  // Every account predates the profiles table. A missing row must read as free
+  // rather than as an error.
+  await withStub({ user: null }, async (s) => {
+    s.tables.profiles = [];
+    s.tables.sessions = [{
+      id: 's_old', participants: party(10), items: [], created_by_id: 'user_legacy',
+      expires_at: Date.now() + 86400000,
+    }];
+    const res = await join(ENV, 's_old');
+    assert.equal(res.status, 400, 'no row means free, not an error and not pro');
+    assert.equal((await res.json()).code, 'party_limit');
+  });
+});
+
+test('even Pro stops at fifty, because the column is not unbounded', async () => {
+  // "Unlimited party size" is the copy; the participants array is a jsonb
+  // column on an endpoint that takes no credentials. The copy is what should
+  // move, not the number.
+  await withStub({ user: null }, async (s) => {
+    s.tables.profiles = [{ id: 'user_pro', plan: 'pro' }];
+    s.tables.sessions = [{
+      id: 's_big', participants: party(50), items: [], created_by_id: 'user_pro',
+      expires_at: Date.now() + 86400000,
+    }];
+    const body = await (await join(ENV, 's_big')).json();
+    assert.equal(body.code, 'session_full');
+    assert.equal(body.limit, 50);
+  });
+});
+
+test('somebody already in the split is never turned away by the cap', async () => {
+  // A reopened page or a retried request must not be refused entry to a split
+  // they are already part of because the table filled up behind them.
+  await withStub({ user: null }, async (s) => {
+    const existing = party(12);
+    s.tables.sessions = [{
+      id: 's_full', participants: existing, items: [], created_by_id: null,
+      expires_at: Date.now() + 86400000,
+    }];
+    const res = await join(ENV, 's_full', existing[3].participant_id);
+    assert.equal(res.status, 200, 'they were already here');
+  });
+});
+
+test('the free limit can be raised by binding, without a deploy', async () => {
+  // There is no consumer checkout yet, so a free host with eleven friends is
+  // stopped and cannot pay to get past it. Raising this is a `wrangler secret
+  // put` rather than a build, which is what makes it recoverable while
+  // somebody is standing at a table.
+  await withStub({ user: null }, async (s) => {
+    s.tables.sessions = [{
+      id: 's_free', participants: party(10), items: [], created_by_id: null,
+      expires_at: Date.now() + 86400000,
+    }];
+    assert.equal((await join({ ...ENV, FREE_PARTY_LIMIT: 25 }, 's_free')).status, 200);
+  });
+});

@@ -406,21 +406,30 @@ export default function Landing() {
     "Guest access (no account)",
   ];
 
+  /**
+   * Two lines, and both are true as of migration 0016.
+   *
+   * It listed expense categories, recurring bills and bank payouts as well.
+   * None of the three exist anywhere in this codebase — not a component, not a
+   * column, not a route — and the party-size line was false too: joinSession
+   * capped everyone at fifty and had no concept of a plan, so Pro charged for
+   * something every free user already had.
+   *
+   * The cap is real now. Free stops at ten, Pro goes to fifty, and a split
+   * attributed to a restaurant is exempt because that restaurant pays $149.
+   */
   const proFeatures = [
     "Everything in Free",
     "Unlimited party size",
-    "Expense categories",
-    "Recurring bills (rent, utilities, subscriptions)",
-    "Payout directly to bank account",
   ];
 
   const faqs = [
     { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
-    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($4.99/mo) unlocks unlimited party size, expense categories, recurring bills, and bank payouts." },
+    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($0.99/mo) raises the party size." },
     { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
     { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
     { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
-    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. When you try to add an 11th person, BillTap shows the Pro upgrade prompt. Pro ($4.99/mo) unlocks unlimited party size." },
+    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. When you try to add an 11th person, BillTap shows the Pro upgrade prompt. Pro ($0.99/mo) raises it." },
     { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
   ];
 
@@ -656,9 +665,9 @@ export default function Landing() {
             <div className="relative rounded-2xl bg-card p-8 flex flex-col border-glow shadow-float">
               <div className="absolute -top-3 left-8"><span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-3 py-1 shadow-glow">Most popular</span></div>
               <p className="mono text-xs uppercase tracking-[0.2em] text-primary">Pro</p>
-              <p className="text-sm text-muted-foreground mt-2">For bigger groups and recurring expenses.</p>
+              <p className="text-sm text-muted-foreground mt-2">For bigger groups.</p>
               <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="mono text-5xl font-semibold tabular-nums">$4.99</span>
+                <span className="mono text-5xl font-semibold tabular-nums">$0.99</span>
                 <span className="text-muted-foreground">/ month</span>
               </div>
               <ul className="space-y-3 mt-7 mb-8 flex-1">
@@ -672,7 +681,7 @@ export default function Landing() {
               <Link to="/register" className="press inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110">
                 Start Pro free trial <ArrowRight className="w-4 h-4" />
               </Link>
-              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $4.99/mo</p>
+              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $0.99/mo</p>
             </div>
           </div>
 
@@ -680,7 +689,7 @@ export default function Landing() {
           <div className="max-w-3xl mt-5 p-5 rounded-xl bg-surface/60 border border-border/70 flex gap-4 items-start">
             <Zap className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">When does Pro kick in?</span> When you try to add an 11th person to a session, or set up a recurring bill, BillTap shows the upgrade prompt — right at the moment it's actually useful. No nag screens before then.
+              <span className="font-semibold text-foreground">When does Pro kick in?</span> When you try to add an 11th person to a session, BillTap shows the upgrade prompt — right at the moment it's actually useful. No nag screens before then.
             </p>
           </div>
 

@@ -45,6 +45,11 @@ const TABLES = {
   Waitlist: 'waitlist',
   Receipt: 'receipts',
   /**
+   * A person's plan, as opposed to a restaurant's — see migration 0016. Read
+   * by resolvePartyLimit to decide how many people may join one split.
+   */
+  Profile: 'profiles',
+  /**
    * Readable, and only readable.
    *
    * Migration 0002 revokes update, delete and truncate from service_role and

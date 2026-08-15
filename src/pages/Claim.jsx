@@ -14,6 +14,7 @@ import { rememberSplit } from "@/lib/splitHistory";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
 import { sessionPath } from '@/lib/sessionLinks';
+import { logClientError } from "@/lib/clientLog";
 
 // Haptic feedback helper
 const haptic = (pattern) => {
@@ -64,6 +65,15 @@ export default function Claim() {
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
+  /**
+   * The split was full when this guest tried to get in.
+   *
+   * Its own state rather than loadError: the split loaded fine and there is
+   * nothing to retry. Retrying is what the other two error screens offer, and
+   * offering it here would send an eleventh diner round a loop that cannot
+   * succeed until somebody else acts.
+   */
+  const [partyFull, setPartyFull] = useState(null);
   const [itemSearch, setItemSearch] = useState("");
 
   useEffect(() => {
@@ -187,12 +197,32 @@ export default function Claim() {
   });
 
   const ensureJoined = async (name) => {
-    const res = await invoke("joinSession", {
-      session_id: sessionId,
-      participant_id: myId,
-      name: name || "Anonymous",
-    });
-    if (res.data?.session) setSession(res.data.session);
+    try {
+      const res = await invoke("joinSession", {
+        session_id: sessionId,
+        participant_id: myId,
+        name: name || "Anonymous",
+      });
+      if (res.data?.session) setSession(res.data.session);
+    } catch (err) {
+      /**
+       * Caught, because this used to throw into nothing.
+       *
+       * ensureJoined is awaited from the name gate with no catch anywhere
+       * above it, so a refusal surfaced as an unhandled rejection: the gate
+       * closed, the guest was never added, and the screen sat there looking
+       * like it had worked. That was true of every failure this call can
+       * produce, and the party limit added a new one that a guest will
+       * actually hit.
+       */
+      const code = /** @type {any} */ (err)?.data?.code;
+      if (code === "party_limit" || code === "session_full") {
+        setPartyFull(/** @type {any} */ (err)?.data?.error || "This split is full.");
+        return;
+      }
+      logClientError("join a split", err, { feature: "claim_join" });
+      setLoadError(/** @type {any} */ (err)?.message || "Could not join this split.");
+    }
   };
 
   const handleNameGateSubmit = async () => {
@@ -434,6 +464,18 @@ export default function Claim() {
         >
           Try again
         </button>
+      </div>
+    </div>
+  );
+
+  if (partyFull) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold text-foreground">This split is full</p>
+        <p className="text-sm mt-2 max-w-xs">{partyFull}</p>
+        {/* No retry. Nothing this guest can do makes room -- the person who
+            started the split has to upgrade or start a second one -- and a
+            button that fails every time is worse than no button. */}
       </div>
     </div>
   );

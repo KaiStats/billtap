@@ -183,6 +183,82 @@ function ticketColumns(raw) {
   };
 }
 
+// ── How many people may join one split ──────────────────────────────────────
+
+/**
+ * The consumer free tier's party size. The number the homepage has always
+ * printed, and until now the only place it existed.
+ *
+ * Overridable by binding, and that is not a nicety. There is no consumer
+ * checkout yet — Pro is granted by hand, see supabase/migrations/0016 — so a
+ * free host with eleven friends is stopped by this and cannot pay to get past
+ * it. Raising FREE_PARTY_LIMIT is a `wrangler secret put` rather than a deploy,
+ * which is what makes that recoverable at the moment somebody is standing at a
+ * table rather than after a build.
+ */
+const FREE_PARTY_LIMIT = 10;
+
+/**
+ * The ceiling for everyone else, and the hard stop on the row.
+ *
+ * Pro is sold as "unlimited party size" and this is not unlimited. Fifty is
+ * what joinSession has always enforced, it is far past any real table, and an
+ * actually unbounded participants array is a jsonb column somebody can grow
+ * without limit on an endpoint that takes no credentials. The copy is the thing
+ * that should move here, not the number.
+ */
+const MAX_PARTY = 50;
+
+/**
+ * How many people may join this split.
+ *
+ * ── Restaurant splits are exempt, and that is the important line ────────────
+ *
+ * A session attributed to a restaurant is a table in a dining room. That
+ * restaurant is paying $149 a month, its party of twelve is exactly the
+ * business it bought this for, and metering their guests against a consumer
+ * tier would be charging the diner for the restaurant's subscription. It would
+ * also break the demo this product is sold with.
+ *
+ * ── The host's plan, not the joiner's ──────────────────────────────────────
+ *
+ * joinSession takes no credentials — the joiner is a stranger with a
+ * participant id, which is the premise of the product. So the plan that governs
+ * is the one belonging to whoever created the split, since they are the person
+ * who would be buying Pro. `created_by_id` is null for the account-less host,
+ * which resolves to free, which is right: they have not bought anything.
+ *
+ * A missing profile row is free too. Every account predates this table.
+ */
+export async function resolvePartyLimit(env, svc, session) {
+  const configured = Number(env?.FREE_PARTY_LIMIT);
+  const freeLimit = Number.isInteger(configured) && configured > 0 ? configured : FREE_PARTY_LIMIT;
+
+  if (session?.restaurant_id) return { limit: MAX_PARTY, tier: 'restaurant' };
+
+  const hostId = session?.created_by_id;
+  if (!hostId) return { limit: freeLimit, tier: 'free' };
+
+  try {
+    const rows = await svc.entity('Profile').filter({ id: hostId }, { select: 'id,plan' });
+    if (rows[0]?.plan === 'pro') return { limit: MAX_PARTY, tier: 'pro' };
+  } catch (error) {
+    /**
+     * A profile read that fails serves the split rather than capping it.
+     *
+     * The same direction shared/entitlement.js argues for at length: the cost
+     * of being wrong towards service is a party of twelve on a 99-cent tier,
+     * and the cost of being wrong the other way is a diner at a table being
+     * told they cannot pay for their dinner because of a database hiccup.
+     * Those are not the same size of mistake.
+     */
+    console.error('resolvePartyLimit: profile read failed, serving as pro:', error?.message);
+    return { limit: MAX_PARTY, tier: 'unknown' };
+  }
+
+  return { limit: freeLimit, tier: 'free' };
+}
+
 /** Days of trial a new restaurant starts with. Matches the copy on the form. */
 const TRIAL_DAYS = 14;
 
@@ -2089,8 +2165,29 @@ const HANDLERS = {
 
     const current = session.participants || [];
     const already = current.find((p) => p.participant_id === participant_id);
-    if (!already && current.length >= 50) {
-      return json({ error: 'Session is full (max 50 participants)' }, 400);
+    if (!already) {
+      /**
+       * The party-size gate the homepage has been describing all along.
+       *
+       * Checked only for somebody actually new. A diner reopening the page, or
+       * a phone retrying a request, must not be refused entry to a split they
+       * are already in because the table filled up behind them.
+       *
+       * `code` is what the client branches on. The message is written for a
+       * guest, because a guest is who reads it: they did not choose the plan,
+       * they are just the eleventh person at dinner, and telling them to
+       * upgrade would be addressing the wrong person entirely.
+       */
+      const { limit, tier } = await resolvePartyLimit(env, svc, session);
+      if (current.length >= limit) {
+        return json({
+          error: tier === 'free'
+            ? `This split is limited to ${limit} people. Ask whoever started it to upgrade, or start a second split.`
+            : `Session is full (max ${limit} participants)`,
+          code: tier === 'free' ? 'party_limit' : 'session_full',
+          limit,
+        }, 400);
+      }
     }
 
     /**
