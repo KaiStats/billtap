@@ -239,6 +239,38 @@ test('currentUser returns null when the response has no user id', async () => {
   } finally { s.restore(); }
 });
 
+test('a missing SUPABASE_ANON_KEY is named in the log, not swallowed', async () => {
+  /**
+   * The binding was absent on the production Worker, and the symptom was a
+   * signed-in operator getting "Unauthorized" from a screen that had already
+   * decided he was signed in. GoTrue answers 401 "No API key found in request"
+   * before it looks at the bearer, so every valid session read as anonymous —
+   * and the Worker said nothing, because a null here is the ordinary guest case
+   * and is meant to be silent.
+   *
+   * Two properties, and the second is the one that cost the time: it still
+   * returns null rather than throwing (a diner must never be broken by an
+   * operator's configuration), and it says which binding is missing.
+   */
+  const errors = [];
+  const originalError = console.error;
+  const originalFetch = globalThis.fetch;
+  let called = 0;
+  console.error = (line) => errors.push(String(line));
+  globalThis.fetch = async () => { called += 1; return new Response('{}', { status: 200 }); };
+  try {
+    const { SUPABASE_ANON_KEY: _dropped, ...noAnonKey } = ENV;
+    assert.equal(await currentUser(noAnonKey, req('Bearer perfectly-good')), null);
+    assert.equal(called, 0, 'and it does not spend a round trip it knows will 401');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /SUPABASE_ANON_KEY/);
+    assert.match(errors[0], /wrangler secret put/, 'the log has to carry the fix');
+  } finally {
+    console.error = originalError;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('a network failure during the identity check is a guest, not a crash', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('ECONNREFUSED'); };

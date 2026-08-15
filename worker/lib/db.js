@@ -463,6 +463,49 @@ export async function currentUser(env, request_) {
   const auth = request_?.headers?.get('authorization');
   if (!auth) return null;
 
+  /**
+   * The binding this cannot work without, named out loud.
+   *
+   * ── What this cost ─────────────────────────────────────────────────────────
+   *
+   * SUPABASE_ANON_KEY was never set on the production Worker. GoTrue answers a
+   * request with no `apikey` header with 401 "No API key found in request" —
+   * before it looks at the bearer at all — so `res.ok` was false for every
+   * caller, this returned null for every caller, and every endpoint that asks
+   * who someone is answered 401 to a perfectly valid session. Settings, the
+   * restaurant dashboard, and the operator's own splits, all of them, for as
+   * long as the binding has been missing.
+   *
+   * None of it was diagnosable from the outside. A signed-in operator got
+   * "Unauthorized" from a screen that had already decided he was signed in,
+   * and the Worker logged nothing at all, because a null here is the ordinary
+   * anonymous case and is supposed to be silent.
+   *
+   * ── Why this is a log line and not a 500 ───────────────────────────────────
+   *
+   * dataMisconfiguration() in worker/lib/data.js is where a missing binding
+   * becomes a refusal, and this deliberately does not go there. That check
+   * gates every function in the app, so failing on the anon key would take the
+   * guest half down too — and the guest half does not need it: serviceRole()
+   * carries the service key as its own apikey, so a diner splitting a bill is
+   * unaffected by this being absent.
+   *
+   * Breaking the diner at the table to surface an operator's configuration
+   * problem is the exact trade shared/entitlement.js refuses to make. So the
+   * failure stays scoped to the people it actually affects, and the silence —
+   * which was the expensive part — is what gets fixed.
+   */
+  if (!env?.SUPABASE_ANON_KEY) {
+    console.error(JSON.stringify({
+      at: new Date().toISOString(),
+      error: 'auth_unconfigured',
+      message: 'SUPABASE_ANON_KEY is not set — /auth/v1/user answers 401 to every '
+        + 'request without it, so every signed-in caller is treated as anonymous. '
+        + 'Set it with: npx wrangler secret put SUPABASE_ANON_KEY',
+    }));
+    return null;
+  }
+
   try {
     const res = await fetchWithTimeout(
       `${supabaseUrl(env)}/auth/v1/user`,
