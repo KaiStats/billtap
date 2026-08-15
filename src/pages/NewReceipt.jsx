@@ -71,6 +71,15 @@ export default function NewReceipt() {
   const [restaurants, setRestaurants] = useState([]);
   // Drives the inline picker that replaced a blocking prompt() dialog.
   const [picking, setPicking] = useState(false);
+  /**
+   * Whether the "is this <restaurant>?" question has been dealt with.
+   *
+   * Its own flag rather than a signal borrowed from `title`, because the title
+   * is the name of the bill and clearing it to hide a prompt left the split
+   * uncreatable. Reset with the receipt below, so a second photograph asks
+   * again rather than inheriting the last one's answer.
+   */
+  const [restaurantAsked, setRestaurantAsked] = useState(false);
   const [restaurantQuery, setRestaurantQuery] = useState("");
   /**
    * The last failure, shown in the page rather than in a modal.
@@ -295,6 +304,10 @@ export default function NewReceipt() {
       }
 
       setTitle(result.title || "Receipt");
+      // A new receipt is a new question. Without this, waving the prompt away
+      // once would silently suppress it for every later photograph in the
+      // same visit, including one taken at a different restaurant.
+      setRestaurantAsked(false);
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
@@ -644,8 +657,19 @@ export default function NewReceipt() {
         {step === 2 && (
           <div className="space-y-4">
 
-            {/* Restaurant confirmation */}
-            {!restaurantSlug && title && (
+            {/*
+              Restaurant confirmation.
+
+              Hidden once it has been answered *or* waved away — see
+              `restaurantAsked`. It used to be dismissed by clearing the title,
+              which hid it for the right reason and broke the split for the
+              wrong one: `title` is also the name of the bill, createSession
+              refuses without one, and the diner was left on a screen holding a
+              fully parsed receipt and a button that answered "title is
+              required" every time they pressed it. Found by walking the guest
+              path with a real photograph.
+            */}
+            {!restaurantSlug && title && !restaurantAsked && (
               <div className="bg-brand/10 border border-brand/30 rounded-2xl p-4 space-y-3">
                 <p className="text-sm font-semibold text-foreground">Is this {title}?</p>
                 <div className="flex gap-2">
@@ -665,7 +689,11 @@ export default function NewReceipt() {
                     Find it
                   </button>
                   <button
-                    onClick={() => setTitle("")}
+                    // Dismiss the question, keep the bill's name. "Do not ask
+                    // me which restaurant this is" and "this bill has no name"
+                    // are different answers, and only one of them was asked.
+                    onClick={() => setRestaurantAsked(true)}
+                    aria-label="Not a restaurant"
                     className="px-3 py-2 text-muted-foreground hover:text-foreground transition"
                   >
                     ✕

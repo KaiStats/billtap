@@ -2272,3 +2272,48 @@ test("a real restaurant's table page stays indexable", async () => {
     );
   } finally { await context.close(); }
 });
+
+// ── Waving away the restaurant question ─────────────────────────────────────
+
+test('dismissing "is this <restaurant>?" does not strand the split', async () => {
+  /**
+   * The ✕ used to be implemented as setTitle("") — it hid the prompt, which
+   * renders only while there is a title, and broke the split doing it: `title`
+   * is also the name of the bill and createSession refuses without one. A diner
+   * who tapped it was left holding a fully parsed receipt and a button that
+   * answered "title is required" every time they pressed it, with no way back
+   * except starting the whole scan again.
+   *
+   * Found by walking the guest path against production with a real photograph,
+   * which is the only way it could be found: every test here had answered the
+   * question rather than waved it away.
+   */
+  const { context, page, created } = await phone();
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: 'Not a restaurant' }).click();
+
+    // The question is gone...
+    await page.waitForFunction(() => !/Is this /.test(document.body.innerText), null, { timeout: 5000 });
+    // ...and the bill still has its name.
+    await page.getByRole('button', { name: /Show the QR code/i }).click();
+    await page.waitForFunction(() => !/title is required/i.test(document.body.innerText), null, { timeout: 10000 });
+
+    assert.equal(created.length, 1, 'the split was created');
+    assert.equal(created[0].title, 'Olive Garden', 'and it kept the name off the receipt');
+  } finally { await context.close(); }
+});
+
+test('a second receipt asks the question again', async () => {
+  // Waving it away once must not suppress it for the rest of the visit — the
+  // next photograph may be from a different restaurant entirely.
+  const { context, page } = await phone();
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: 'Not a restaurant' }).click();
+    await page.waitForFunction(() => !/Is this /.test(document.body.innerText), null, { timeout: 5000 });
+
+    await toReview(page);
+    await page.waitForFunction(() => /Is this /.test(document.body.innerText), null, { timeout: 15000 });
+  } finally { await context.close(); }
+});
