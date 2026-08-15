@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
+import { onRequestPost as scanReceipt, ticketFrom } from './routes/scan-receipt.js';
 
 const KEY_ENV = { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'test-model' };
 
@@ -220,4 +220,73 @@ test('no failure path leaks the API key to the client', async () => {
     const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
     assert.ok(!JSON.stringify(await res.json()).includes('test-key'));
   } finally { stub.restore(); }
+});
+
+// ── What the POS printed at the top of the ticket ───────────────────────────
+//
+// The low-rating alert could say "somebody in this room is unhappy" and nothing
+// about which of forty tables. The receipt almost always prints TABLE / SERVER
+// / CHK across the top and the scan already has the image in front of a model
+// reading everything below it. See supabase/migrations/0015.
+
+test('a printed table, server and check number are carried through', () => {
+  assert.deepEqual(
+    ticketFrom({ table: '14', server: 'Marco', number: '4471' }),
+    { table: '14', server: 'Marco', number: '4471' },
+  );
+});
+
+test('a table is whatever the room calls it, not an integer', () => {
+  // Every restaurant numbers its floor differently and none of them asked us.
+  // Parsing to a number fails on exactly the rooms that need this most.
+  for (const table of ['14', 'A7', 'BAR 3', 'PATIO-2', 'P12']) {
+    assert.equal(ticketFrom({ table })?.table, table);
+  }
+});
+
+test('nothing printed means no ticket at all, not three empties', () => {
+  // The alert branches on the object existing. Three empty strings would make
+  // "the receipt printed no table" look like "the table is blank".
+  assert.equal(ticketFrom({}), null);
+  assert.equal(ticketFrom({ table: '', server: '   ', number: '' }), null);
+  assert.equal(ticketFrom(null), null);
+  assert.equal(ticketFrom(undefined), null);
+  assert.equal(ticketFrom('TABLE 14'), null, 'a string is not the shape');
+  assert.equal(ticketFrom(42), null);
+});
+
+test('a field the model did not return is absent rather than empty', () => {
+  assert.deepEqual(ticketFrom({ table: '14' }), { table: '14' });
+  assert.deepEqual(ticketFrom({ server: 'Marco' }), { server: 'Marco' });
+});
+
+test('a model that returns a sentence does not get it into an inbox', () => {
+  /**
+   * The caps are the point rather than tidiness. This is model output — the
+   * least trustworthy string in the product — and it lands in an operator's
+   * email under the heading that tells them where to walk. A paragraph read
+   * off the receipt and handed back as a table number must be cut down, not
+   * printed.
+   */
+  const essay = 'Thank you for dining with us today at our fine establishment, please come again';
+  assert.equal(ticketFrom({ table: essay }).table.length, 16);
+  assert.equal(ticketFrom({ server: essay }).server.length, 40);
+  assert.equal(ticketFrom({ number: essay }).number.length, 24);
+});
+
+test('control characters are stripped rather than failing the whole scan', () => {
+  // Nobody is watching this get read back, so a refusal informs no one — and
+  // dropping the scan over a stray byte would cost the diner their receipt.
+  const dirty = `1${String.fromCharCode(0)}4${String.fromCharCode(9)}`;
+  assert.equal(ticketFrom({ table: dirty }).table, '14');
+  // A value that is *only* control characters is nothing, not an empty table.
+  assert.equal(ticketFrom({ table: String.fromCharCode(0, 1, 2) }), null);
+});
+
+test('non-string values are refused rather than coerced', () => {
+  // A model handing back `{ table: 14 }` is a different bug from one handing
+  // back a sentence, and String(14) would hide it.
+  assert.equal(ticketFrom({ table: 14 }), null);
+  assert.equal(ticketFrom({ table: {} }), null);
+  assert.equal(ticketFrom({ table: ['14'] }), null);
 });

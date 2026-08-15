@@ -56,6 +56,15 @@ export default function NewReceipt() {
   const [items, setItems] = useState([]);
   const [tax, setTax] = useState(0);
   const [tip, setTip] = useState(0);
+  /**
+   * Table, server and check number, when the receipt printed them.
+   *
+   * Carried through untouched and never shown to the diner. It is not their
+   * information and there is nothing for them to correct — it exists so that
+   * when this table leaves a low rating, the alert can say "Table 14" instead
+   * of asking a manager to walk the room. See supabase/migrations/0015.
+   */
+  const [ticket, setTicket] = useState(null);
   const [splitMode, setSplitMode] = useState("itemized");
   const [saving, setSaving] = useState(false);
   const [restaurantSlug, setRestaurantSlug] = useState(null);
@@ -289,6 +298,9 @@ export default function NewReceipt() {
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
+      // Absent on most receipts and on the Base44 fallback path, which is why
+      // this is `|| null` rather than a shape the rest of the screen relies on.
+      setTicket(result.ticket || null);
       if (validation) setParseValidation(validation);
       // Only pre-open the editor when we already know the numbers are suspect.
       // Anything else and the diner is being asked to fix what is not broken.
@@ -359,6 +371,10 @@ export default function NewReceipt() {
         split_mode: splitMode,
         total_amount: total,
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
+        // Only on this path. The quick even split below is created from a typed
+        // total with no photograph, so there is no receipt to have read a table
+        // off — sending an empty ticket there would be inventing one.
+        ...(ticket ? { ticket } : {}),
       });
       if (res.data?.error) {
         // The server's own sentence — it has the amounts and the names, and a

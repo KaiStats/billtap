@@ -335,3 +335,55 @@ test('a demo split shows its total too, so the demo shows the real thing', async
     assert.ok(!emails[0].HtmlBody.includes('See the receipt'), 'no receipt was photographed');
   });
 });
+
+// ── The table, read off the receipt ─────────────────────────────────────────
+
+test('when the receipt printed a table, the alert leads with it', async () => {
+  // The whole point of migration 0015. The manager stops matching totals
+  // against the POS and just walks to table 14.
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_dinner', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [{
+      ...RATED_SESSION(),
+      ticket_table: '14', ticket_server: 'Marco', ticket_number: '4471',
+    }];
+    await alertFor();
+
+    const { HtmlBody, TextBody } = emails[0];
+    assert.match(HtmlBody, /Table 14/);
+    assert.match(HtmlBody, /Marco/, 'so the manager knows who was serving it');
+    assert.match(HtmlBody, /check #4471/);
+    assert.match(TextBody, /TABLE 14/);
+    // The POS instruction is for receipts that printed no table. With one in
+    // hand it is noise on the screen that matters most.
+    assert.ok(!HtmlBody.includes('Match the total and the time'));
+  });
+});
+
+test('with no table printed the alert falls back, it does not get worse', async () => {
+  // Old receipts, tills that print no table, and every "Skip setup" split.
+  // Strictly additive: nobody's alert regressed.
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_dinner', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [RATED_SESSION()];
+    await alertFor();
+
+    const { HtmlBody } = emails[0];
+    assert.ok(!HtmlBody.includes('Table '), 'no table is invented');
+    assert.match(HtmlBody, /\$87\.40/, 'the total still finds the POS ticket');
+    assert.match(HtmlBody, /Match the total and the time/);
+  });
+});
+
+test('a hostile table number cannot inject markup into the alert', async () => {
+  // Model output rendered into HTML. esc() is what stands between a receipt
+  // that says something clever and an email that runs it.
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_dinner', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [{ ...RATED_SESSION(), ticket_table: '<img src=x onerror=alert(1)>' }];
+    await alertFor();
+    const { HtmlBody } = emails[0];
+    assert.ok(!HtmlBody.includes('<img src=x'), 'raw markup must not survive');
+    assert.match(HtmlBody, /&lt;img/, 'it is shown as text instead');
+  });
+});

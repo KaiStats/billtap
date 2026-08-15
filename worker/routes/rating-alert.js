@@ -165,7 +165,7 @@ export async function onRequestPost({ request, env }) {
       try {
         const sessions = await svc.entity('Session').filter(
           { id: rating.session_id },
-          { select: 'id,total_amount,participants,image_url' },
+          { select: 'id,total_amount,participants,image_url,ticket_table,ticket_server,ticket_number' },
         );
         const session = sessions[0];
         if (session) {
@@ -173,6 +173,18 @@ export async function onRequestPost({ request, env }) {
           check = {
             total: Number.isFinite(total) && total > 0 ? total.toFixed(2) : null,
             guests: Array.isArray(session.participants) ? session.participants.length : 0,
+            /**
+             * Read straight off the receipt by the scan — see migration 0015.
+             *
+             * When the table is here the manager needs nothing else: they walk
+             * to it. When it is not — an old receipt, a till that prints no
+             * table, a split made with "Skip setup" and no photo at all — the
+             * total below is still there and still finds the POS ticket. The
+             * alert never got worse for anyone; it got much better for most.
+             */
+            table: session.ticket_table || null,
+            server: session.ticket_server || null,
+            number: session.ticket_number || null,
             // Already a public URL by construction — see publicObjectUrl in
             // worker/lib/db.js — and the retention sweep deletes the object at
             // thirty days, so the link rots on the same clock as the data.
@@ -207,13 +219,24 @@ export async function onRequestPost({ request, env }) {
           </p>
         </div>
         <p style="margin:0 0 4px;font-size:14px"><strong>${esc(restaurantName)}</strong> · ${esc(when)}</p>
-        ${check && (check.total || check.guests)
+        ${check?.table
+          ? `<p style="margin:14px 0 0;padding:12px 16px;background:#fffbeb;border-left:3px solid #f0b429;font-size:20px;font-weight:700;color:#111827">
+               Table ${esc(check.table)}${check.server ? `<span style="font-size:14px;font-weight:400;color:#666"> · server ${esc(check.server)}</span>` : ''}
+             </p>`
+          : ''}
+        ${check && (check.total || check.guests || check.number)
           ? `<p style="margin:8px 0 0;font-size:14px;color:#111827">
-               <strong>Find the table:</strong>
-               ${check.total ? `check total <strong>$${esc(check.total)}</strong>` : ''}${check.total && check.guests ? ' · ' : ''}${check.guests ? `${esc(check.guests)} guest${check.guests === 1 ? '' : 's'}` : ''}
+               <strong>${check.table ? 'The check:' : 'Find the table:'}</strong>
+               ${[
+                 check.total ? `total <strong>$${esc(check.total)}</strong>` : null,
+                 check.guests ? `${esc(check.guests)} guest${check.guests === 1 ? '' : 's'}` : null,
+                 check.number ? `check #${esc(check.number)}` : null,
+               ].filter(Boolean).join(' · ')}
                ${check.receipt ? `<br><a href="${esc(check.receipt)}" style="color:#00a67a">See the receipt</a>` : ''}
              </p>
-             <p style="margin:4px 0 0;color:#888;font-size:12px">Match the total and the time against your POS ticket — that has the table and the server.</p>`
+             ${check.table
+               ? ''
+               : `<p style="margin:4px 0 0;color:#888;font-size:12px">The receipt did not print a table. Match the total and the time against your POS ticket — that has the table and the server.</p>`}`
           : ''}
         ${comment
           ? `<blockquote style="margin:14px 0;padding:12px 16px;background:#f9fafb;border-left:3px solid #f0b429;font-size:14px;line-height:1.55">${esc(comment)}</blockquote>`
@@ -224,11 +247,13 @@ export async function onRequestPost({ request, env }) {
       </div>`;
 
     /** The same detail in the plain-text part, which is what a watch shows. */
-    const checkLine = check && (check.total || check.guests)
-      ? '\nFind the table: '
+    const checkLine = check && (check.total || check.guests || check.table)
+      ? '\n' + (check.table ? `TABLE ${check.table}` : 'Find the table:') + ' '
         + [
-          check.total ? `check total $${check.total}` : null,
+          check.server ? `server ${check.server}` : null,
+          check.total ? `total $${check.total}` : null,
           check.guests ? `${check.guests} guest${check.guests === 1 ? '' : 's'}` : null,
+          check.number ? `check #${check.number}` : null,
         ].filter(Boolean).join(' · ')
       : '';
 
@@ -240,11 +265,13 @@ export async function onRequestPost({ request, env }) {
       check?.receipt ? `\nReceipt: ${check.receipt}` : '',
     ].join('');
 
-    // The total goes near the front: this is read on a lock screen, walking,
-    // and it is the field that turns "somebody is unhappy" into a table.
+    // The table goes first, before the restaurant name even: this is read on a
+    // lock screen, walking, and it is the only field that says where to go. The
+    // total is the fallback for the receipts that print no table.
     const smsBody = [
+      check?.table ? `TABLE ${check.table}` : null,
       `${stars}★ at ${restaurantName}`,
-      check?.total ? `$${check.total} check` : null,
+      check?.table ? null : (check?.total ? `$${check.total} check` : null),
       comment ? `"${comment.slice(0, 140)}"` : 'No comment.',
       guestEmail ? `Reply: ${guestEmail}` : 'No guest email.',
     ].filter(Boolean).join(' — ');

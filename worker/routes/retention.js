@@ -148,6 +148,22 @@ export async function redactSession(env, svc, session) {
     await svc.entity('Session').update(session.id, {
       participants,
       items,
+      /**
+       * The server's name goes with the guests' names.
+       *
+       * A named person, read off the receipt by the scan — see migration 0015.
+       * The restaurant's own employee rather than a guest, so the published
+       * policy does not name it, but the reason the policy exists applies
+       * unchanged: it is useful for the twenty minutes after a bad rating,
+       * when a manager is deciding who to talk to, and after that it is a
+       * record of who was working when something went wrong, kept for years,
+       * serving nobody.
+       *
+       * ticket_table and ticket_number are deliberately kept. They identify a
+       * piece of furniture and a POS record, not a person, and they belong to
+       * the host's own account of the bill exactly as the line items do.
+       */
+      ticket_server: null,
       // Cleared so nothing links to an object that is no longer there, and so a
       // second run does not try to delete it again.
       image_url: null,

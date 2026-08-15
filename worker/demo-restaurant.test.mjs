@@ -649,3 +649,88 @@ test('a real restaurant is not flagged as a demo', async () => {
     assert.equal((await res.json()).restaurant.demo, false);
   });
 });
+
+// ── The ticket details a scan read off the receipt ──────────────────────────
+//
+// createSession is unauthenticated by design, so the body is whatever anyone
+// chose to send. The scan already clamped these; that is not a reason for this
+// to trust them. See ticketColumns in worker/routes/functions.js.
+
+test('a scanned table, server and check number are stored on the split', async () => {
+  await withStub({ user: null }, async (s) => {
+    s.tables.restaurants.push({ id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false });
+    const res = await HANDLERS.createSession({
+      env: ENV,
+      request: request(false),
+      body: {
+        title: 'Dinner', total_amount: 40, items: [], participants: [],
+        restaurant_slug: 'mariposa',
+        ticket: { table: '14', server: 'Marco', number: '4471' },
+      },
+      audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    const row = s.tables.sessions.at(-1);
+    assert.equal(row.ticket_table, '14');
+    assert.equal(row.ticket_server, 'Marco');
+    assert.equal(row.ticket_number, '4471');
+  });
+});
+
+test('a caller-supplied essay is clamped, not stored whole', async () => {
+  // The body is anonymous and unbounded. Re-clamped here rather than trusted
+  // from the scan, because only one of those two is written while somebody is
+  // thinking about a hostile caller.
+  await withStub({ user: null }, async (s) => {
+    const res = await HANDLERS.createSession({
+      env: ENV,
+      request: request(false),
+      body: {
+        title: 'Dinner', total_amount: 40, items: [], participants: [],
+        ticket: { table: 'x'.repeat(500), server: 'y'.repeat(500) },
+      },
+      audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    const row = s.tables.sessions.at(-1);
+    assert.equal(row.ticket_table.length, 16);
+    assert.equal(row.ticket_server.length, 40);
+  });
+});
+
+test('a split with no receipt writes no ticket columns at all', async () => {
+  // Every "Skip setup" even split, and every scan that read no table. Null is
+  // the meaningful value — it is what the alert falls back on — so writing
+  // empty strings would make "could not read one" look like "it is blank".
+  await withStub({ user: null }, async (s) => {
+    await HANDLERS.createSession({
+      env: ENV,
+      request: request(false),
+      body: { title: 'Quick Split', total_amount: 40, items: [], participants: [] },
+      audit: async () => {},
+    });
+    const row = s.tables.sessions.at(-1);
+    assert.equal(row.ticket_table, undefined);
+    assert.equal(row.ticket_server, undefined);
+    assert.equal(row.ticket_number, undefined);
+  });
+});
+
+test('a junk ticket in the body is ignored rather than stored or refused', async () => {
+  // A browser sending nonsense should not be able to write nonsense, and should
+  // not fail either — the diner did nothing wrong and their split must go
+  // through.
+  for (const ticket of ['TABLE 14', 42, [], { table: 42 }, { table: '   ' }]) {
+    // eslint-disable-next-line no-await-in-loop
+    await withStub({ user: null }, async (s) => {
+      const res = await HANDLERS.createSession({
+        env: ENV,
+        request: request(false),
+        body: { title: 'Dinner', total_amount: 40, items: [], participants: [], ticket },
+        audit: async () => {},
+      });
+      assert.equal(res.status, 200, `${JSON.stringify(ticket)} must not fail the split`);
+      assert.equal(s.tables.sessions.at(-1).ticket_table, undefined);
+    });
+  }
+});

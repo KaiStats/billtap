@@ -28,6 +28,9 @@ import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
 import { isEntitled } from '../../shared/entitlement.js';
+// The same clamp the scan applies to the model's output, applied again to the
+// browser's. See ticketColumns below for why it is shared rather than copied.
+import { ticketFrom } from './scan-receipt.js';
 
 /**
  * The audit hook when nobody supplied one.
@@ -155,6 +158,29 @@ export function ratingThreshold(value) {
   }
   if (typeof value !== 'number') return DEFAULT_RATING_THRESHOLD;
   return Number.isFinite(value) ? value : DEFAULT_RATING_THRESHOLD;
+}
+
+/**
+ * The three printed ticket fields as session columns, or nothing at all.
+ *
+ * Shares ticketFrom() with worker/routes/scan-receipt.js on purpose. The scan
+ * clamps what the model returned; this clamps what the browser sent, and they
+ * are the same clamp because two of them would drift — and the direction they
+ * would drift in is predictable, since only one of the two is written while
+ * somebody is thinking about a hostile caller.
+ *
+ * Returns an empty object rather than three nulls when nothing was printed, so
+ * a create that read no ticket writes no columns and the row keeps the database
+ * defaults. See supabase/migrations/0015 for why null is the meaningful value.
+ */
+function ticketColumns(raw) {
+  const ticket = ticketFrom(raw);
+  if (!ticket) return {};
+  return {
+    ...(ticket.table ? { ticket_table: ticket.table } : {}),
+    ...(ticket.server ? { ticket_server: ticket.server } : {}),
+    ...(ticket.number ? { ticket_number: ticket.number } : {}),
+  };
 }
 
 /** Days of trial a new restaurant starts with. Matches the copy on the form. */
@@ -1595,7 +1621,7 @@ const HANDLERS = {
    * and requiring a login there would defeat the entire product.
    */
   async createSession({ env, request, body, audit = NO_AUDIT }) {
-    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = body;
+    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug, ticket } = body;
     const user = await currentUser(env, request);
 
     // No sign-in gate. An account-less host is the product's premise — "split a
@@ -1792,6 +1818,23 @@ const HANDLERS = {
       // From the verified user, never from the request body.
       created_by_id: user?.id || null,
       ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+      /**
+       * What the POS printed on the ticket, when the scan could read it.
+       *
+       * Re-validated here rather than trusted from the body. The client got
+       * these from /api/scan-receipt, which already clamps them — but this
+       * endpoint is unauthenticated by design and the body is whatever anyone
+       * chose to send, so the scan having been careful is not a reason for
+       * this to be careless. `ticketDetails` is the same function both sides
+       * use, so the two cannot drift into disagreeing about what a table
+       * number may contain.
+       *
+       * Only written when something was actually printed. Columns left null
+       * are what the alert falls back on, and a row of empty strings would
+       * make "we could not read a table number" indistinguishable from "the
+       * table number is blank".
+       */
+      ...ticketColumns(ticket),
     });
 
     // The start of the trail for this bill. Every later row about this split —
