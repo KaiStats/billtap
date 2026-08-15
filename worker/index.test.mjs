@@ -628,3 +628,22 @@ test('robots.txt disallows the printed prefix as well as /r/', () => {
   assert.match(robots, /^Disallow: \/f\/$/m, 'the 301 target is disallowed; the source should be too');
   assert.match(robots, /^Disallow: \/r\/$/m);
 });
+
+test('a card read with the wrong case still reaches the right page', async () => {
+  /**
+   * LEGACY_REDIRECTS exists because capitalised paths reach this app in the
+   * wild, and a printed card is read by more things than a browser: a QR
+   * decoder, an OCR, a person typing it off a flyer, an SMS client that
+   * title-cases what it takes for a sentence. `/F/mariposa` used to 404.
+   *
+   * The slug is lowercased on the way out too. Getting past the 404 only to
+   * hand `/r/Mariposa` to a byte-exact slug lookup would move the dead end
+   * rather than remove it — slugify() guarantees every stored slug is
+   * lowercase, so anything else matches no row.
+   */
+  for (const path of ['/F/mariposa', '/f/Mariposa', '/F/MARIPOSA']) {
+    const res = await get(path);
+    assert.equal(res.status, 301, path);
+    assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa', path);
+  }
+});

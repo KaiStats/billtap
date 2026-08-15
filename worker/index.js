@@ -128,8 +128,17 @@ const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
  * which is right: there is no card that says just `/f`, so a request for one is
  * a crawler or a typo, and answering it with a redirect to `/r/` would invent a
  * destination nobody printed.
+ *
+ * Case-insensitive, and the slug is lowercased on the way out. LEGACY_REDIRECTS
+ * already exists because capitalised paths reached this app in the wild, and a
+ * printed card is read by more things than a browser — a QR decoder, an OCR, a
+ * person typing it off a flyer, an SMS client that title-cases what it thinks
+ * is a sentence. `/F/Mariposa` used to 404 outright, and getting past that only
+ * to hand `/r/Mariposa` to a slug lookup that is byte-exact would have moved
+ * the dead end rather than removed it: slugify() guarantees every stored slug is
+ * lowercase, so anything else cannot match a row.
  */
-const PRINT_PREFIX_REDIRECT = /^\/f\/([^/]+)\/?$/;
+const PRINT_PREFIX_REDIRECT = /^\/f\/([^/]+)\/?$/i;
 
 /** Real HTML files that are not SPA routes and must pass through untouched. */
 const STATIC_HTML = new Set(['/offline.html']);
@@ -539,7 +548,7 @@ async function serve(request, env, ctx, outerId) {
     const printed = path.match(PRINT_PREFIX_REDIRECT);
     if (printed) {
       return Response.redirect(
-        new URL(`/r/${printed[1]}${url.search}`, url.origin).toString(),
+        new URL(`/r/${printed[1].toLowerCase()}${url.search}`, url.origin).toString(),
         301,
       );
     }
