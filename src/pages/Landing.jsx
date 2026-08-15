@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock, ArrowRight, ScanLine } from "lucide-react";
 import Seo from "@/components/Seo";
+import { accessToken } from "@/lib/supabase";
 import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/lib/landing-assets";
 
 /*
@@ -423,6 +424,62 @@ export default function Landing() {
     "Unlimited party size",
   ];
 
+  const [proBusy, setProBusy] = useState(false);
+  const [proError, setProError] = useState(null);
+
+  /**
+   * Ask the Worker for a Stripe Checkout URL and go there.
+   *
+   * The redirect is a full navigation rather than a new tab: Safari blocks a
+   * window.open that happens after an await, and this one has to await the
+   * round trip to Stripe. Losing the popup would look exactly like the button
+   * doing nothing, which is what it used to do for a different reason.
+   */
+  const startProCheckout = async () => {
+    if (proBusy) return;
+    setProError(null);
+    setProBusy(true);
+    try {
+      /**
+       * A plain fetch, not invoke().
+       *
+       * invoke() posts to /api/fn/<name>, which is the business-function map in
+       * worker/routes/functions.js. This is a top-level route beside
+       * /api/create-checkout, so it is called the same way that one is — with
+       * the bearer attached by hand, because unlike the fn map nothing does it
+       * for us here, and without it the Worker sees an anonymous caller and
+       * refuses.
+       */
+      const token = await accessToken();
+      const res = await fetch("/api/create-pro-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: "{}",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.url) { window.location.href = data.url; return; }
+      if (data.code === "unauthorized") {
+        // Pro attaches to a person, so there has to be one. Come back to the
+        // pricing block afterwards rather than dumping them on the home page.
+        navigate("/login?redirect=" + encodeURIComponent("/#pricing"));
+        return;
+      }
+      setProError(
+        data.code === "not_configured"
+          ? "Pro isn't open for sign-ups yet — check back shortly."
+          : (data.error || "Could not open checkout. Try again in a moment."),
+      );
+    } catch {
+      setProError("Could not reach checkout. Check your connection and try again.");
+    } finally {
+      setProBusy(false);
+    }
+  };
+
   const faqs = [
     { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
     { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($0.99/mo) raises the party size." },
@@ -678,9 +735,32 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link to="/register" className="press inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110">
-                Start Pro free trial <ArrowRight className="w-4 h-4" />
-              </Link>
+              {/*
+                A real checkout, not a signup link.
+
+                This pointed at /register, so the button that said "Start Pro
+                free trial" started nothing: it made an account on the free
+                plan and left the person who had just decided to pay with
+                nowhere to do it. Now it asks the Worker for a Stripe Checkout
+                URL and sends them there.
+
+                Signing in first is a requirement rather than a nicety. Pro
+                attaches to a person, and create-pro-checkout takes the user id
+                from a verified session and never from the request -- otherwise
+                anyone could start a checkout in anyone else's name. An
+                unauthenticated caller is bounced to /login and comes back.
+              */}
+              <button
+                type="button"
+                onClick={startProCheckout}
+                disabled={proBusy}
+                className="press inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110 disabled:opacity-60"
+              >
+                {proBusy ? "Opening checkout…" : "Start Pro free trial"} <ArrowRight className="w-4 h-4" />
+              </button>
+              {proError && (
+                <p className="text-center text-xs mt-3" style={{ color: "#e5484d" }}>{proError}</p>
+              )}
               <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $0.99/mo</p>
             </div>
           </div>

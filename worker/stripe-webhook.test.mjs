@@ -1,0 +1,310 @@
+/**
+ * Stripe telling us what happened — and everyone else being turned away.
+ *
+ * This endpoint takes no credentials and grants paid plans. Anyone who finds
+ * the URL can POST to it, so the HMAC is not one control among several, it is
+ * the only one. Most of what follows is about refusing things.
+ *
+ * The rest is about the gap it exists to close: verify-checkout only runs when
+ * Stripe redirects a browser back, so a customer who closes the tab has paid
+ * and been given nothing, and a renewal or a cancellation involves no browser
+ * at all and could never have been seen.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { onRequestPost as webhook, verifyStripeSignature } from './routes/stripe-webhook.js';
+
+const SECRET = 'whsec_test_secret_value';
+
+const ENV = {
+  DATA_BACKEND: 'supabase',
+  SUPABASE_URL: 'https://stub.supabase.co',
+  SUPABASE_SERVICE_ROLE_KEY: 'service-key',
+  SUPABASE_ANON_KEY: 'anon-key',
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_WEBHOOK_SECRET: SECRET,
+};
+
+const enc = new TextEncoder();
+
+/** Signs a payload the way Stripe does, so the tests exercise the real check. */
+async function sign(body, secret = SECRET, timestamp = Math.floor(Date.now() / 1000)) {
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${body}`));
+  const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `t=${timestamp},v1=${hex}`;
+}
+
+/** PostgREST plus the Stripe subscription read, recording what was written. */
+function stub({ profiles = [], restaurants = [], subscription = null } = {}) {
+  const original = globalThis.fetch;
+  const tables = { profiles: structuredClone(profiles), restaurants: structuredClone(restaurants) };
+
+  globalThis.fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    const method = init.method || 'GET';
+
+    if (u.hostname === 'api.stripe.com') {
+      return subscription
+        ? new Response(JSON.stringify(subscription), { status: 200 })
+        : new Response(JSON.stringify({ error: 'no such subscription' }), { status: 404 });
+    }
+
+    const from = u.pathname.replace('/rest/v1/', '').split('?')[0];
+    const rows = tables[from] || (tables[from] = []);
+    const match = (row) => [...u.searchParams].every(([k, v]) => {
+      if (['select', 'order', 'limit', 'offset'].includes(k)) return true;
+      return !String(v).startsWith('eq.') || String(row[k]) === String(v).slice(3);
+    });
+
+    if (method === 'PATCH') {
+      const hit = rows.filter(match);
+      for (const row of hit) Object.assign(row, JSON.parse(init.body));
+      return new Response(JSON.stringify(hit), { status: 200 });
+    }
+    if (method === 'POST') {
+      const row = JSON.parse(init.body);
+      rows.push(row);
+      return new Response(JSON.stringify([row]), { status: 201 });
+    }
+    return new Response(JSON.stringify(rows.filter(match)), { status: 200 });
+  };
+
+  return { tables, restore: () => { globalThis.fetch = original; } };
+}
+
+async function withStub(opts, fn) {
+  const s = stub(opts);
+  try { return await fn(s); } finally { s.restore(); }
+}
+
+const deliver = async (event, { signature, env = ENV } = {}) => {
+  const raw = JSON.stringify(event);
+  const sig = signature === undefined ? await sign(raw) : signature;
+  return webhook({
+    env,
+    request: new Request('https://billtap.app/api/stripe-webhook', {
+      method: 'POST',
+      headers: sig ? { 'stripe-signature': sig } : {},
+      body: raw,
+    }),
+  });
+};
+
+const PRO_SUB = (over = {}) => ({
+  id: 'sub_pro_1',
+  object: 'subscription',
+  status: 'active',
+  customer: 'cus_1',
+  current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+  metadata: { user_id: 'user_kai', kind: 'pro' },
+  ...over,
+});
+
+// ── Everyone who is not Stripe ──────────────────────────────────────────────
+
+test('an unsigned request is refused', async () => {
+  const res = await deliver({ type: 'customer.subscription.updated', data: { object: PRO_SUB() } }, { signature: null });
+  assert.equal(res.status, 400);
+});
+
+test('a forged signature is refused', async () => {
+  const res = await deliver(
+    { type: 'customer.subscription.updated', data: { object: PRO_SUB() } },
+    { signature: `t=${Math.floor(Date.now() / 1000)},v1=${'a'.repeat(64)}` },
+  );
+  assert.equal(res.status, 400);
+});
+
+test('a signature from the wrong secret is refused', async () => {
+  const raw = JSON.stringify({ type: 'customer.subscription.updated', data: { object: PRO_SUB() } });
+  const res = await deliver(
+    { type: 'customer.subscription.updated', data: { object: PRO_SUB() } },
+    { signature: await sign(raw, 'whsec_someone_elses_secret') },
+  );
+  assert.equal(res.status, 400);
+});
+
+test('a replayed delivery from last week is refused', async () => {
+  // The timestamp is inside the signed payload, so it cannot be edited. What
+  // this stops is a genuine, correctly signed event captured and posted again.
+  const body = JSON.stringify({ type: 'customer.subscription.updated', data: { object: PRO_SUB() } });
+  const old = Math.floor(Date.now() / 1000) - 7 * 86400;
+  const res = await deliver(
+    { type: 'customer.subscription.updated', data: { object: PRO_SUB() } },
+    { signature: await sign(body, SECRET, old) },
+  );
+  assert.equal(res.status, 400);
+});
+
+test('a tampered body fails even with a real signature attached', async () => {
+  // Signature over one payload, delivered with another — the shape of somebody
+  // replaying a real event with the amount or the user id changed.
+  const honest = JSON.stringify({ type: 'customer.subscription.updated', data: { object: PRO_SUB() } });
+  const sig = await sign(honest);
+  const res = await webhook({
+    env: ENV,
+    request: new Request('https://billtap.app/api/stripe-webhook', {
+      method: 'POST',
+      headers: { 'stripe-signature': sig },
+      body: JSON.stringify({ type: 'customer.subscription.updated', data: { object: PRO_SUB({ metadata: { user_id: 'somebody_else', kind: 'pro' } }) } }),
+    }),
+  });
+  assert.equal(res.status, 400);
+});
+
+test('an unconfigured secret refuses everything rather than trusting anything', async () => {
+  // The failure that would matter most: a deploy without the binding must not
+  // become an endpoint that grants Pro to whoever finds the URL.
+  const res = await deliver(
+    { type: 'customer.subscription.updated', data: { object: PRO_SUB() } },
+    { env: { ...ENV, STRIPE_WEBHOOK_SECRET: undefined } },
+  );
+  assert.equal(res.status, 503);
+});
+
+test('the signature check accepts more than one v1 during a rotation', async () => {
+  // Stripe sends both the old and new signature while a secret is being
+  // rotated. Checking only the first would break every delivery for the length
+  // of the rotation — a billing outage at the worst possible moment.
+  const body = '{"a":1}';
+  const real = await sign(body);
+  const [t, v1] = real.split(',');
+  const header = `${t},v1=${'b'.repeat(64)},${v1}`;
+  assert.equal((await verifyStripeSignature(body, header, SECRET)).ok, true);
+});
+
+// ── Consumer Pro ────────────────────────────────────────────────────────────
+
+test('a completed checkout grants Pro to the user in the metadata', async () => {
+  await withStub({ subscription: PRO_SUB() }, async ({ tables }) => {
+    const res = await deliver({
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: 'user_kai', subscription: 'sub_pro_1' } },
+    });
+    assert.equal(res.status, 200);
+    const row = tables.profiles[0];
+    assert.equal(row.id, 'user_kai');
+    assert.equal(row.plan, 'pro');
+    assert.equal(row.stripe_subscription_id, 'sub_pro_1');
+    assert.ok(row.plan_expires_at > Date.now(), 'paid up until the period end');
+  });
+});
+
+test('this is what makes closing the tab survivable', async () => {
+  /**
+   * The whole reason this route exists. verify-checkout only runs when Stripe
+   * redirects a browser back, so somebody who pays and closes the tab has
+   * bought something and been given nothing. No browser is involved here at
+   * all — the event arrives from Stripe's servers.
+   */
+  await withStub({ subscription: PRO_SUB() }, async ({ tables }) => {
+    await deliver({
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: 'user_kai', subscription: 'sub_pro_1' } },
+    });
+    assert.equal(tables.profiles[0].plan, 'pro', 'provisioned without the browser ever coming back');
+  });
+});
+
+test('a trialing subscription is Pro, because that is what a trial is', async () => {
+  await withStub({ subscription: PRO_SUB({ status: 'trialing' }) }, async ({ tables }) => {
+    await deliver({ type: 'customer.subscription.updated', data: { object: PRO_SUB({ status: 'trialing' }) } });
+    assert.equal(tables.profiles[0].plan, 'pro');
+  });
+});
+
+test('a cancellation drops them back to free', async () => {
+  const existing = [{ id: 'user_kai', plan: 'pro', stripe_subscription_id: 'sub_pro_1' }];
+  await withStub({ profiles: existing }, async ({ tables }) => {
+    await deliver({
+      type: 'customer.subscription.deleted',
+      data: { object: PRO_SUB({ status: 'canceled' }) },
+    });
+    assert.equal(tables.profiles[0].plan, 'free');
+  });
+});
+
+test('the same event twice lands on the same row state', async () => {
+  // Stripe delivers at least once, not exactly once, and retries on any
+  // non-2xx. Every write here is a set-to-a-value rather than an append, so a
+  // redelivery is a no-op rather than a second subscription.
+  await withStub({ subscription: PRO_SUB() }, async ({ tables }) => {
+    const event = {
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: 'user_kai', subscription: 'sub_pro_1' } },
+    };
+    await deliver(event);
+    await deliver(event);
+    assert.equal(tables.profiles.length, 1, 'one row, not two');
+    assert.equal(tables.profiles[0].plan, 'pro');
+  });
+});
+
+// ── Restaurants, on the same pipe ───────────────────────────────────────────
+
+test('a restaurant subscription is applied to the restaurant row', async () => {
+  // The $149 product had the same close-the-tab gap and no webhook at all. One
+  // endpoint covers both rather than two that drift.
+  const sub = PRO_SUB({ id: 'sub_rest_1', metadata: { restaurant_id: 'r_1', kind: 'restaurant' } });
+  await withStub({ restaurants: [{ id: 'r_1', plan: 'trial' }], subscription: sub }, async ({ tables }) => {
+    await deliver({ type: 'customer.subscription.updated', data: { object: sub } });
+    assert.equal(tables.restaurants[0].plan, 'active');
+    assert.equal(tables.restaurants[0].stripe_subscription_id, 'sub_rest_1');
+  });
+});
+
+test('a cancelled restaurant is cancelled, not left active', async () => {
+  const sub = PRO_SUB({ id: 'sub_rest_1', status: 'canceled', metadata: { restaurant_id: 'r_1' } });
+  await withStub({ restaurants: [{ id: 'r_1', plan: 'active' }] }, async ({ tables }) => {
+    await deliver({ type: 'customer.subscription.deleted', data: { object: sub } });
+    assert.equal(tables.restaurants[0].plan, 'cancelled');
+  });
+});
+
+// ── Everything else in the Stripe account ───────────────────────────────────
+
+test('an event about somebody else is acknowledged and ignored', async () => {
+  // A subscription created by hand in the dashboard, or another product in the
+  // same account. A 200 stops Stripe retrying something nothing here will act
+  // on; guessing which row it meant would be worse than doing nothing.
+  const orphan = PRO_SUB({ metadata: {} });
+  await withStub({}, async ({ tables }) => {
+    const res = await deliver({ type: 'customer.subscription.updated', data: { object: orphan } });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).reason, 'no_subject');
+    assert.equal(tables.profiles.length, 0, 'and nothing was written on a guess');
+  });
+});
+
+test('an event type we do not handle is acknowledged, not retried forever', async () => {
+  const res = await deliver({ type: 'payout.paid', data: { object: {} } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).ignored, 'payout.paid');
+});
+
+test('a write that fails answers 500 so Stripe tries again', async () => {
+  /**
+   * The one place in this app where failing loudly is right. Stripe redelivers
+   * on a non-2xx with backoff for days; answering 200 to an event that could
+   * not be applied loses a payment somebody has already made, silently, with
+   * no second chance.
+   */
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (new URL(url).hostname === 'api.stripe.com') {
+      return new Response(JSON.stringify(PRO_SUB()), { status: 200 });
+    }
+    throw new Error('database is down');
+  };
+  try {
+    const res = await deliver({
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: 'user_kai', subscription: 'sub_pro_1' } },
+    });
+    assert.equal(res.status, 500, 'so it comes back');
+  } finally { globalThis.fetch = original; }
+});

@@ -240,8 +240,20 @@ export async function resolvePartyLimit(env, svc, session) {
   if (!hostId) return { limit: freeLimit, tier: 'free' };
 
   try {
-    const rows = await svc.entity('Profile').filter({ id: hostId }, { select: 'id,plan' });
-    if (rows[0]?.plan === 'pro') return { limit: MAX_PARTY, tier: 'pro' };
+    const rows = await svc.entity('Profile').filter({ id: hostId }, { select: 'id,plan,plan_expires_at' });
+    const profile = rows[0];
+    if (profile?.plan === 'pro') {
+      /**
+       * Paid up, by the clock rather than by an event arriving on time.
+       *
+       * Stripe moves `plan_expires_at` forward on every renewal and stops
+       * moving it when somebody cancels, so a lapse needs no webhook to be
+       * delivered — see migration 0017. A null expiry is a plan granted by
+       * hand, which has no end and is meant not to.
+       */
+      const expires = Number(profile.plan_expires_at) || null;
+      if (!expires || Date.now() < expires) return { limit: MAX_PARTY, tier: 'pro' };
+    }
   } catch (error) {
     /**
      * A profile read that fails serves the split rather than capping it.

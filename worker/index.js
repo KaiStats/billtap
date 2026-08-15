@@ -19,6 +19,8 @@ import { onRequestPost as waitlist } from './routes/waitlist.js';
 import { onRequestPost as ratingAlert } from './routes/rating-alert.js';
 import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
+import { onRequestPost as createProCheckout } from './routes/create-pro-checkout.js';
+import { onRequestPost as stripeWebhook } from './routes/stripe-webhook.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
@@ -61,6 +63,17 @@ const POST_ROUTES = {
   '/api/rating-alert': ratingAlert,
   '/api/create-checkout': createCheckout,
   '/api/verify-checkout': verifyCheckout,
+  // Consumer Pro. Authenticated, unlike the restaurant one above -- the plan
+  // attaches to a person, so who it is for must come from a verified session.
+  '/api/create-pro-checkout': createProCheckout,
+  /**
+   * Stripe telling us what happened, for both products.
+   *
+   * Not rate limited and not authenticated, because Stripe is neither: it
+   * retries with backoff for days and carries no credential this app issued.
+   * The HMAC on every delivery is the control -- see the route.
+   */
+  '/api/stripe-webhook': stripeWebhook,
   '/api/monthly-report': monthlyReport,
   // The receipt parse, straight to the model. See routes/scan-receipt.js for
   // why it no longer goes through Base44.

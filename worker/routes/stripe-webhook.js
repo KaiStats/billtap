@@ -1,0 +1,258 @@
+/**
+ * POST /api/stripe-webhook — Stripe telling us what actually happened.
+ *
+ * ── The gap this closes ─────────────────────────────────────────────────────
+ *
+ * Until now the only thing that recorded a payment was verify-checkout, which
+ * runs when Stripe redirects the browser back to the app. Its own header says
+ * what that costs: "A customer who closes the tab on the Stripe page before
+ * being redirected has paid and will not be marked active until they come
+ * back."
+ *
+ * For a restaurant on $149 that is a support ticket somebody notices. For a
+ * consumer on ninety-nine cents it is fatal — at volume, people pay, close the
+ * tab, do not get what they bought, and do not write in about a dollar. They
+ * charge it back, or they just remember the product as broken.
+ *
+ * It is also the only way to hear about anything that happens *after* the
+ * checkout. A renewal, a cancellation, a card that stops working: none of them
+ * involve a browser at all, so none of them can be caught by a redirect. The
+ * nightly reconcile in reconcile-billing.js was the compensating control for
+ * that, and it only ever looked at restaurants.
+ *
+ * ── The signature is the whole security model ───────────────────────────────
+ *
+ * This endpoint takes no credentials and grants paid plans. Anyone who finds
+ * the URL can POST to it. What stands between that and free Pro for the
+ * internet is the HMAC below and nothing else, so it is checked before the body
+ * is parsed, let alone acted on — and an unconfigured secret refuses every
+ * request rather than waving them through.
+ *
+ * Bindings:
+ *   STRIPE_WEBHOOK_SECRET  required. From the Stripe dashboard, `whsec_...`
+ *   STRIPE_SECRET_KEY      required, to read the subscription back
+ */
+import { json } from '../lib/email.js';
+import { serviceRole } from '../lib/data.js';
+import { audit, ACTIONS } from '../lib/audit.js';
+import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+
+/**
+ * How far out of step with Stripe's clock a request may be, in seconds.
+ *
+ * Five minutes is Stripe's own recommendation. The timestamp is inside the
+ * signed payload, so an attacker cannot alter it — what this stops is a replay:
+ * a genuine, correctly signed "subscription created" captured off the wire and
+ * posted again next year.
+ */
+const TOLERANCE_SECONDS = 300;
+
+const enc = new TextEncoder();
+
+/** Constant-time compare, so a wrong signature cannot be found a byte at a time. */
+function sameSignature(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function hex(buffer) {
+  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Is this really Stripe, and is it recent?
+ *
+ * The header looks like `t=1492774577,v1=5257a869...,v1=...`. More than one v1
+ * appears while a signing secret is being rotated, and both are valid during
+ * that window — checking only the first would break every delivery for the
+ * length of a rotation, which is the moment nobody wants a billing outage.
+ */
+export async function verifyStripeSignature(rawBody, header, secret) {
+  if (!secret || typeof header !== 'string' || !header) return { ok: false, reason: 'missing' };
+
+  const parts = Object.create(null);
+  const signatures = [];
+  for (const piece of header.split(',')) {
+    const [k, v] = piece.split('=');
+    if (k === 'v1') signatures.push(v);
+    else if (k) parts[k] = v;
+  }
+
+  const timestamp = Number(parts.t);
+  if (!Number.isFinite(timestamp)) return { ok: false, reason: 'no_timestamp' };
+  if (!signatures.length) return { ok: false, reason: 'no_signature' };
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - timestamp);
+  if (age > TOLERANCE_SECONDS) return { ok: false, reason: 'too_old' };
+
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const expected = hex(await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${rawBody}`)));
+
+  return signatures.some((s) => sameSignature(s, expected))
+    ? { ok: true }
+    : { ok: false, reason: 'mismatch' };
+}
+
+/** The subscription behind an event, read back from Stripe rather than trusted. */
+async function readSubscription(env, subscriptionId) {
+  if (!subscriptionId || !env?.STRIPE_SECRET_KEY) return null;
+  const res = await fetchWithTimeout(
+    `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    { headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
+    TIMEOUTS.payment,
+  );
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/**
+ * Which product this event is about, and who it belongs to.
+ *
+ * Read from metadata rather than guessed from the shape of the id. Both
+ * products put their own key on the subscription at checkout — `user_id` for
+ * consumer Pro, `restaurant_id` for a restaurant — so an event that carries
+ * neither is something else in the account entirely and is left alone rather
+ * than applied to whichever row happened to match.
+ */
+function subjectOf(object) {
+  const meta = object?.metadata || {};
+  if (meta.user_id) return { kind: 'pro', id: String(meta.user_id) };
+  if (meta.restaurant_id) return { kind: 'restaurant', id: String(meta.restaurant_id) };
+  return null;
+}
+
+/**
+ * Grant or revoke, by writing what Stripe just said.
+ *
+ * Idempotent on purpose, because Stripe retries: it delivers at least once, not
+ * exactly once, and the same event arriving twice must not do anything twice.
+ * Every write here is a set-to-a-value rather than an increment or an append,
+ * so replaying an event lands on the same row state it landed on the first
+ * time.
+ */
+async function applySubscription(env, subject, subscription) {
+  const svc = serviceRole(env);
+  const status = subscription?.status || null;
+  const periodEnd = subscription?.current_period_end
+    ? subscription.current_period_end * 1000
+    : null;
+
+  // trialing counts as paid — that is what a trial is. Everything Stripe does
+  // not consider current (canceled, unpaid, incomplete_expired, past_due once
+  // its retries are done) falls back to free at the end of the paid period,
+  // which plan_expires_at already encodes.
+  const entitled = status === 'active' || status === 'trialing';
+
+  if (subject.kind === 'pro') {
+    const rows = await svc.entity('Profile').filter({ id: subject.id }, { select: 'id' });
+    const patch = {
+      plan: entitled ? 'pro' : 'free',
+      stripe_customer_id: typeof subscription?.customer === 'string' ? subscription.customer : null,
+      stripe_subscription_id: subscription?.id || null,
+      plan_expires_at: periodEnd,
+    };
+    if (rows.length) await svc.entity('Profile').update(subject.id, patch);
+    else await svc.entity('Profile').create({ id: subject.id, ...patch });
+    return { kind: 'pro', id: subject.id, plan: patch.plan };
+  }
+
+  await svc.entity('Restaurant').update(subject.id, {
+    plan: entitled ? 'active' : 'cancelled',
+    stripe_subscription_id: subscription?.id || '',
+    current_period_end: periodEnd,
+  });
+  return { kind: 'restaurant', id: subject.id, plan: entitled ? 'active' : 'cancelled' };
+}
+
+export async function onRequestPost({ request, env, ctx, requestId = null }) {
+  const secret = env?.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    // Refuses rather than accepts. An unconfigured secret here would mean an
+    // endpoint that grants paid plans to anyone who can find the URL.
+    console.error('stripe-webhook: STRIPE_WEBHOOK_SECRET is not configured — refusing every delivery');
+    return json({ error: 'Not configured' }, 503);
+  }
+
+  // The raw bytes, before anything parses them. The signature covers the exact
+  // body Stripe sent, so a round trip through JSON.parse and JSON.stringify
+  // would re-order keys and fail every check.
+  const raw = await request.text();
+
+  const verdict = await verifyStripeSignature(raw, request.headers.get('stripe-signature'), secret);
+  if (!verdict.ok) {
+    console.error(JSON.stringify({ at: new Date().toISOString(), job: 'stripe-webhook', rejected: verdict.reason }));
+    return json({ error: 'Bad signature' }, 400);
+  }
+
+  let event;
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+
+  const type = event?.type || '';
+  const object = event?.data?.object || {};
+
+  try {
+    let subject = subjectOf(object);
+    let subscription = null;
+
+    if (type === 'checkout.session.completed') {
+      // The session carries the metadata we set at checkout; the subscription
+      // it created carries the dates. Read the subscription back from Stripe
+      // rather than trusting anything in the payload beyond the signature.
+      subject = subject || (object.client_reference_id
+        ? { kind: 'pro', id: String(object.client_reference_id) }
+        : null);
+      subscription = await readSubscription(env, typeof object.subscription === 'string' ? object.subscription : null);
+      if (subscription) subject = subjectOf(subscription) || subject;
+    } else if (type.startsWith('customer.subscription.')) {
+      subscription = object;
+    } else if (type === 'invoice.payment_failed' || type === 'invoice.paid') {
+      subscription = await readSubscription(env, typeof object.subscription === 'string' ? object.subscription : null);
+      if (subscription) subject = subjectOf(subscription);
+    } else {
+      // Every other event type Stripe sends. Acknowledged so it is not retried
+      // forever, and otherwise ignored.
+      return json({ ok: true, ignored: type });
+    }
+
+    if (!subject || !subscription) {
+      // Signed, understood, and about something that is not ours — a
+      // subscription created in the dashboard by hand, or another product in
+      // the same Stripe account. Answering 200 stops Stripe retrying an event
+      // nothing here will ever act on.
+      return json({ ok: true, ignored: type, reason: 'no_subject' });
+    }
+
+    const result = await applySubscription(env, subject, subscription);
+
+    await audit(env, ctx, {
+      action: result.plan === 'pro' || result.plan === 'active'
+        ? ACTIONS.BILLING_ACTIVATED
+        : ACTIONS.BILLING_RECONCILED,
+      request,
+      requestId,
+      ...(result.kind === 'restaurant' ? { restaurantId: result.id } : { actorUserId: result.id }),
+      detail: { source: 'webhook', event: type, plan: result.plan, subscription_status: subscription.status },
+    });
+
+    return json({ ok: true, applied: result.kind, plan: result.plan });
+  } catch (error) {
+    /**
+     * A 500, deliberately, so Stripe retries.
+     *
+     * This is the one place in the app where failing loudly is right: Stripe
+     * redelivers on a non-2xx with backoff for days, and the alternative is
+     * answering 200 to an event we could not apply — which loses a payment
+     * somebody has already made, silently, with no second chance.
+     */
+    console.error('stripe-webhook: could not apply event', type, error?.message);
+    return json({ error: 'Could not apply that event' }, 500);
+  }
+}
