@@ -66,14 +66,39 @@ export async function onRequestPost({ request, env }) {
     const rating = ratings[0];
     if (!rating) return json({ error: 'Rating not found' }, 404);
 
-    // Already paged for this rating — do not page again.
-    //
-    // This endpoint is unauthenticated by necessity: the guest firing it has no
-    // account. Without a dedupe, the same rating_id could be replayed for as
-    // long as anyone cared to, and each replay is another email and another
-    // SMS. There is no spend cap on the Twilio or Postmark accounts, so the
-    // ceiling on that was the attacker's patience.
-    if (rating?.alerted_at) {
+    /**
+     * How many times this rating may still page somebody: at most twice, and
+     * the second one has to earn it.
+     *
+     * ── Why twice ──────────────────────────────────────────────────────────
+     *
+     * It used to be once, fired only when a guest tapped "Send to the manager"
+     * after writing something. Tapping one star and walking out paged nobody —
+     * so the guest the product exists to catch, the one who leaves without a
+     * word, was the only one the manager never heard about.
+     *
+     * Now the first page goes out the moment a low rating is recorded, before
+     * anyone has typed anything, and a second follows if they go on to say what
+     * happened.
+     *
+     * ── Why this is still a spend cap ──────────────────────────────────────
+     *
+     * `alerted_at` was never bookkeeping. This endpoint is unauthenticated by
+     * necessity — the guest firing it has no account — so without a dedupe the
+     * same rating_id can be replayed for as long as anyone cares to, and every
+     * replay is another email and another SMS on accounts with no ceiling.
+     *
+     * The cap becomes two rather than one, and the second is not something a
+     * caller can ask for: it is only available when the row itself has acquired
+     * a comment it did not have when the first went out. No comment, no second
+     * email, however many times the id is posted.
+     */
+    const firstSent = Boolean(rating?.alerted_at);
+    const followUpSent = Boolean(rating?.comment_alerted_at);
+    const hasComment = typeof rating?.comment === 'string' && rating.comment.trim().length > 0;
+    const isFollowUp = firstSent;
+
+    if (firstSent && (!hasComment || followUpSent)) {
       return json({ ok: true, already_alerted: true }, 200);
     }
 
@@ -281,7 +306,17 @@ export async function onRequestPost({ request, env }) {
     // Stamping afterwards leaves the whole send window open to a replay, and
     // two concurrent requests would both read alerted_at as empty and both
     // page. Claiming first means the loser of that race sends nothing.
-    const claimed = await stampAlerted(svc, ratingId);
+    /**
+     * Claim both stamps at once when the first send already carries the
+     * comment.
+     *
+     * The old flow wrote the comment before any alert went out, so that send
+     * has already said everything there is to say. Leaving comment_alerted_at
+     * empty would let a second call fire a follow-up containing the identical
+     * text — a duplicate email whose only content is what the manager read
+     * thirty seconds ago.
+     */
+    const claimed = await stampAlerted(svc, ratingId, Date.now(), isFollowUp, hasComment);
     if (!claimed) {
       // Could not claim, so cannot guarantee this is not a duplicate. Refusing
       // is the safe direction when the failure mode is an unbounded phone bill.
@@ -293,7 +328,12 @@ export async function onRequestPost({ request, env }) {
     const [emailResult, smsResult] = await Promise.all([
       sendEmail(env, {
         to: restaurant.alert_email,
-        subject: `⚠︎ ${stars}-star rating at ${restaurantName}`,
+        // The follow-up says so in the subject line. An operator who has
+        // already walked to the table needs to know at a glance that this is
+        // the same guest adding detail, not a second unhappy one.
+        subject: isFollowUp
+          ? `↳ ${stars}-star at ${restaurantName} — they've added detail`
+          : `⚠︎ ${stars}-star rating at ${restaurantName}`,
         html,
         text,
         replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,
@@ -339,9 +379,19 @@ export async function onRequestPost({ request, env }) {
  * send", because the whole point of the stamp is that it is the only thing
  * standing between an unauthenticated endpoint and an unbounded SMS bill.
  */
-async function stampAlerted(svc, ratingId, value = Date.now()) {
+async function stampAlerted(svc, ratingId, value = Date.now(), isFollowUp = false, carriedComment = false) {
   try {
-    await svc.entity('GuestRating').update(ratingId, { alerted_at: value });
+    // Which of the two stamps is being claimed — see the block that decides.
+    // The follow-up writes its own column so the first one stays a record of
+    // when the manager was actually first told.
+    //
+    // A first send that already carried the comment claims both: there is no
+    // detail left to follow up with, and leaving the second column empty would
+    // let a later call send the same paragraph again.
+    const patch = isFollowUp
+      ? { comment_alerted_at: value }
+      : { alerted_at: value, ...(carriedComment ? { comment_alerted_at: value } : {}) };
+    await svc.entity('GuestRating').update(ratingId, patch);
     return true;
   } catch (error) {
     console.error('rating-alert: alerted_at write failed:', error.message);

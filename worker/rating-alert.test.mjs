@@ -130,7 +130,12 @@ test('a rating already alerted is not alerted again', async () => {
   // This endpoint takes no credentials, because the guest firing it has no
   // account. Without the dedupe, one rating_id can be replayed for as long as
   // anyone cares to, and each replay is another email and another SMS.
-  await withStub({ rating: { ...RATING, alerted_at: 1700000000000 } }, async ({ sent }) => {
+  //
+  // Both stamps, which is what a fully-alerted row looks like: RATING carries a
+  // comment, so under the old flow that comment went out with the single alert.
+  // Migration 0018 backfills exactly this shape for rows that predate it, so
+  // that a historical alert cannot fire a duplicate carrying the same text.
+  await withStub({ rating: { ...RATING, alerted_at: 1700000000000, comment_alerted_at: 1700000000000 } }, async ({ sent }) => {
     const res = await fire();
     assert.equal(res.status, 200);
     assert.equal((await res.json()).already_alerted, true);

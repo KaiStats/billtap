@@ -387,3 +387,85 @@ test('a hostile table number cannot inject markup into the alert', async () => {
     assert.match(HtmlBody, /&lt;img/, 'it is shown as text instead');
   });
 });
+
+// ── Paging on the tap, not on the paragraph ─────────────────────────────────
+//
+// The alert used to fire only when a guest tapped "Send to the manager" after
+// writing something. Tapping one star and walking out paged nobody — the guest
+// this product exists to catch was the only one the manager never heard about.
+
+test('a low rating with no comment pages immediately', async () => {
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    const res = await alertFor();
+    assert.equal(res.status, 200);
+    assert.equal(emails.length, 1, 'the silent walk-out is the whole point');
+    assert.match(emails[0].Subject, /^⚠︎ 1-star/);
+    assert.ok(tables.guest_ratings[0].alerted_at, 'and it is claimed so it cannot be replayed');
+  });
+});
+
+test('a comment added afterwards sends exactly one follow-up', async () => {
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 2, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    await alertFor();
+    assert.equal(emails.length, 1);
+
+    // The guest goes on to say what happened.
+    tables.guest_ratings[0].comment = 'Waited 25 minutes for the entrees.';
+    await alertFor();
+
+    assert.equal(emails.length, 2, 'the manager gets the detail too');
+    assert.match(emails[1].Subject, /added detail/);
+    assert.match(emails[1].HtmlBody, /Waited 25 minutes/);
+    assert.ok(tables.guest_ratings[0].comment_alerted_at, 'and the follow-up is claimed');
+
+    // A third attempt is refused: both stamps are now set.
+    await alertFor();
+    assert.equal(emails.length, 2, 'two is the cap');
+  });
+});
+
+test('replaying the id without a comment sends nothing', async () => {
+  /**
+   * The spend cap this replaces was never bookkeeping. The endpoint is
+   * unauthenticated by necessity, so without a dedupe the same id can be
+   * replayed for as long as anyone cares to, and every replay is another email
+   * and another SMS on accounts with no ceiling.
+   *
+   * The cap is two now rather than one, and the second is not something a
+   * caller can ask for — it needs a comment on the row that was not there
+   * before.
+   */
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails }) => {
+    for (let i = 0; i < 6; i += 1) await alertFor();
+    assert.equal(emails.length, 1, 'one page, however many times it is posted');
+  });
+});
+
+test('a rating that already had a comment still pages only twice', async () => {
+  // The old flow: comment written before the first alert. That send already
+  // carries the detail, so the follow-up has nothing to add — and must not
+  // fire just because a comment exists.
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 2, comment: 'cold food', alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails }) => {
+    await alertFor();
+    assert.equal(emails.length, 1);
+    assert.match(emails[0].HtmlBody, /cold food/);
+    await alertFor();
+    assert.equal(emails.length, 1, 'nothing new to say');
+  });
+});
+
+test('an unpaid restaurant is still not paged, and stays deliverable', async () => {
+  // Unchanged by any of this: the gate comes first, and alerted_at is left
+  // unstamped so the alert can still land if they resubscribe.
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [EXPIRED()], ratings: [rating] }, async ({ emails, tables }) => {
+    const body = await (await alertFor()).json();
+    assert.equal(emails.length, 0);
+    assert.equal(body.skipped, 'not_entitled');
+    assert.equal(tables.guest_ratings[0].alerted_at, null);
+  });
+});

@@ -1896,8 +1896,22 @@ test('the manager is still paged, which is the half that is paid for', async () 
     await page.getByRole('button', { name: /Send to the manager/i }).click();
     await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
 
-    assert.equal(alertCalls.length, 1, 'the low rating paged the operator');
-    assert.equal(alertCalls[0].rating_id, 'rat_test_1', 'and named the rating, not the restaurant');
+    /**
+     * Twice, and that is the fix rather than a bug.
+     *
+     * The first call goes out on the star tap, before this guest had typed
+     * anything — which is the whole point: somebody who taps one star and
+     * walks out used to page nobody, and they are the guest this product
+     * exists to catch. The second carries what they went on to say.
+     *
+     * How many emails that becomes is the server's decision, not this
+     * screen's: rating-alert.js sends the second only when the row has
+     * acquired a comment it did not have before, so the spend cap survives.
+     */
+    assert.equal(alertCalls.length, 2, 'paged on the tap, then again with the detail');
+    for (const call of alertCalls) {
+      assert.equal(call.rating_id, 'rat_test_1', 'named the rating, not the restaurant');
+    }
 
     const comment = ratingCalls.find((c) => c.action === 'contact');
     assert.ok(comment, 'the comment reached the server');
@@ -2040,7 +2054,9 @@ test('an alert that could not be delivered does not strand the guest either', as
     await page.getByRole('button', { name: /Send to the manager/i }).click();
 
     await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
-    assert.equal(alertCalls.length, 1, 'it was attempted');
+    // Both attempts made and both failed, and the guest still reached the
+    // review screen. The paid half breaking is not theirs to notice.
+    assert.equal(alertCalls.length, 2, 'both attempts were made');
   } finally { await context.close(); }
 });
 
