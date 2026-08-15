@@ -10,6 +10,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { onRequestPost as scanReceipt, ticketFrom } from './routes/scan-receipt.js';
 
@@ -289,4 +290,89 @@ test('non-string values are refused rather than coerced', () => {
   assert.equal(ticketFrom({ table: 14 }), null);
   assert.equal(ticketFrom({ table: {} }), null);
   assert.equal(ticketFrom({ table: ['14'] }), null);
+});
+
+// ── Real model output, replayed ─────────────────────────────────────────────
+//
+// Every payload below was returned by the live model for a rendered receipt in
+// that POS's format, captured on 2026-08-15 by posting the images to the
+// deployed endpoint. Replaying them here is the difference between "the prompt
+// asks for a table" and "the model returns one we handle correctly" — and it
+// pins the shapes, so a prompt edit that starts producing something else fails
+// here rather than in an operator's inbox.
+//
+// The images are not committed: they are six thermal receipts rendered from
+// HTML, reproducible from the formats described in each case below.
+
+const OBSERVED = [
+  {
+    pos: 'Toast — "Table 14", server on its own line',
+    said: { title: 'HERB & RYE', items: [{ name: 'Ribeye', price: 48, quantity: 1 }], tax: 7.4, tip: 0, total: 87.4,
+      ticket: { table: '14', server: 'Marco', number: '4471' } },
+    want: { table: '14', server: 'Marco', number: '4471' },
+  },
+  {
+    pos: 'Square — "TBL 7" abbreviated, "Cashier" not "Server"',
+    said: { title: 'THE GOLDEN STEER', items: [], tax: 5.61, tip: 0, total: 73.61,
+      ticket: { table: '7', server: 'Danielle', number: '00219' } },
+    // Leading zeros survive: "00219" is a string, and a check number that
+    // became 219 would not match what is printed on the ticket.
+    want: { table: '7', server: 'Danielle', number: '00219' },
+  },
+  {
+    pos: 'Aloha — table, server and order crammed on one line',
+    said: { title: 'CARSON KITCHEN', items: [], tax: 3.22, tip: 0, total: 42.22,
+      ticket: { table: '22/1', server: '08 MARIA', number: '1187' } },
+    // "22/1" is table 22 seat 1 and "08 MARIA" carries the server's POS code.
+    // Both are kept verbatim: what is printed is what the manager will see on
+    // their own screen, and tidying it is how the two stop matching.
+    want: { table: '22/1', server: '08 MARIA', number: '1187' },
+  },
+  {
+    pos: 'Micros — lettered table, server named in prose',
+    said: { title: "ESTHER'S KITCHEN", items: [], tax: 3.8, tip: 0, total: 49.8,
+      ticket: { table: 'A7', server: 'JULIAN', number: '8823' } },
+    // The one that would break any integer parse.
+    want: { table: 'A7', server: 'JULIAN', number: '8823' },
+  },
+  {
+    pos: 'Bar tab — a seat rather than a table, a bartender rather than a server',
+    said: { title: 'ATOMIC LIQUORS', items: [], tax: 1.24, tip: 0, total: 16.24,
+      ticket: { table: 'BAR 3', server: 'Kenny', number: '552' } },
+    want: { table: 'BAR 3', server: 'Kenny', number: '552' },
+  },
+  {
+    pos: 'Counter service — nothing printed, and nothing invented',
+    said: { title: 'RAKU EXPRESS', items: [], tax: 1.32, tip: 0, total: 17.32 },
+    // The important one. A model asked for a required field invents one, and an
+    // invented table sends a manager to apologise to the wrong people while the
+    // guest who was actually unhappy finishes their coffee and leaves.
+    want: null,
+  },
+];
+
+for (const { pos, said, want } of OBSERVED) {
+  test(`real model output: ${pos}`, async () => {
+    const s = stubModel(modelSaid(said));
+    try {
+      const res = await scanReceipt({ request: imageRequest(), env: { GEMINI_API_KEY: 'k' } });
+      assert.equal(res.status, 200);
+      const out = await res.json();
+      if (want === null) {
+        assert.equal(out.ticket, undefined, 'no ticket key at all, not an empty object');
+      } else {
+        assert.deepEqual(out.ticket, want);
+      }
+    } finally { s.restore(); }
+  });
+}
+
+test('the prompt still asks for the ticket fields', () => {
+  // A drift guard on the instruction itself. The replays above prove the
+  // handling; this catches a prompt edit that quietly stops asking, which the
+  // replays could not — they feed the answer in.
+  const src = readFileSync(new URL('./routes/scan-receipt.js', import.meta.url), 'utf8');
+  for (const needle of ['ticket.table', 'ticket.server', 'ticket.number', 'Omit']) {
+    assert.ok(src.includes(needle), `the prompt no longer mentions ${needle}`);
+  }
 });
