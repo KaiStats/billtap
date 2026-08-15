@@ -58,7 +58,10 @@ const PILLARS = [
 
 const BULLETS = [
   { icon: Smartphone, img: "strip-scan", title: "No app to download", desc: "Just scan and go.", alt: "A phone scanning a QR table tent on a restaurant table." },
-  { icon: Zap, img: "strip-split", title: "Split & pay in 30 seconds", desc: "Fast, simple, frictionless.", alt: "Two friends splitting a paper check with their phones." },
+  // "about", because the step below already says about and a bare "in 30
+  // seconds" reads as a measurement rather than a description. Nothing has
+  // timed a real table yet.
+  { icon: Zap, img: "strip-split", title: "Split & pay in about 30 seconds", desc: "Fast, simple, frictionless.", alt: "Two friends splitting a paper check with their phones." },
   { icon: ThumbsUp, img: "strip-rate", title: "Rate you on Google instantly", desc: "Good experiences get shared.", alt: "A thumb pressing a glowing phone screen." },
   { icon: Mail, img: "strip-data", title: "You get the data & reviews", desc: "More customers. More revenue.", alt: "A phone lighting up with a notification on a bar counter." },
   { icon: Cpu, img: "strip-pos", title: "Works with your POS", desc: "No new hardware. No disruption.", alt: "A card payment terminal on a polished bar counter." },
