@@ -1,0 +1,71 @@
+-- Make the table grants say what row level security already enforces.
+--
+-- ── What was found ──────────────────────────────────────────────────────────
+--
+-- `anon` and `authenticated` held the full set — INSERT, UPDATE, DELETE,
+-- TRUNCATE, REFERENCES, TRIGGER — on restaurants, guest_ratings and
+-- guest_contacts. `anon` is the role every diner's browser holds, because the
+-- anon key ships in the bundle by design; that is what it is for.
+--
+-- ── Why nothing was exploitable ─────────────────────────────────────────────
+--
+-- Worth writing down, because "we had a DELETE grant on anon" reads like an
+-- incident and it was not one. Three things stood in front of it:
+--
+--   guest_ratings and guest_contacts have RLS enabled and *zero* policies, so
+--   every statement from anon or authenticated is denied by default. A grant
+--   with no policy behind it permits nothing.
+--
+--   restaurants has RLS enabled and exactly one policy — owners reading their
+--   own row. There is no INSERT, UPDATE or DELETE policy, so those are denied
+--   the same way.
+--
+--   TRUNCATE is the one that RLS does *not* govern, and it is the one
+--   PostgREST never exposes. Reaching it needs a direct Postgres connection
+--   holding the role, which needs the database password, not the anon key.
+--
+-- So this changes no behaviour today. It is checked in as a migration rather
+-- than clicked in the dashboard for the reason every other control here is:
+-- console state does not appear in a diff.
+--
+-- ── Why bother, then ────────────────────────────────────────────────────────
+--
+-- Because the grant is the thing that will still be there on the day somebody
+-- adds a policy. RLS denies by default only while the policy list is empty; a
+-- future `create policy ... for all using (true)` written to fix a read turns
+-- an inert DELETE grant into a live one, in a single statement, with no second
+-- mistake required. Every write in this app goes through the Worker as
+-- service_role — src/ contains no supabase-js write to any of these tables —
+-- so the guest roles have never needed more than SELECT, and a permission
+-- nobody uses is only ever waiting to be used by accident.
+--
+-- The defence-in-depth argument is the whole argument. This is the layer that
+-- does not depend on the policy list being right.
+--
+-- ── What is deliberately kept ───────────────────────────────────────────────
+--
+-- SELECT, on all three. restaurants needs it or the owner-read policy above
+-- has nothing to permit, and on the two guest tables it stays denied by RLS
+-- regardless — removing it would buy nothing and would have to be undone the
+-- first time a guest-facing read is added.
+--
+-- service_role is untouched. It is what the Worker acts as, it bypasses RLS by
+-- design, and the retention job's hard delete of expired demo rows depends on
+-- exactly these privileges — see worker/routes/retention.js.
+
+revoke insert, update, delete, truncate, references, trigger
+  on table public.restaurants, public.guest_ratings, public.guest_contacts
+  from anon, authenticated;
+
+-- ── Confirming it took ──────────────────────────────────────────────────────
+--
+-- Expect SELECT and nothing else for the two guest roles, and the unchanged
+-- full set for service_role:
+--
+--   select table_name, grantee, string_agg(privilege_type, ',' order by privilege_type)
+--   from information_schema.role_table_grants
+--   where table_schema = 'public'
+--     and table_name in ('restaurants','guest_ratings','guest_contacts')
+--     and grantee in ('anon','authenticated','service_role')
+--   group by table_name, grantee
+--   order by table_name, grantee;
