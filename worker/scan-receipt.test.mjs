@@ -376,3 +376,95 @@ test('the prompt still asks for the ticket fields', () => {
     assert.ok(src.includes(needle), `the prompt no longer mentions ${needle}`);
   }
 });
+
+// ── Stalls ──────────────────────────────────────────────────────────────────
+//
+// Measured against the live model: every success came back between 1.6 and 6.7
+// seconds and the one failure sat until it hit the deadline. Failures are
+// stalls, not slow answers, so the fix is a second short attempt rather than a
+// longer first one — two at ATTEMPT_MS is a worse case below the single
+// twenty-second attempt this replaced.
+
+/** Fails the first n calls with an abort, then answers. */
+function stubStalls(n, reply) {
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls <= n) {
+      const e = new Error('The operation was aborted');
+      e.name = 'AbortError';
+      throw e;
+    }
+    return new Response(JSON.stringify(reply), { status: 200 });
+  };
+  return { count: () => calls, restore: () => { globalThis.fetch = original; } };
+}
+
+test('a stalled first attempt is retried rather than costing the diner the scan', async () => {
+  const s = stubStalls(1, modelSaid({ ...RECEIPT, ticket: { table: '14' } }));
+  try {
+    const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
+    assert.equal(res.status, 200, 'the second attempt answered');
+    assert.equal((await res.json()).ticket.table, '14');
+    assert.equal(s.count(), 2, 'exactly one retry, not a loop');
+  } finally { s.restore(); }
+});
+
+test('two stalls give up, so a wedged provider cannot hold the table forever', async () => {
+  const s = stubStalls(2, modelSaid(RECEIPT));
+  try {
+    const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
+    assert.equal(res.status, 504);
+    assert.equal((await res.json()).code, 'timeout', 'the code the client falls back on');
+    assert.equal(s.count(), 2, 'it does not keep trying');
+  } finally { s.restore(); }
+});
+
+test('a quota rejection is not retried — asking again spends money to be refused twice', async () => {
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: { message: 'quota' } }), { status: 429 });
+  };
+  try {
+    const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
+    assert.equal(res.status, 502);
+    assert.equal((await res.json()).code, 'model_error');
+    assert.equal(calls, 1, 'a 429 is an answer, not a stall');
+  } finally { globalThis.fetch = original; }
+});
+
+test('a safety block is not retried either, being deterministic', async () => {
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ candidates: [{ finishReason: 'SAFETY' }] }), { status: 200 });
+  };
+  try {
+    const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
+    assert.equal((await res.json()).code, 'empty_response');
+    assert.equal(calls, 1, 'it will block again; a retry is a wasted call');
+  } finally { globalThis.fetch = original; }
+});
+
+test('a genuine network failure is not mistaken for a stall', async () => {
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { calls += 1; throw new Error('ECONNREFUSED'); };
+  try {
+    const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
+    assert.equal((await res.json()).code, 'network');
+    assert.equal(calls, 1, 'only an abort earns the second attempt');
+  } finally { globalThis.fetch = original; }
+});
+
+test('two attempts cost less than the twenty seconds they replace', () => {
+  const src = readFileSync(new URL('./routes/scan-receipt.js', import.meta.url), 'utf8');
+  const ms = Number(src.match(/const ATTEMPT_MS = (\d+)/)?.[1]);
+  assert.ok(Number.isFinite(ms), 'ATTEMPT_MS is not a literal any more');
+  assert.ok(ms * 2 < 20000, `two attempts at ${ms}ms is worse than the single 20s it replaced`);
+  assert.ok(ms > 6700, 'the slowest measured success was 6.7s; a real answer must not be cut off');
+});

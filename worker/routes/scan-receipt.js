@@ -138,6 +138,22 @@ export function ticketFrom(raw) {
   };
 }
 
+/**
+ * How long one attempt at the model gets, in milliseconds.
+ *
+ * Measured, not guessed. Eight scans against the live model — six rendered
+ * receipts plus a 344 KB phone-camera JPEG — put every success between 1.6 and
+ * 6.7 seconds, with image size making no visible difference. The one failure
+ * did not answer slowly; it sat there until it hit the deadline.
+ *
+ * Nine seconds is a third again beyond the slowest success, so a real answer is
+ * never cut off, and it is short enough that two of them cost less than the
+ * single twenty-second attempt this replaces. A diner watching a spinner is the
+ * thing being spent here, and the budget should be set by what a good answer
+ * actually costs rather than by how long we are willing to hope.
+ */
+const ATTEMPT_MS = 9000;
+
 /** A compressed receipt is a few hundred KB. Well past that is not a receipt. */
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -188,34 +204,80 @@ export async function onRequestPost({ request, env }) {
   const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
-  // A scan that hangs is worse than one that fails: the diner is watching a
-  // spinner and the table is waiting. Give up and let the client fall back.
-  const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), 20000);
+  const body = JSON.stringify({
+    contents: [{
+      parts: [
+        { text: PROMPT },
+        { inlineData: { mimeType: contentType, data: base64(buffer) } },
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: RECEIPT_SCHEMA,
+      // A receipt parse is a few hundred tokens. Unbounded lets a bad
+      // response run long while somebody watches a spinner.
+      maxOutputTokens: 2048,
+      // Reading printed numbers is not a creative task.
+      temperature: 0,
+    },
+  });
+
+  /** One attempt, with its own deadline. */
+  const attempt = async () => {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), ATTEMPT_MS);
+    try {
+      return await fetch(url, {
+        method: 'POST',
+        signal: abort.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body,
+      });
+    } finally {
+      // Always, including the throwing path. A stray timer in a Worker keeps
+      // the isolate from being reclaimed, which turns a slow dependency into
+      // an expensive app.
+      clearTimeout(timer);
+    }
+  };
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: abort.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: PROMPT },
-            { inlineData: { mimeType: contentType, data: base64(buffer) } },
-          ],
-        }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: RECEIPT_SCHEMA,
-          // A receipt parse is a few hundred tokens. Unbounded lets a bad
-          // response run long while somebody watches a spinner.
-          maxOutputTokens: 2048,
-          // Reading printed numbers is not a creative task.
-          temperature: 0,
-        },
-      }),
-    });
+    let res;
+    try {
+      res = await attempt();
+    } catch (first) {
+      /**
+       * One retry, and only for a stall.
+       *
+       * ── Why two short attempts rather than one long one ────────────────
+       *
+       * Measured against the live model on eight scans, including a
+       * phone-camera-sized JPEG: every success came back between 1.6 and 6.7
+       * seconds, and the one failure sat until it hit the deadline exactly.
+       * So the failures are not slow answers, they are stalls — and raising
+       * the budget would only make a diner wait longer for the same nothing.
+       *
+       * Two attempts at ATTEMPT_MS is a worse case of 18 seconds against the
+       * 20 this replaces, so nobody waits longer than they used to, and a
+       * stalled first call now gets a second roll of the dice instead of
+       * costing the table their receipt.
+       *
+       * ── Only on abort ──────────────────────────────────────────────────
+       *
+       * A 429 means the quota is gone and asking again spends money to be
+       * told so twice. A safety block is deterministic and will block again.
+       * Neither reaches here: both come back as responses and are handled
+       * below. This catch is the network path only.
+       */
+      if (first?.name !== 'AbortError') throw first;
+      console.error(JSON.stringify({
+        at: new Date().toISOString(),
+        job: 'scan-receipt',
+        event: 'retry_after_stall',
+        attempt_ms: ATTEMPT_MS,
+      }));
+      res = await attempt();
+    }
 
     const payload = await res.json();
     if (!res.ok) {
@@ -263,13 +325,15 @@ export async function onRequestPost({ request, env }) {
       ...(ticket ? { ticket } : {}),
     });
   } catch (error) {
+    // Reached only when the retry stalled too, or the network failed outright.
+    // The client reads `code` and falls back to the even split, so the table
+    // still gets to split their bill — they just lose the itemisation and, now,
+    // the table number off the ticket.
     const aborted = error?.name === 'AbortError';
-    console.error(`scan-receipt: ${aborted ? 'timed out' : 'threw'}`, error?.message);
+    console.error(`scan-receipt: ${aborted ? 'timed out twice' : 'threw'}`, error?.message);
     return json(
       { error: 'Could not read that receipt.', code: aborted ? 'timeout' : 'network' },
       504,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
