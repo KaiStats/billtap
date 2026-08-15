@@ -126,6 +126,64 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Invalid rating stars' }, 400);
     }
 
+    /**
+     * Which bill this was, so the manager can find the table.
+     *
+     * ── What the alert could not answer ────────────────────────────────────
+     *
+     * "Unhappy guest — still on site" and nothing else. The manager knows
+     * somebody in the room is unhappy and has no way to tell which of forty
+     * tables it is, which makes the one thing this product promises — reach
+     * them before they leave — a walk around the room squinting at people.
+     *
+     * BillTap has no concept of a table: one QR goes on every tent in the
+     * building, so nothing anywhere records where a guest sat. But
+     * `guest_ratings.session_id` has always pointed at the actual bill, and
+     * this endpoint has never read it. The check total is the thing that finds
+     * the table — a manager types it into the POS and gets the ticket, which
+     * knows both the table and the server.
+     *
+     * ── Why names are deliberately not in here ─────────────────────────────
+     *
+     * The participant list is right there and it is tempting. It stays out.
+     * src/pages/Privacy.jsx publishes that guest display names are removed
+     * thirty days after a session completes, and an email is somewhere that
+     * promise cannot reach — a name mailed today is in an inbox forever. The
+     * count is enough to recognise a table, and the total is what actually
+     * identifies the ticket, so the names would be buying nothing at the price
+     * of a published commitment.
+     *
+     * ── Failure posture ────────────────────────────────────────────────────
+     *
+     * Wrapped, and every field optional. This is decoration on the one
+     * notification the restaurant is paying for; a session that was deleted,
+     * a read that times out, or a rating submitted with no session at all must
+     * cost the manager some detail, never the page itself.
+     */
+    let check = null;
+    if (rating.session_id) {
+      try {
+        const sessions = await svc.entity('Session').filter(
+          { id: rating.session_id },
+          { select: 'id,total_amount,participants,image_url' },
+        );
+        const session = sessions[0];
+        if (session) {
+          const total = Number(session.total_amount);
+          check = {
+            total: Number.isFinite(total) && total > 0 ? total.toFixed(2) : null,
+            guests: Array.isArray(session.participants) ? session.participants.length : 0,
+            // Already a public URL by construction — see publicObjectUrl in
+            // worker/lib/db.js — and the retention sweep deletes the object at
+            // thirty days, so the link rots on the same clock as the data.
+            receipt: typeof session.image_url === 'string' && session.image_url ? session.image_url : null,
+          };
+        }
+      } catch (error) {
+        console.error('rating-alert: could not read the split for the alert detail:', error?.message);
+      }
+    }
+
     const restaurantName = clean(restaurant.name, 120) || 'Your restaurant';
     const comment = clean(rating.comment, 1500);
     const guestEmail = clean(rating.guest_email || '', 200).toLowerCase();
@@ -149,6 +207,14 @@ export async function onRequestPost({ request, env }) {
           </p>
         </div>
         <p style="margin:0 0 4px;font-size:14px"><strong>${esc(restaurantName)}</strong> · ${esc(when)}</p>
+        ${check && (check.total || check.guests)
+          ? `<p style="margin:8px 0 0;font-size:14px;color:#111827">
+               <strong>Find the table:</strong>
+               ${check.total ? `check total <strong>$${esc(check.total)}</strong>` : ''}${check.total && check.guests ? ' · ' : ''}${check.guests ? `${esc(check.guests)} guest${check.guests === 1 ? '' : 's'}` : ''}
+               ${check.receipt ? `<br><a href="${esc(check.receipt)}" style="color:#00a67a">See the receipt</a>` : ''}
+             </p>
+             <p style="margin:4px 0 0;color:#888;font-size:12px">Match the total and the time against your POS ticket — that has the table and the server.</p>`
+          : ''}
         ${comment
           ? `<blockquote style="margin:14px 0;padding:12px 16px;background:#f9fafb;border-left:3px solid #f0b429;font-size:14px;line-height:1.55">${esc(comment)}</blockquote>`
           : `<p style="margin:14px 0;color:#888;font-size:14px">No comment left.</p>`}
@@ -157,17 +223,31 @@ export async function onRequestPost({ request, env }) {
           : `<p style="margin:14px 0 0;color:#888;font-size:14px">Guest left no email.</p>`}
       </div>`;
 
+    /** The same detail in the plain-text part, which is what a watch shows. */
+    const checkLine = check && (check.total || check.guests)
+      ? '\nFind the table: '
+        + [
+          check.total ? `check total $${check.total}` : null,
+          check.guests ? `${check.guests} guest${check.guests === 1 ? '' : 's'}` : null,
+        ].filter(Boolean).join(' · ')
+      : '';
+
     const text = [
       `${stars}/5 — ${restaurantName} (${when})`,
+      checkLine,
       comment ? `\n"${comment}"` : '\nNo comment left.',
       guestEmail ? `\nGuest: ${guestEmail}` : '\nNo guest email.',
+      check?.receipt ? `\nReceipt: ${check.receipt}` : '',
     ].join('');
 
+    // The total goes near the front: this is read on a lock screen, walking,
+    // and it is the field that turns "somebody is unhappy" into a table.
     const smsBody = [
       `${stars}★ at ${restaurantName}`,
+      check?.total ? `$${check.total} check` : null,
       comment ? `"${comment.slice(0, 140)}"` : 'No comment.',
       guestEmail ? `Reply: ${guestEmail}` : 'No guest email.',
-    ].join(' — ');
+    ].filter(Boolean).join(' — ');
 
     // Claim the alert BEFORE sending, not after.
     //

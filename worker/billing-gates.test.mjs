@@ -227,3 +227,111 @@ test('the public lookup still answers for an unpaid restaurant at all', async ()
     assert.equal(res.status, 200);
   });
 });
+
+// ── Which table is unhappy ──────────────────────────────────────────────────
+//
+// The alert said "Unhappy guest — still on site" and nothing else, which leaves
+// a manager to walk a forty-table room squinting at people. BillTap has no
+// concept of a table — one QR goes on every tent — but guest_ratings.session_id
+// has always pointed at the actual bill, and this endpoint never read it. The
+// check total is what finds the table: typed into the POS it returns the
+// ticket, and the ticket knows the table and the server.
+
+const RATED_SESSION = () => ({
+  id: 's_dinner',
+  restaurant_id: 'r1',
+  total_amount: 87.4,
+  participants: [
+    { participant_id: 'p_1_a', name: 'Marcus' },
+    { participant_id: 'p_2_b', name: 'Priya' },
+    { participant_id: 'p_3_c', name: 'Dana' },
+    { participant_id: 'p_4_d', name: 'Sam' },
+  ],
+  image_url: 'https://stub.supabase.co/storage/v1/object/public/receipts/abc-123.jpg',
+});
+
+test('the alert carries the check total, so the ticket can be found', async () => {
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_dinner', stars: 2, comment: 'cold food', alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [RATED_SESSION()];
+    await alertFor();
+
+    assert.equal(emails.length, 1);
+    const { HtmlBody, TextBody } = emails[0];
+
+    assert.match(HtmlBody, /\$87\.40/, 'the total is what a manager types into the POS');
+    assert.match(HtmlBody, /4 guests/);
+    assert.match(HtmlBody, /receipts\/abc-123\.jpg/, 'and the actual bill is one tap away');
+    // The plain-text part is what a watch shows, so it carries it too.
+    assert.match(TextBody, /\$87\.40/);
+    assert.match(TextBody, /4 guests/);
+  });
+});
+
+test('guest names are deliberately not in the alert', async () => {
+  /**
+   * src/pages/Privacy.jsx publishes that guest display names are removed thirty
+   * days after a session completes. An email is somewhere that promise cannot
+   * reach — a name mailed today sits in an inbox forever. The count identifies
+   * the table just as well and the total identifies the ticket, so the names
+   * would buy nothing at the price of a published commitment.
+   */
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_dinner', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [RATED_SESSION()];
+    await alertFor();
+
+    const body = emails[0].HtmlBody + emails[0].TextBody;
+    for (const name of ['Marcus', 'Priya', 'Dana', 'Sam']) {
+      assert.ok(!body.includes(name), `${name} must not travel in an email`);
+    }
+  });
+});
+
+test('a rating with no split still pages, just with less detail', async () => {
+  // session_id is nullable, and `on delete set null` clears it when a split is
+  // redacted out from under a rating. Neither is a reason to withhold the one
+  // notification the restaurant is paying for.
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: null, stars: 1, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails }) => {
+    const res = await alertFor();
+    assert.equal(res.status, 200);
+    assert.equal(emails.length, 1, 'the page still goes out');
+    assert.ok(!emails[0].HtmlBody.includes('Find the table'));
+  });
+});
+
+test('a split that cannot be read does not cost the operator the alert', async () => {
+  // Decoration on the paid half of the product. A read that times out, or a
+  // session deleted between the rating and the page, must cost detail and
+  // never the page itself.
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_gone', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [];
+    const res = await alertFor();
+    assert.equal(res.status, 200);
+    assert.equal(emails.length, 1);
+    assert.match(emails[0].HtmlBody, /2 of 5|★/, 'the rating itself is still reported');
+  });
+});
+
+test('a demo split shows its total too, so the demo shows the real thing', async () => {
+  // "Skip setup, split evenly" is how a demo bill gets made, so it has a total
+  // and one participant and no receipt. The alert should look like the real
+  // one, minus what genuinely is not there.
+  const demo = {
+    ...PAYING(),
+    plan: 'trial', current_period_end: null, trial_ends_at: Date.now() - 30 * DAY,
+    demo: true, demo_expires_at: Date.now() + 6 * 3600000,
+  };
+  const rating = { id: 'gr1', restaurant_id: 'r1', session_id: 's_demo', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [demo], ratings: [rating] }, async ({ emails, tables }) => {
+    tables.sessions = [{ id: 's_demo', restaurant_id: 'r1', total_amount: 40, participants: [{ participant_id: 'p_1_a', name: 'You' }], image_url: null }];
+    await alertFor();
+
+    assert.equal(emails.length, 1);
+    assert.match(emails[0].HtmlBody, /\$40\.00/);
+    assert.match(emails[0].HtmlBody, /1 guest(?!s)/, 'singular, because "1 guests" reads as a bug');
+    assert.ok(!emails[0].HtmlBody.includes('See the receipt'), 'no receipt was photographed');
+  });
+});
