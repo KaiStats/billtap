@@ -706,25 +706,61 @@ export default function Restaurants() {
 
       {/* ── Footer ──────────────────────────────────────────── */}
       {/* ── Proof ──────────────────────────────────────
-          Deliberately no invented numbers. Real Mariposa stats (reviews
-          captured, contacts collected, low ratings caught) go here once
-          pulled from the dashboard — tracked as a Week 2 task, not a someday
-          one. Until then this states only what's true today: the product is
-          live at a real restaurant, not a mockup. */}
+          ── What was here, and why it had to go ─────────────────────────────
+
+          This section named a real restaurant — "Mariposa | Cocina & Cocktails
+          runs BillTap every service" — under the heading "Live in Las Vegas",
+          beside "taking real tables today" and "30 sec average time to split &
+          pay". Mariposa is not a customer. They are a prospect who has not said
+          yes, and the comment that used to sit here claimed the section carried
+          "deliberately no invented numbers" while the thirty seconds was
+          invented and the customer was too.
+
+          Three separate reasons it could not stay, in the order they bite:
+
+          The owner can read this page. He is being pitched. Finding his
+          restaurant already listed as a paying customer is the end of that
+          conversation and probably of the relationship, and he would be right.
+
+          Naming a business as a customer when it is not is a false endorsement.
+          The FTC's rule on endorsements is about exactly this, and it does not
+          care that the intent was optimism about a deal expected to close.
+
+          And it is the one thing this product cannot be caught doing. BillTap's
+          pitch is that it gets a restaurant honest reviews from real guests. A
+          page that manufactures its own social proof is selling review
+          integrity while faking its own.
+
+          ── What replaced it ────────────────────────────────────────────────
+
+          Only claims that are true on the day they are read. The price is the
+          real price. The trial length is TRIAL_DAYS in worker/routes/
+          functions.js. "Founder-led" is a fact about a company of one.
+
+          There is no customer count here, and there should not be one until
+          there is a customer who agreed to be named. When that happens the
+          numbers to put here are the ones the dashboard already computes —
+          reviews captured, contacts collected, low ratings caught — pulled from
+          a real account, with permission. Not before. */}
       <section id="proof" className="py-16 sm:py-20" style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <div className="max-w-4xl mx-auto px-5 sm:px-8 text-center">
           <span className="rst-eyebrow inline-block px-3 py-1.5 rounded-full mb-6"
             style={{ background: "rgba(240,180,41,.1)", color: GOLD, border: "1px solid rgba(240,180,41,.25)" }}>
-            Live in Las Vegas
+            Built in Las Vegas
           </span>
           <p className="font-display text-2xl sm:text-3xl leading-snug" style={{ color: "#f5f5f4" }}>
-            Mariposa | Cocina &amp; Cocktails runs BillTap every service.
+            No customer logos yet — you&apos;d be the first.
+          </p>
+          <p className="mt-4 text-base leading-relaxed max-w-xl mx-auto" style={{ color: "rgba(245,245,244,.62)" }}>
+            BillTap is built and running today. It is not yet in a dining room, and
+            this page is not going to pretend otherwise. Being first means the
+            founder answers the phone.
           </p>
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6">
             {[
-              { n: "Live", l: "and taking real tables today" },
-              { n: "30 sec", l: "average time to split & pay" },
               { n: "$149", l: "flat monthly, no contract" },
+              { n: "14 days", l: "free trial, no card up front" },
+              { n: "Founder-led", l: "you deal with the person who built it" },
             ].map((s) => (
               <div key={s.l}>
                 <div className="font-display text-3xl sm:text-4xl" style={{ color: GOLD }}>{s.n}</div>

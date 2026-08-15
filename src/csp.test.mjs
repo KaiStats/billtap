@@ -120,3 +120,51 @@ test('every origin script-src allows is one the app actually calls', () => {
     );
   }
 });
+
+// ── No manufactured social proof ────────────────────────────────────────────
+//
+// The pitch page carried "Mariposa | Cocina & Cocktails runs BillTap every
+// service" under a "Live in Las Vegas" heading, beside "30 sec average time to
+// split & pay". Mariposa was not a customer — a prospect who had not said yes —
+// and the thirty seconds was invented. The comment above the section claimed it
+// contained "deliberately no invented numbers".
+//
+// This guards the property rather than the wording, because the wording will
+// change and the property must not: nothing on a public page may name a
+// business as a customer, or state a performance metric, that is not true on
+// the day it is read. The product sells review integrity. It cannot be caught
+// manufacturing its own.
+
+test('the pitch page names no restaurant as a customer', () => {
+  const src = readFileSync(new URL('./pages/Restaurants.jsx', import.meta.url), 'utf8');
+  // Everything outside a comment — the copy a visitor actually reads.
+  const copy = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  assert.ok(!/Mariposa/i.test(copy),
+    'a named restaurant is back in the rendered copy — it must be a customer who agreed to be named');
+  assert.ok(!/runs BillTap every service/i.test(copy));
+  assert.ok(!/taking real tables today/i.test(copy));
+});
+
+test('the pitch page states no performance metric it cannot support', () => {
+  const src = readFileSync(new URL('./pages/Restaurants.jsx', import.meta.url), 'utf8');
+  const copy = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  // "30 sec average time to split & pay" was measured against nothing. A stat
+  // block entry is `{ n: "...", l: "..." }`; the headline half is what a
+  // skimming owner reads as a number, so that is what is checked.
+  const stats = [...copy.matchAll(/\bn:\s*"([^"]+)"/g)].map((m) => m[1]);
+  for (const stat of stats) {
+    assert.ok(
+      !/\b\d+\s*(sec|second|min|minute|hour|%|x)\b/i.test(stat),
+      `"${stat}" is a performance claim on a public page — it needs a real measurement behind it, `
+      + 'or it needs to not be there',
+    );
+  }
+});
