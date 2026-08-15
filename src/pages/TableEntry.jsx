@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { Loader2, Camera, Users } from "lucide-react";
 import { invoke } from "@/api/functions";
+import Seo from "@/components/Seo";
 
 const GOLD = "#f0b429";
 
@@ -90,6 +91,28 @@ export default function TableEntry() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#0a0e1a", color: "#fff" }}>
+      {/*
+        A demo page is never indexed.
+
+        The slug is unguessable and the row is deleted within the day, so a
+        crawler finding one is unlikely — but "unlikely" is not the standard
+        when what would be indexed is a page carrying a real business's name,
+        published by us, for a business that never agreed to it. A search result
+        for that name pointing at billtap.app is precisely the claim the random
+        slug exists to avoid making, and it would outlive the row by however
+        long the index takes to catch up.
+
+        Only demo rows. A real restaurant's table-tent page is theirs and there
+        is no reason to hide it.
+      */}
+      {restaurant.demo ? (
+        <Seo
+          title={`${restaurant.name} — BillTap`}
+          description="Split the check."
+          path={`/r/${slug}`}
+          noindex
+        />
+      ) : null}
       <div className="w-full max-w-sm text-center">
         <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-6"
           style={{ background: GOLD }}>

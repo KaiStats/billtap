@@ -111,6 +111,11 @@ const SPA_ROUTES = new Set([
   '/receipt-detail',
   '/profile',
   '/restaurant-dashboard',
+  // Listed for the same reason as everything else here — an unlisted path is
+  // served with a 404 status, so the screen would boot and work while
+  // reporting itself as missing. It carries noindex of its own; being a real
+  // route and being crawlable are different questions.
+  '/new',
 ]);
 
 /** Per-table guest links from the QR tents: /r/<slug>. */

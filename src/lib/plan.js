@@ -28,6 +28,15 @@
  */
 import { entitlement, isEntitled } from '../../shared/entitlement.js';
 
+/** BillTap gold. The brand colour, and the one the table tents are printed in. */
+const GOLD = "#f0b429";
+
+/** Hours until a demo page deletes itself, or null when nothing is counting. */
+export function demoHoursLeft(restaurant, now = Date.now()) {
+  if (!restaurant?.demo_expires_at) return null;
+  return Math.max(0, Math.ceil((Number(restaurant.demo_expires_at) - now) / 3600000));
+}
+
 /** Days until the trial ends, or null when there is no end date to count to. */
 export function trialDaysLeft(restaurant, now = Date.now()) {
   if (!restaurant?.trial_ends_at) return null;
@@ -46,6 +55,36 @@ export function planSummary(restaurant, now = Date.now()) {
     : "$149/month.";
 
   /**
+   * A demo page, and it says so before it says anything about billing.
+   *
+   * Above the block below because a demo row *is* entitled — see the demo arm
+   * in shared/entitlement.js — so without this it falls through every branch
+   * and lands on the `default:` arm, which renders "Free trial" and counts down
+   * to a `trial_ends_at` a demo row does not have. That is a sales demo being
+   * described to its own operator as a customer on a fourteen-day clock, which
+   * is wrong in both halves.
+   *
+   * The copy says the two things that stop it being mistaken for a restaurant:
+   * nobody is being billed, and it deletes itself. This screen is the only
+   * place a demo row is ever described in words, so if it is going to be
+   * ambiguous anywhere it will be here.
+   */
+  const { state: current } = entitlement(restaurant, now);
+  if (current === 'demo') {
+    const hours = demoHoursLeft(restaurant, now);
+    return {
+      tone: GOLD,
+      headline: "Demo",
+      heading: "Demo",
+      detail: (hours !== null
+        ? `Deletes itself in ${hours} hour${hours === 1 ? "" : "s"}. `
+        : "Deletes itself when the cleanup job next runs. ")
+        + "This is a sales demo, not a customer account — nobody is being billed for it, "
+        + "and its ratings never reach your numbers.",
+    };
+  }
+
+  /**
    * Service has stopped, and saying so plainly comes before everything else.
    *
    * The same rule the Worker gates on — shared/entitlement.js — decides
@@ -56,7 +95,25 @@ export function planSummary(restaurant, now = Date.now()) {
    * the same lie in a quieter voice.
    */
   if (!isEntitled(restaurant, now)) {
-    const { state } = entitlement(restaurant, now);
+    const state = current; // one entitlement() call for the whole function
+    /**
+     * An expired demo, before the "Trial ended" copy can claim it.
+     *
+     * Nothing here was ever a trial, so that copy would be a lie in every
+     * clause of it — there is no service to have stopped, no $149 to turn it
+     * back on with, and nothing collected to still be here. In practice this is
+     * unreachable, because the nightly job deletes expired demo rows; it exists
+     * for the night that job does not run, which is precisely the night nobody
+     * is watching the screen it renders.
+     */
+    if (state === 'demo_expired') {
+      return {
+        tone: "#8b8b8b",
+        headline: "Demo expired",
+        heading: "Demo expired",
+        detail: "This demo page has expired and is due to be deleted. Create a new one from /new.",
+      };
+    }
     if (state === 'cancelled') {
       return {
         tone: "#8b8b8b",
@@ -100,7 +157,7 @@ export function planSummary(restaurant, now = Date.now()) {
     // answers it first and a second copy here could only ever drift.
     default:
       return {
-        tone: "#f0b429",
+        tone: GOLD,
         // A trial with no end date is still a trial. Saying so is the whole
         // point — the alternative claimed the operator was paying.
         headline: restaurant?.trial_ends_at

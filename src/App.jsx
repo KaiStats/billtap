@@ -43,6 +43,7 @@ const BlogPost03QRWithoutPOS = lazy(() => import('@/pages/BlogPost03QRWithoutPOS
 const BlogPost04CostOfOneLostRegular = lazy(() => import('@/pages/BlogPost04CostOfOneLostRegular'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
+const NewDemo     = lazy(() => import('@/pages/NewDemo'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" style={{ background: '#070b16' }}>
@@ -117,6 +118,11 @@ const AUTH_GATED_ROUTES = new Set([
   // why opening it is safe.
   '/profile',
   '/restaurant-dashboard',
+  // The demo tool. Gated because it is only ever opened by a signed-in
+  // operator, and a flash of the create form at a signed-out visitor is a
+  // flash of a screen that publishes pages in the name of a business that has
+  // not agreed to one.
+  '/new',
 ]);
 
 const AuthenticatedApp = () => {
@@ -292,6 +298,15 @@ const AuthenticatedApp = () => {
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
               <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
+              {/*
+                The demo tool. Deliberately not linked from any page — see
+                src/pages/NewDemo.jsx. Sitting under ProtectedRoute is a
+                convenience so an unauthenticated visitor lands on /login
+                instead of a form that cannot work; the control that matters is
+                the operator allowlist in worker/routes/functions.js, which
+                answers 403 to every signed-in user who is not on it.
+              */}
+              <Route path="/new" element={<NewDemo />} />
             </Route>
 
             <Route path="*" element={<PageNotFound />} />

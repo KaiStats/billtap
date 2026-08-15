@@ -84,6 +84,22 @@ export async function onRequestPost({ request, env }) {
         skipped += 1;
         continue;
       }
+      /**
+       * A demo row is entitled — that is the whole point of the demo arm in
+       * shared/entitlement.js — so the check above waves it straight through,
+       * and this is the one place where "entitled" and "should receive this"
+       * come apart.
+       *
+       * A month-end performance report for a demo is a summary of ratings the
+       * operator tapped himself, on a restaurant that never signed up, sent to
+       * the operator's own inbox. It reports nothing, and if the address on the
+       * row were ever the prospect's it would be a report about a business's
+       * guests to a business that has not heard of us.
+       */
+      if (owner[0]?.demo) {
+        skipped += 1;
+        continue;
+      }
     }
 
     const label = r.label || body.window || 'Last month';

@@ -150,6 +150,55 @@ test('an unpaid one is not, and the rating is left deliverable', async () => {
   });
 });
 
+test('the low-rating alert fires for a demo page', async () => {
+  /**
+   * The single assertion this whole feature is built around.
+   *
+   * The demo that closes is the owner tapping two stars and the alert arriving
+   * while he is holding the phone. Every hand-made demo row before this one
+   * stopped doing that fourteen days after it was typed, silently, because
+   * `trial_ends_at` ran out and the gate above answered `not_entitled` — a 200
+   * with nothing sent, at the exact moment somebody was watching.
+   *
+   * `plan: 'trial'` with a long-dead `trial_ends_at` on purpose: that is the
+   * shape the row actually has, and this is the test that fails if the demo arm
+   * in shared/entitlement.js is ever moved below the rest of the function.
+   */
+  const demo = {
+    ...PAYING(),
+    id: 'r1', name: 'Herb and Rye', slug: 'hr-a7f3kq',
+    alert_email: 'kai@billtap.app',
+    google_review_url: null,
+    plan: 'trial', current_period_end: null, trial_ends_at: Date.now() - 30 * DAY,
+    demo: true, demo_expires_at: Date.now() + 6 * 3600000,
+  };
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 2, comment: 'demo tap', alerted_at: null };
+
+  await withStub({ restaurants: [demo], ratings: [rating] }, async ({ emails }) => {
+    const res = await alertFor();
+    assert.equal(res.status, 200);
+    assert.equal(emails.length, 1, 'the phone has to buzz while the prospect is holding it');
+    assert.equal(emails[0].To, 'kai@billtap.app', 'and it reaches the operator, never the prospect');
+  });
+});
+
+test('an expired demo is not paged', async () => {
+  // Unreachable in practice — the nightly job deletes these rows — but the
+  // state exists for the night it does not run, and a page that keeps alerting
+  // for a business that never agreed to it is the wrong way to degrade.
+  const demo = {
+    ...PAYING(),
+    plan: 'trial', current_period_end: null, trial_ends_at: null,
+    demo: true, demo_expires_at: Date.now() - 3600000,
+  };
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 2, alerted_at: null };
+  await withStub({ restaurants: [demo], ratings: [rating] }, async ({ emails }) => {
+    const body = await (await alertFor()).json();
+    assert.equal(emails.length, 0);
+    assert.equal(body.skipped, 'not_entitled');
+  });
+});
+
 // ── What billing must never touch ───────────────────────────────────────────
 
 test('a guest can still rate an unpaid restaurant, and it is still stored', async () => {

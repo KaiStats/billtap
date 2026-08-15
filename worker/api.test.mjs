@@ -1139,7 +1139,7 @@ test('an unknown restaurant is a 404', async () => {
   });
 });
 
-test('the public lookup returns five fields and withholds the rest', async () => {
+test('the public lookup returns six fields and withholds the rest', async () => {
   const full = {
     id: 'r1', name: "Joe's", slug: 'joes',
     google_review_url: 'https://g.page/joes', rating_threshold: 4,
@@ -1148,8 +1148,12 @@ test('the public lookup returns five fields and withholds the rest', async () =>
   };
   await withStub({ entities: { Restaurant: [full] } }, async ({ env }) => {
     const { restaurant } = await body(await HANDLERS.getPublicRestaurant({ env, body: { slug: 'joes' } }));
+    // `demo` joined this list with migration 0013: /r/:slug is rendered by the
+    // SPA from this response, so telling a crawler not to index a demo page has
+    // to be something the response says. It discloses nothing — see the comment
+    // on the field itself.
     assert.deepEqual(Object.keys(restaurant).sort(),
-      ['google_review_url', 'id', 'name', 'rating_threshold', 'slug']);
+      ['demo', 'google_review_url', 'id', 'name', 'rating_threshold', 'slug']);
     for (const secret of ['alert_email', 'alert_phone', 'owner_id', 'stripe_customer_id', 'stripe_subscription_id']) {
       assert.equal(restaurant[secret], undefined, `${secret} must not be public`);
     }

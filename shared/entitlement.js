@@ -74,6 +74,46 @@ export function entitlement(restaurant, now = Date.now()) {
     return { entitled: false, state: 'none', reason: 'no restaurant' };
   }
 
+  /**
+   * A demo page, stood up at a table for somebody who has not bought anything.
+   *
+   * First, and above everything below it, because this is the least ambiguous
+   * case in the function. The row is ours. There is no customer, no payment,
+   * and therefore no payment question to fail open about — so none of the
+   * reasoning underneath applies to it, and letting a `plan` or a stale
+   * `trial_ends_at` reach a demo row is how the demo stops working.
+   *
+   * It must be entitled, because being entitled is the entire point. The thing
+   * being sold is the low-rating alert arriving while a prospect is holding the
+   * phone; an unentitled demo is a demo that does nothing at the exact moment
+   * it is being watched, and does it silently. That was the live behaviour of
+   * the hand-made rows this replaces, fourteen days after each was typed.
+   *
+   * ── The asymmetry with the rest of the file is deliberate ─────────────────
+   *
+   * A demo with no expiry is served, consistent with the fail-open principle
+   * above and with the Mariposa precedent at `!trialEnd`: a gap in our own data
+   * entry is not a reason to break the demo.
+   *
+   * An expired one is denied outright, with none of the grace the paid states
+   * get. Grace exists to protect a paying restaurant from our own billing
+   * errors — there is nobody here to protect. Extending it would only mean a
+   * page bearing a stranger's business name staying live longer than the
+   * conversation that produced it.
+   *
+   * `demo_expired` should never reach anybody's eyes: the nightly job in
+   * worker/routes/retention.js deletes these rows. The state exists for the
+   * night that job does not run, so the page degrades to an expired demo rather
+   * than to a live-looking one for a business that never agreed to it.
+   */
+  if (restaurant.demo) {
+    const expires = Number(restaurant.demo_expires_at) || null;
+    if (!expires || now < expires) {
+      return { entitled: true, state: 'demo', reason: 'demo restaurant' };
+    }
+    return { entitled: false, state: 'demo_expired', reason: 'demo expired' };
+  }
+
   const plan = restaurant.plan || 'trial';
   const periodEnd = Number(restaurant.current_period_end) || null;
   const trialEnd = Number(restaurant.trial_ends_at) || null;

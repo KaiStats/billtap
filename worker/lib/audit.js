@@ -77,6 +77,14 @@ export const ACTIONS = {
   // and neither is answerable from the row itself, which keeps only the
   // current plan.
   BILLING_RECONCILED: 'billing.reconciled',
+  // A public page put up bearing a real business's name, by us, for a business
+  // that has not agreed to anything. It is the one action in this app that
+  // creates something in somebody else's name, so "who stood that page up, and
+  // when" needs an answer that outlives the row — and the row is hard-deleted
+  // twenty-four hours later, which is exactly why the log entry matters. The
+  // name goes in the detail: it is the only part anyone would ever ask about,
+  // and it is a business's name, not a person's.
+  DEMO_CREATED: 'demo.created',
   // Deliberately absent: auth.failed. Sign-in is still Base44's and moving to
   // Supabase, so there is no point in this codebase that sees a failed login.
   // Listing it would imply a coverage the code does not have — add it with the

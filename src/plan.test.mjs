@@ -15,10 +15,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { planSummary, trialDaysLeft } from './lib/plan.js';
+import { planSummary, trialDaysLeft, demoHoursLeft } from './lib/plan.js';
 
 const NOW = Date.UTC(2026, 7, 6);
 const DAY = 86400000;
+const HOUR = 3600000;
 
 test('a trial with no end date says trial, not "Active plan"', () => {
   // Mariposa, exactly: created by hand in SQL during the Supabase cutover.
@@ -70,6 +71,41 @@ test('an expired trial counts to zero rather than backwards', () => {
   assert.equal(trialDaysLeft({ trial_ends_at: null }, NOW), null);
   assert.equal(trialDaysLeft({}, NOW), null);
   assert.equal(trialDaysLeft(null, NOW), null);
+});
+
+test('a demo says demo, not "Free trial"', () => {
+  // A demo row is entitled, so without its own arm it falls through every
+  // branch to the default and is described to the person who created it as a
+  // customer on a fourteen-day clock. Both halves of that are wrong.
+  const demo = { demo: true, demo_expires_at: NOW + 6 * HOUR, plan: 'trial', trial_ends_at: null };
+  const s = planSummary(demo, NOW);
+  assert.equal(s.headline, 'Demo');
+  assert.equal(s.heading, 'Demo');
+  assert.equal(s.tone, '#f0b429', 'gold — the brand colour, and the one the table tents are printed in');
+  assert.match(s.detail, /6 hours/);
+  assert.match(s.detail, /not a customer account/);
+  assert.match(s.detail, /never reach your numbers/);
+
+  assert.equal(demoHoursLeft(demo, NOW), 6);
+  assert.equal(demoHoursLeft({ demo_expires_at: NOW - 5 * HOUR }, NOW), 0, 'counts to zero, not backwards');
+  assert.equal(demoHoursLeft({}, NOW), null);
+  assert.equal(demoHoursLeft(null, NOW), null);
+});
+
+test('an expired demo does not say "Trial ended"', () => {
+  // That copy is a lie in every clause: nothing here was a trial, there is no
+  // service to have stopped, and there is no $149 that turns it back on.
+  const s = planSummary({ demo: true, demo_expires_at: NOW - HOUR }, NOW);
+  assert.equal(s.headline, 'Demo expired');
+  assert.notEqual(s.heading, 'Trial ended');
+  assert.ok(!/\$149/.test(s.detail), 'nobody was ever going to be billed for this');
+});
+
+test('a demo with no expiry still reads as a demo', () => {
+  // entitlement() serves it — the fail-open direction — so this screen has to
+  // have something honest to say about it rather than falling through.
+  const s = planSummary({ demo: true, demo_expires_at: null }, NOW);
+  assert.equal(s.heading, 'Demo');
 });
 
 test('an unrecognised plan is treated as a trial, not as paying', () => {

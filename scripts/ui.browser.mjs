@@ -2066,3 +2066,209 @@ test('the Google button cannot be double-tapped into two tabs', async () => {
       'and the tap is counted once');
   } finally { await context.close(); }
 });
+
+// ── Demo provisioning ───────────────────────────────────────────────────────
+//
+// /new is the screen the product is sold from: a name typed at a table, a live
+// page, and a QR the prospect scans off the operator's phone. Nothing below
+// asserts business rules — those are worker/demo-restaurant.test.mjs — these
+// are here because a screen that renders nothing is a React error, a bad
+// import or a null dereference, and none of those show up in a node:test.
+
+/** The project ref in scripts/build-for-tests.mjs, which decides the auth key. */
+const AUTH_KEY = 'sb-uitest-auth-token';
+
+const OPERATOR = {
+  id: 'user_kai',
+  email: 'kai@billtap.app',
+  aud: 'authenticated',
+  role: 'authenticated',
+  app_metadata: {},
+  user_metadata: {},
+};
+
+/**
+ * A signed-in operator, on a phone, with the demo endpoints stubbed.
+ *
+ * The session is planted in localStorage under the key supabase-js derives from
+ * the project URL — see storageKey() in src/lib/supabase.js — because that is
+ * the only thing authPending() checks before deciding whether to fetch an auth
+ * client at all. A far-future expiry so nothing tries to refresh mid-test.
+ */
+async function operatorPage(path, { demos = [], onCreate = null, createFails = null } = {}) {
+  const context = await browser.newContext({
+    viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
+  });
+  const errors = [];
+  const page = await context.newPage();
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const createCalls = [];
+  let made = 0;
+
+  await page.route('**/auth/v1/**', async (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(OPERATOR),
+  }));
+
+  await page.route('**/api/**', async (route) => {
+    const url = route.request().url();
+    const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+
+    if (url.includes('/fn/listMyDemoRestaurants')) return send({ demos });
+    if (url.includes('/fn/createDemoRestaurant')) {
+      const payload = route.request().postDataJSON();
+      createCalls.push(payload);
+      if (createFails) {
+        return route.fulfill({
+          status: createFails.status, contentType: 'application/json',
+          body: JSON.stringify({ error: createFails.error }),
+        });
+      }
+      made += 1;
+      const slug = `hr-a7f3k${made}`;
+      const demo = {
+        slug,
+        name: payload.name.trim(),
+        url: `https://billtap.app/r/${slug}`,
+        expires_at: Date.now() + 24 * 3600000,
+      };
+      demos.push(demo);
+      if (onCreate) onCreate(payload);
+      return send(demo);
+    }
+    return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
+  });
+
+  // The session has to exist before the app boots, or authPending() answers no
+  // on the very load being tested and ProtectedRoute bounces to /login.
+  await page.addInitScript(([key, user]) => {
+    localStorage.setItem(key, JSON.stringify({
+      access_token: 'stub-access-token',
+      token_type: 'bearer',
+      expires_in: 86400,
+      expires_at: Math.floor(Date.now() / 1000) + 86400,
+      refresh_token: 'stub-refresh-token',
+      user,
+    }));
+  }, [AUTH_KEY, OPERATOR]);
+
+  await page.goto(`${base}${path}`, { waitUntil: 'domcontentloaded' });
+  return { context, page, errors, createCalls, demos };
+}
+
+test('/new comes up for a signed-in operator rather than bouncing to login', async () => {
+  const { context, page, errors } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Create demo page/i }).waitFor();
+    assert.ok(!page.url().includes('/login'), `bounced to ${page.url()}`);
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('typing a name produces a page, a QR and a readable URL', async () => {
+  // The whole screen, and the reason it exists. The QR is not decoration: the
+  // prospect scans it off the operator's phone, which is what makes the next
+  // thirty seconds his rather than a demonstration he is watching.
+  const { context, page, createCalls, errors } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    assert.deepEqual(createCalls, [{ name: 'Herb and Rye' }], 'the name, and nothing else');
+
+    // A QR that renders as an empty <svg> would look right in a screenshot and
+    // scan as nothing, so this asserts it has actual modules in it.
+    const modules = await page.locator('svg').first().locator('path, rect').count();
+    assert.ok(modules > 0, 'the QR rendered no modules — it would scan as nothing');
+
+    await page.getByText('billtap.app/r/hr-a7f3k1').waitFor({ timeout: 10000 });
+    await page.getByText(/left$/).first().waitFor({ timeout: 10000 });
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('the field is cleared and refocused, so the next stop is one tap away', async () => {
+  const { context, page } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+
+    assert.equal(await page.getByLabel(/Restaurant name/i).inputValue(), '');
+  } finally { await context.close(); }
+});
+
+test('demos from earlier stops are listed, so one can be re-opened', async () => {
+  const earlier = [{
+    slug: 'ab-99xyz2', name: 'Atomic Liquors',
+    url: 'https://billtap.app/r/ab-99xyz2', expires_at: Date.now() + 5 * 3600000,
+  }];
+  const { context, page } = await operatorPage('/new', { demos: earlier });
+  try {
+    await page.getByRole('heading', { name: 'Atomic Liquors' }).waitFor({ timeout: 15000 });
+    await page.getByText('billtap.app/r/ab-99xyz2').waitFor();
+  } finally { await context.close(); }
+});
+
+test('a refusal from the server is shown rather than swallowed', async () => {
+  // The message that matters is the 403: an operator whose address is not on
+  // DEMO_OPERATOR_EMAILS needs to see why, not a button that does nothing.
+  const { context, page } = await operatorPage('/new', {
+    createFails: { status: 403, error: 'Not allowed' },
+  });
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+    await page.getByText('Not allowed').waitFor({ timeout: 15000 });
+    assert.equal(await page.getByRole('heading', { name: 'Herb and Rye' }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('the button cannot be double-tapped into two demo pages', async () => {
+  // He is standing up, one-handed, in a hurry. Two taps must not be two live
+  // pages in a stranger's name.
+  const { context, page, createCalls } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    const button = page.getByRole('button', { name: /Create demo page/i });
+    await button.dispatchEvent('click');
+    await button.dispatchEvent('click').catch(() => {});
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    assert.equal(createCalls.length, 1, `${createCalls.length} pages published from one intent`);
+  } finally { await context.close(); }
+});
+
+// ── The table page a demo QR lands on ───────────────────────────────────────
+
+test('a demo table page tells crawlers to stay away', async () => {
+  // A search result for a real business's name pointing at billtap.app is the
+  // claim the unguessable slug exists to avoid making, and it would outlive the
+  // row by however long the index takes to catch up.
+  const { context, page } = await phone({
+    restaurant: { id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq', google_review_url: null, rating_threshold: 3, demo: true },
+  });
+  try {
+    await page.goto(`${base}/r/hr-a7f3kq`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('meta[name="robots"]')?.content?.includes('noindex'), null, { timeout: 10000 });
+  } finally { await context.close(); }
+});
+
+test("a real restaurant's table page stays indexable", async () => {
+  // Theirs, and there is no reason to hide it.
+  const { context, page } = await phone({
+    restaurant: { id: 'r_real', name: 'Mariposa', slug: 'mariposa', google_review_url: null, rating_threshold: 3, demo: false },
+  });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Mariposa' }).waitFor({ timeout: 15000 });
+    const robots = await page.locator('meta[name="robots"]').count();
+    assert.ok(
+      robots === 0 || !(await page.locator('meta[name="robots"]').first().getAttribute('content')).includes('noindex'),
+      "a paying restaurant's own table page must not be deindexed",
+    );
+  } finally { await context.close(); }
+});
