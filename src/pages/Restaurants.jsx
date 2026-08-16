@@ -269,10 +269,26 @@ export default function Restaurants() {
         .font-body    { font-family: 'Inter Tight', system-ui, sans-serif; }
         .font-mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
-        /* Eyebrow / micro-label: the one place we use caps + wide tracking. */
+        /*
+          Eyebrow / micro-label: the one place we use caps + wide tracking.
+
+          12px on a phone, 10px from the sm breakpoint up. Ten was chosen for a desktop
+          canvas and carried straight down: on a 390px screen the hero's label
+          — "Guests split the bill free — you get the reviews", the first line
+          of copy an owner reads — wrapped onto two lines at a size that is
+          hard work in a dim restaurant. Caps and .2em tracking cost legibility
+          on top of the size, which is why this is the one label that needs the
+          bump rather than a site-wide change.
+
+          Tracking eases slightly with it. At 12px, .2em is enough to break a
+          short phrase into something you read letter by letter.
+        */
         .rst-eyebrow {
           font-family: 'JetBrains Mono', ui-monospace, monospace;
-          font-size: 10px; text-transform: uppercase; letter-spacing: .2em;
+          font-size: 12px; text-transform: uppercase; letter-spacing: .14em;
+        }
+        @media (min-width: 640px) {
+          .rst-eyebrow { font-size: 10px; letter-spacing: .2em; }
         }
 
         .rst-grain::after {
@@ -414,7 +430,7 @@ export default function Restaurants() {
       </header>
 
       {/* ── Four pillars ────────────────────────────────────── */}
-      <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-20 sm:py-28">
+      <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PILLARS.map((p, i) => (
             <Reveal key={p.title} delay={i * 0.07} className="h-full">
@@ -522,7 +538,7 @@ export default function Restaurants() {
       </section>
 
       {/* ── How it works ────────────────────────────────────── */}
-      <section className="relative py-20 sm:py-28" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
+      <section className="relative py-14 sm:py-28" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <Reveal>
             <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Three steps</p>
@@ -574,7 +590,7 @@ export default function Restaurants() {
       </section>
 
       {/* ── Pricing + form ──────────────────────────────────── */}
-      <section ref={formRef} className="relative max-w-6xl mx-auto px-5 sm:px-8 py-20 sm:py-28">
+      <section ref={formRef} className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
           <Reveal>
             <div>
