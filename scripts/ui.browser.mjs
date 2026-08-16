@@ -133,6 +133,8 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   // a diner through getSplitStatus, so a test that counts only one of them is
   // counting nothing on half the screens.
   const pollCalls = [];
+  /** Every join or claim — the same endpoint carries both. */
+  const joinCalls = [];
   // The split the host screen reads back. Mutated by confirmPayment below so
   // the page behaves like the real thing across a confirm.
   let hostState = hostSession ? structuredClone(hostSession) : null;
@@ -236,6 +238,38 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
       };
       return send({ session: hostState });
     }
+    /**
+     * Joining, and claiming — the same endpoint does both.
+     *
+     * There was no stub for this at all, so every claim fell through to the
+     * catch-all `{}` below and `res.data?.session` came back undefined. Nothing
+     * noticed, because until now no test clicked an unclaimed item: the
+     * fixtures arrived with everything already claimed by other people.
+     *
+     * It honours the items and participants it is sent, because that is what
+     * claimMutation posts — a stub answering with the session it already had
+     * would show a claim reverting a beat after the tap, which is precisely the
+     * bug a test would exist to catch.
+     */
+    if (url.includes('/fn/joinSession')) {
+      const payload = route.request().postDataJSON();
+      joinCalls.push(payload);
+      const already = (hostState.participants || [])
+        .some((p) => p.participant_id === payload.participant_id);
+      hostState = {
+        ...hostState,
+        ...(payload.items ? { items: payload.items } : {}),
+        participants: payload.participants || (already
+          ? hostState.participants
+          : [...(hostState.participants || []), {
+            participant_id: payload.participant_id,
+            name: payload.name,
+            amount_owed: 0,
+            payment_status: 'unpaid',
+          }]),
+      };
+      return send({ session: hostState });
+    }
     if (url.includes('/fn/getSplitStatus')) {
       const payload = route.request().postDataJSON();
       statusCalls.push({ ...payload, header: route.request().headers()['x-billtap-participant'] });
@@ -277,7 +311,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
 
   return {
     context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls, scanCalls,
-    ratingCalls, alertCalls,
+    ratingCalls, alertCalls, joinCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -301,6 +335,17 @@ const HOST_SESSION = {
     { participant_id: 'p_1700000000000_aaa', name: 'Alice', amount_owed: 21.4, payment_status: 'pending_verification' },
     { participant_id: 'p_1700000000001_bbb', name: 'Bob', amount_owed: 40, payment_status: 'unpaid' },
   ],
+};
+
+/**
+ * The same bill with nothing claimed and nobody in it — what a guest scanning
+ * the QR first actually meets.
+ */
+const OPEN_SESSION = {
+  ...HOST_SESSION,
+  status: 'claiming',
+  items: HOST_SESSION.items.map((i) => ({ ...i, claimed_by: [] })),
+  participants: [],
 };
 
 /** A restaurant with a review link set and the default alert threshold. */
@@ -2331,5 +2376,77 @@ test('a second receipt asks the question again', async () => {
 
     await toReview(page);
     await page.waitForFunction(() => /Is this /.test(document.body.innerText), null, { timeout: 15000 });
+  } finally { await context.close(); }
+});
+
+// ── The guest sees the bill before being asked who they are ─────────────────
+
+test('a guest lands on the items, not on a name wall', async () => {
+  /**
+   * The gate used to open the moment the page loaded: somebody scanned a QR
+   * expecting to see the check and got "What's your name?" on an otherwise
+   * empty screen, before they knew what they were joining or what they owed.
+   * A cold ask at the one moment they had least reason to answer it.
+   */
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0,
+      'the bill is visible first');
+  } finally { await context.close(); }
+});
+
+test('claiming asks the name, then finishes the tap that asked', async () => {
+  // Answering must not be a detour: the item they reached for is remembered and
+  // claimed for them, so they land back on exactly the thing they tapped.
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+
+    await page.getByText(/Chicken Alfredo/i).first().click();
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 8000 });
+
+    await page.getByPlaceholder(/First name is fine/i).fill('Priya');
+    await page.getByRole('button', { name: /Join the Split/i }).click();
+
+    // The gate closes and the tap completes.
+    await page.waitForFunction(
+      () => !/What's your name/.test(document.body.innerText),
+      null, { timeout: 10000 },
+    );
+    await page.waitForFunction(
+      () => /1\/\d+ claimed|👤 You/.test(document.body.innerText),
+      null, { timeout: 12000 },
+    );
+  } finally { await context.close(); }
+});
+
+// ── The host is asked where the money goes ─────────────────────────────────
+
+test('the host screen says guests cannot pay them yet', async () => {
+  /**
+   * The payment handle was only ever requested behind "Claim My Items". A host
+   * who did the obvious thing — show the QR, let the table scan — never saw it,
+   * so guests tapped "Pay" and were told to ask the host, and the split marked
+   * them settled anyway. The one thing the product exists to finish was the one
+   * thing it did not.
+   */
+  const { context, page } = await phone({ hostSession: { ...OPEN_SESSION, host_payment_info: null } });
+  try {
+    await page.goto(`${base}/session-host?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Guests can't pay you yet/i).waitFor({ timeout: 15000 });
+    await page.getByText(/Venmo, Cash App or Zelle/i).waitFor({ timeout: 5000 });
+  } finally { await context.close(); }
+});
+
+test('a host who already set a handle is not nagged', async () => {
+  const paid = { ...OPEN_SESSION, host_payment_info: { method: 'venmo', handle: '@kai' } };
+  const { context, page } = await phone({ hostSession: paid });
+  try {
+    await page.goto(`${base}/session-host?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Have everyone scan this/i).waitFor({ timeout: 15000 });
+    assert.equal(await page.getByText(/Guests can't pay you yet/i).count(), 0);
   } finally { await context.close(); }
 });

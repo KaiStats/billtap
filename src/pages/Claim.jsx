@@ -65,6 +65,8 @@ export default function Claim() {
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
+  /** The item a guest reached for before we knew who they were. */
+  const [pendingClaim, setPendingClaim] = useState(null);
   /**
    * The split was full when this guest tried to get in.
    *
@@ -160,12 +162,42 @@ export default function Claim() {
       // Pin it to this session as well, so renaming here later changes only
       // this split rather than the name they carry everywhere.
       localStorage.setItem(`billtap-guest-name-${sessionId}`, name);
-    } else {
-      setShowNameGate(true);
     }
+    /**
+     * No name gate on arrival, deliberately.
+     *
+     * This used to open the moment the page loaded: a guest scanned the QR
+     * expecting to see the check and got "What's your name?" on an otherwise
+     * empty screen, before they knew what they were joining or what they owed.
+     * A cold ask, at the one moment they had least reason to answer it.
+     *
+     * They see the bill first now, and the ask moves to the moment they claim
+     * something -- by which point they have picked their steak and the
+     * question answers itself. See toggleClaim.
+     */
   }, [sessionId]);
 
   useEffect(() => { if (tokenVerified) fetchSession(); }, [fetchSession, tokenVerified]);
+
+  /**
+   * Finish the tap that asked the question.
+   *
+   * A guest reaches for their steak, is asked who they are, and answers. Doing
+   * nothing with the item they tapped would make the name feel like a toll
+   * rather than part of claiming it — they would have to find the steak again.
+   *
+   * Waits for `session` because ensureJoined refreshes it, and toggleClaim
+   * reads the item list off it. Cleared before claiming so a re-render cannot
+   * fire it twice.
+   */
+  useEffect(() => {
+    if (!pendingClaim || !myName || !session) return;
+    const itemId = pendingClaim;
+    setPendingClaim(null);
+    toggleClaim(itemId);
+    // toggleClaim is redefined every render and depending on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingClaim, myName, session]);
 
   /**
    * Live, at last.
@@ -291,6 +323,18 @@ export default function Claim() {
 
   const toggleClaim = async (itemId) => {
     if (!session) return;
+    /**
+     * The name, asked here rather than at the door.
+     *
+     * The item they tapped is remembered and claimed for them as soon as they
+     * give it, so answering the question is not a detour -- they land back on
+     * exactly the thing they reached for.
+     */
+    if (!myName) {
+      setPendingClaim(itemId);
+      setShowNameGate(true);
+      return;
+    }
     const item = session.items.find(i => i.id === itemId);
     if (!item) return;
     const currentlyClaimed = item.claimed_by || [];

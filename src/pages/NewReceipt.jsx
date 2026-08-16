@@ -121,6 +121,30 @@ export default function NewReceipt() {
   const quickEvenRef = useRef(null);
   const scrollToQuickEven = useRef(false);
 
+  /**
+   * The restaurant the table tent already told us about.
+   *
+   * TableEntry writes the slug into sessionStorage when a guest scans
+   * `/r/<slug>`, and both create paths read it back at the moment they submit —
+   * so attribution has always been correct. What was not correct was the
+   * question: this state stayed null on the tent path, and the confirmation
+   * below is gated on it being null, so a guest who had just scanned Herb &
+   * Rye's own table tent was asked "Is this HERB & RYE?".
+   *
+   * One wasted tap, and an odd one — it invites somebody to correct a fact the
+   * tent is more certain about than the scan is. Seeding it here answers the
+   * question before it is asked.
+   */
+  useEffect(() => {
+    try {
+      const fromTent = sessionStorage.getItem("billtap_restaurant_slug");
+      if (fromTent) setRestaurantSlug(fromTent);
+    } catch {
+      // Private mode. The create paths read sessionStorage directly, so the
+      // split is still attributed; the guest just gets asked to confirm.
+    }
+  }, []);
+
   useEffect(() => {
     if (!showQuickEven || !scrollToQuickEven.current) return;
     scrollToQuickEven.current = false;

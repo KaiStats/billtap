@@ -346,6 +346,51 @@ function SessionHostComponent() {
             </div>
           )}
 
+          {/*
+            Where the money actually goes — asked before the QR, not after.
+
+            ── What this fixes ────────────────────────────────────────────────
+
+            The payment handle was only ever requested from
+            handleStartClaimingClick, behind the "Claim My Items" button. A host
+            who does the obvious thing -- show the QR, let the table scan --
+            never saw it.
+
+            So guests claimed their items, tapped "Pay $52.44", and were told
+            "ask the host how they want to be paid". Then the split marked them
+            as sent anyway, and the host got a confirmed list describing money
+            that had never moved. The one thing the product exists to finish was
+            the one thing it did not.
+
+            Above the QR because that is the order the host works in: this
+            screen exists to be held up to a table, and anything below the code
+            is read after everyone has already scanned.
+
+            A nudge and not a wall. A host who wants to share the code first, or
+            who is collecting cash, must not be blocked by us -- the split still
+            works without a handle, it just cannot tell anyone where to send
+            money. See how the guest handles its absence in src/pages/Claim.jsx.
+          */}
+          {!session.host_payment_info && (
+            <button
+              type="button"
+              onClick={() => setShowPaymentSetup(true)}
+              className="w-full text-left rounded-2xl p-4 flex items-start gap-3 transition active:scale-[0.99]"
+              style={{ background: "rgba(240,180,41,.10)", border: "1px solid rgba(240,180,41,.35)" }}
+            >
+              <DollarSign className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#f0b429" }} aria-hidden="true" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-sm text-white">
+                  Guests can&apos;t pay you yet
+                </span>
+                <span className="block text-xs mt-1 text-white/60">
+                  Add your Venmo, Cash App or Zelle so everyone knows where to send it.
+                </span>
+              </span>
+              <span className="text-xs font-semibold shrink-0 mt-0.5" style={{ color: "#f0b429" }}>Add →</span>
+            </button>
+          )}
+
           {/* QR Code */}
           <div className="flex flex-col items-center gap-3">
             <div className="bg-white p-4 rounded-2xl shadow-xl" role="img" aria-label={`QR code to join: ${session.title}`}>
