@@ -2000,7 +2000,35 @@ const HANDLERS = {
       });
     }
 
-    return etagJson(request, { session: publicSession(session) });
+    /**
+     * How full this split is allowed to get, told to the person who can act on
+     * it.
+     *
+     * The guest who gets turned away already sees why — "this split is full,
+     * ask whoever started it to upgrade" — and that is the wrong person to be
+     * showing an upsell to. They cannot upgrade anything; they are the eleventh
+     * friend at dinner. The host is the one holding the account and the card,
+     * and until now the only thing that ever told them about the limit was
+     * somebody at the table saying "it won't let me in".
+     *
+     * Sent on every host poll rather than only when full, so the screen can
+     * warn as the table fills instead of after somebody has already been
+     * refused. Being told at ten that the next person will not fit is worth
+     * more than being told at eleven that they did not.
+     */
+    const party = await resolvePartyLimit(env, svc, session);
+
+    return etagJson(request, {
+      session: publicSession(session),
+      party: {
+        limit: party.limit,
+        tier: party.tier,
+        joined: (session.participants || []).length,
+        // Computed here so the client cannot disagree with the endpoint that
+        // does the refusing.
+        full: (session.participants || []).length >= party.limit,
+      },
+    });
   },
 
   /**

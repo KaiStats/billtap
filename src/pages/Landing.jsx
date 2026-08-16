@@ -486,7 +486,7 @@ export default function Landing() {
     { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
     { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
     { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
-    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. When you try to add an 11th person, BillTap shows the Pro upgrade prompt. Pro ($0.99/mo) raises it." },
+    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. An 11th person is told the split is full, and you're told on your own screen once the table hits 10. Pro ($0.99/mo) raises it." },
     { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
   ];
 
@@ -769,7 +769,7 @@ export default function Landing() {
           <div className="max-w-3xl mt-5 p-5 rounded-xl bg-surface/60 border border-border/70 flex gap-4 items-start">
             <Zap className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">When does Pro kick in?</span> When you try to add an 11th person to a session, BillTap shows the upgrade prompt — right at the moment it's actually useful. No nag screens before then.
+              <span className="font-semibold text-foreground">When does Pro kick in?</span> When your table reaches 10 people, BillTap tells you on the split screen that it's full — right at the moment it's actually useful. No nag screens before then.
             </p>
           </div>
 

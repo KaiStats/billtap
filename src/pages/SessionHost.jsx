@@ -28,6 +28,14 @@ function SessionHostComponent() {
    * without it. See src/lib/hostKey.js.
    */
   const [session, setSession] = useState(null);
+  /**
+   * How full this split may get, from the endpoint that does the refusing.
+   *
+   * The eleventh guest already sees why they were turned away, and they are the
+   * wrong person to show an upsell to — they cannot upgrade anything, they are
+   * somebody's friend at dinner. This screen belongs to the person who can.
+   */
+  const [party, setParty] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -80,7 +88,13 @@ function SessionHostComponent() {
         session_id: sessionId,
         host_key: getHostKey(sessionId),
       });
-      if (res.data?.session) { setSession(res.data.session); return; }
+      if (res.data?.session) {
+        setSession(res.data.session);
+        // Only the host view carries this. The scoped read below is what a
+        // guest holding the link gets, and it says nothing about plans.
+        setParty(res.data.party || null);
+        return;
+      }
     } catch {
       // Not the host, or the key is gone. Fall through to the scoped read that
       // anyone holding the link may make.
@@ -373,6 +387,42 @@ function SessionHostComponent() {
               )}
             </div>
           </div>
+
+          {/*
+            The table is as big as this plan allows.
+
+            Shown at the limit rather than after somebody has been refused:
+            being told at ten that the next person will not fit is worth more
+            than being told at eleven that they did not. It is also the only
+            warning that reaches the host at all — the refusal happens on a
+            stranger's phone.
+
+            Restaurant tables never see this. Their limit is the row ceiling,
+            not a consumer tier, because the restaurant already pays $149.
+          */}
+          {party?.full && party.tier === "free" && (
+            <div
+              className="rounded-2xl p-4 flex items-start gap-3"
+              style={{ background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.25)" }}
+            >
+              <Users className="w-5 h-5 shrink-0 mt-0.5 text-primary" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-white">
+                  That&apos;s {party.limit} people — the table is full
+                </p>
+                <p className="text-xs mt-1 text-white/55">
+                  Anyone else who scans will be turned away. Pro lifts the limit for $0.99/month.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/#pricing")}
+                  className="mt-3 px-4 py-2 rounded-xl font-semibold text-xs bg-primary text-primary-foreground"
+                >
+                  See Pro
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Configure Split Button (for custom mode or to switch to custom) */}
           {participants.length > 0 && (

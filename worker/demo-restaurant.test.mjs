@@ -742,6 +742,9 @@ test('a junk ticket in the body is ignored rather than stored or refused', async
 // of a plan, so Free understated what it gave away and Pro charged for
 // something every free user already had. See supabase/migrations/0016.
 
+/** sha256('hk') — what isHost compares a host key against. */
+const HK_HASH = '78032858b52002ee5de86799f5769bccb699bd668d7de566073fea3b308c82f6';
+
 const party = (n) => Array.from({ length: n }, (_, i) => ({
   participant_id: `p_${1000 + i}_x`, name: `G${i}`, payment_status: 'unpaid',
 }));
@@ -857,5 +860,54 @@ test('the free limit can be raised by binding, without a deploy', async () => {
       expires_at: Date.now() + 86400000,
     }];
     assert.equal((await join({ ...ENV, FREE_PARTY_LIMIT: 25 }, 's_free')).status, 200);
+  });
+});
+
+test('the host is told how full the split may get, so the upsell reaches them', async () => {
+  /**
+   * The eleventh guest already sees why they were turned away, and they are the
+   * wrong person to show an upsell to — they cannot upgrade anything. The host
+   * holds the account and the card, and the refusal happens on a stranger's
+   * phone where the host never sees it.
+   */
+  await withStub({ user: null }, async (s) => {
+    s.tables.sessions = [{
+      id: 's_full', participants: party(10), items: [], created_by_id: null,
+      host_key_hash: HK_HASH, expires_at: Date.now() + 86400000,
+    }];
+    const res = await HANDLERS.getSessionAsHost({
+      env: ENV,
+      request: new Request('https://billtap.app/api/fn/getSessionAsHost', { method: 'POST' }),
+      body: { session_id: 's_full', host_key: 'hk' },
+      audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    const out = await res.json();
+    assert.equal(out.party.limit, 10);
+    assert.equal(out.party.tier, 'free');
+    assert.equal(out.party.full, true, 'so the screen can warn before anyone is refused');
+    assert.equal(out.party.joined, 10);
+  });
+});
+
+test('a restaurant table never sees a consumer upsell', async () => {
+  // Their limit is the row ceiling, not a tier. The restaurant already pays
+  // $149 and its party of twelve is the business it bought.
+  await withStub({ user: null }, async (s) => {
+    s.tables.restaurants.push({ id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false });
+    s.tables.sessions = [{
+      id: 's_rest', participants: party(12), items: [], restaurant_id: 'r_real',
+      created_by_id: null, host_key_hash: HK_HASH, expires_at: Date.now() + 86400000,
+    }];
+    const res = await HANDLERS.getSessionAsHost({
+      env: ENV,
+      request: new Request('https://billtap.app/api/fn/getSessionAsHost', { method: 'POST' }),
+      body: { session_id: 's_rest', host_key: 'hk' },
+      audit: async () => {},
+    });
+    assert.equal(res.status, 200);
+    const out = await res.json();
+    assert.equal(out.party.tier, 'restaurant');
+    assert.equal(out.party.full, false, 'twelve is fine in a dining room');
   });
 });
