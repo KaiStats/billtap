@@ -39,7 +39,7 @@ async function sign(body, secret = SECRET, timestamp = Math.floor(Date.now() / 1
 }
 
 /** PostgREST plus the Stripe subscription read, recording what was written. */
-function stub({ profiles = [], restaurants = [], subscription = null } = {}) {
+function stub({ profiles = [], restaurants = [], subscription = null, stripeStatus = null } = {}) {
   const original = globalThis.fetch;
   const tables = { profiles: structuredClone(profiles), restaurants: structuredClone(restaurants) };
 
@@ -48,6 +48,8 @@ function stub({ profiles = [], restaurants = [], subscription = null } = {}) {
     const method = init.method || 'GET';
 
     if (u.hostname === 'api.stripe.com') {
+      // A rate limit or an outage, as distinct from "no such subscription".
+      if (stripeStatus) return new Response('{"error":"upstream"}', { status: stripeStatus });
       return subscription
         ? new Response(JSON.stringify(subscription), { status: 200 })
         : new Response(JSON.stringify({ error: 'no such subscription' }), { status: 404 });
@@ -307,4 +309,95 @@ test('a write that fails answers 500 so Stripe tries again', async () => {
     });
     assert.equal(res.status, 500, 'so it comes back');
   } finally { globalThis.fetch = original; }
+});
+
+
+// ── The grace period, and the events that used to vanish ────────────────────
+
+test('a card that just failed does not cancel the restaurant on the spot', async () => {
+  /**
+   * The bug this pins was worth $149 a month, per restaurant, per failed card.
+   *
+   * entitlement.js gives a past_due plan GRACE_DAYS before it stops working,
+   * and reconcile-billing maps Stripe's past_due onto exactly that. This route
+   * had its own rule — active or trialing, else 'cancelled' — and it runs
+   * within seconds of invoice.payment_failed, so it always got there first. The
+   * grace period was written, tested, and unreachable.
+   */
+  await withStub({
+    restaurants: [{ id: 'r1', plan: 'active' }],
+    subscription: {
+      id: 'sub_r1', object: 'subscription', status: 'past_due', customer: 'cus_r',
+      current_period_end: Math.floor(Date.now() / 1000) + 86400,
+      metadata: { restaurant_id: 'r1' },
+    },
+  }, async (s) => {
+    const res = await deliver({ type: 'invoice.payment_failed', data: { object: { subscription: 'sub_r1' } } });
+    assert.equal(res.status, 200);
+    assert.equal(s.tables.restaurants[0].plan, 'past_due',
+      'past_due, so the seven-day grace in entitlement.js can still apply');
+  });
+});
+
+test('a Pro subscriber in retry keeps Pro until the period they paid for ends', async () => {
+  // plan_expires_at is what ends it — resolvePartyLimit already refuses a pro
+  // plan whose expiry has passed. Writing 'free' here took it away mid-retry.
+  await withStub({
+    profiles: [{ id: 'user_kai', plan: 'pro' }],
+    subscription: PRO_SUB({ status: 'past_due' }),
+  }, async (s) => {
+    await deliver({ type: 'customer.subscription.updated', data: { object: PRO_SUB({ status: 'past_due' }) } });
+    assert.equal(s.tables.profiles[0].plan, 'pro');
+    assert.ok(s.tables.profiles[0].plan_expires_at > Date.now(), 'and the expiry is what will end it');
+  });
+});
+
+test('an incomplete checkout does not knock a trial off its plan', async () => {
+  await withStub({
+    restaurants: [{ id: 'r1', plan: 'trial' }],
+    subscription: {
+      id: 'sub_r1', object: 'subscription', status: 'incomplete',
+      metadata: { restaurant_id: 'r1' },
+    },
+  }, async (s) => {
+    const res = await deliver({ type: 'customer.subscription.updated', data: { object: {
+      id: 'sub_r1', object: 'subscription', status: 'incomplete', metadata: { restaurant_id: 'r1' },
+    } } });
+    assert.equal(res.status, 200);
+    assert.equal(s.tables.restaurants[0].plan, 'trial', 'left exactly as it was');
+  });
+});
+
+test('Stripe failing to answer makes us retry, not forget a payment somebody made', async () => {
+  /**
+   * The worst of the lot, because it was silent and it was final.
+   *
+   * readSubscription returned null on every non-2xx, and null reached the
+   * `no_subject` branch, which answers 200 — so Stripe never redelivered. One
+   * rate limit on a paid checkout.session.completed and that customer's
+   * subscription was charged and never provisioned, with nothing anywhere that
+   * would notice: the nightly reconciler walks Restaurant rows and has never
+   * read `profiles` at all.
+   */
+  await withStub({ profiles: [], stripeStatus: 500 }, async (s) => {
+    const res = await deliver({
+      type: 'checkout.session.completed',
+      data: { object: { subscription: 'sub_pro_1', client_reference_id: 'user_kai' } },
+    });
+    assert.equal(res.status, 500, 'a non-2xx is what makes Stripe try again');
+    assert.equal(s.tables.profiles.length, 0, 'and nothing half-written in the meantime');
+  });
+});
+
+test('a subscription that really is not ours is still acknowledged', async () => {
+  // The 404 case must keep its old behaviour: retrying will never make a
+  // subscription from another Stripe account appear.
+  await withStub({ subscription: null }, async () => {
+    const res = await deliver({
+      type: 'checkout.session.completed',
+      data: { object: { subscription: 'sub_gone', client_reference_id: null } },
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).reason, 'no_subject');
+  });
 });

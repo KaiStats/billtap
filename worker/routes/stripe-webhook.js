@@ -36,6 +36,7 @@ import { json } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { audit, ACTIONS } from '../lib/audit.js';
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+import { PLAN_FOR } from './reconcile-billing.js';
 
 /**
  * How far out of step with Stripe's clock a request may be, in seconds.
@@ -105,7 +106,30 @@ async function readSubscription(env, subscriptionId) {
     { headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
     TIMEOUTS.payment,
   );
-  if (!res.ok) return null;
+  /**
+   * A missing subscription is an answer; a broken connection is not.
+   *
+   * ── The event that vanished ─────────────────────────────────────────────
+   *
+   * Every non-2xx returned null here, and null flowed into the `!subject ||
+   * !subscription` branch below, which answers 200 with reason 'no_subject'.
+   * A 200 tells Stripe the delivery succeeded and it never retries. So a rate
+   * limit, a 500 from Stripe, or a timeout on the read of a *paid*
+   * checkout.session.completed permanently discarded that payment: the
+   * customer was charged, the webhook said fine, and nothing else ever looks
+   * at it — the nightly reconciler walks Restaurant rows and has never touched
+   * `profiles`, so a consumer Pro subscriber would simply never get Pro.
+   *
+   * 404 keeps the old behaviour on purpose, because that genuinely means the
+   * subscription is not in this account and no amount of retrying will change
+   * it. Everything else throws, the caller answers 502, and Stripe retries with
+   * backoff for three days — which is what the retry schedule is for.
+   */
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`stripe subscription read failed: ${res.status} ${body.slice(0, 200)}`);
+  }
   return res.json();
 }
 
@@ -141,15 +165,43 @@ async function applySubscription(env, subject, subscription) {
     ? subscription.current_period_end * 1000
     : null;
 
-  // trialing counts as paid — that is what a trial is. Everything Stripe does
-  // not consider current (canceled, unpaid, incomplete_expired, past_due once
-  // its retries are done) falls back to free at the end of the paid period,
-  // which plan_expires_at already encodes.
-  const entitled = status === 'active' || status === 'trialing';
+  /**
+   * The same map the nightly reconciler uses, imported rather than restated.
+   *
+   * ── Why they must not disagree ──────────────────────────────────────────
+   *
+   * This function had its own two-way rule: active or trialing, else cancelled.
+   * The reconciler maps past_due and unpaid to 'past_due', and entitlement.js
+   * honours that with GRACE_DAYS — seven days past the period end before a
+   * restaurant loses anything, so a card that expires over a weekend does not
+   * take the QR codes off the tables while the owner is closed.
+   *
+   * The webhook fires on invoice.payment_failed within seconds, and it wrote
+   * 'cancelled'. So the grace period existed in three files and was reachable
+   * from none of them: the reconciler ran at night, found a row already marked
+   * cancelled, and agreed with it. A restaurant paying $149 a month lost
+   * service the moment a renewal was retried.
+   *
+   * `incomplete` is deliberately absent from the map and left undefined here —
+   * a checkout that has not finished must not knock a row off the trial it is
+   * still legitimately on.
+   */
+  const nextPlan = PLAN_FOR[status];
+  if (!nextPlan) return { kind: subject.kind, id: subject.id, plan: null, skipped: status };
+
+  const entitled = nextPlan === 'active' || nextPlan === 'past_due';
 
   if (subject.kind === 'pro') {
     const rows = await svc.entity('Profile').filter({ id: subject.id }, { select: 'id' });
     const patch = {
+      /**
+       * past_due stays 'pro' because plan_expires_at is what ends it.
+       *
+       * resolvePartyLimit already refuses a pro plan whose expiry has passed,
+       * so a lapsed subscriber loses unlimited party size at the end of the
+       * period they paid for — which is what the comment this replaced claimed
+       * was happening, while the code cut them off mid-retry instead.
+       */
       plan: entitled ? 'pro' : 'free',
       stripe_customer_id: typeof subscription?.customer === 'string' ? subscription.customer : null,
       stripe_subscription_id: subscription?.id || null,
@@ -161,11 +213,11 @@ async function applySubscription(env, subject, subscription) {
   }
 
   await svc.entity('Restaurant').update(subject.id, {
-    plan: entitled ? 'active' : 'cancelled',
+    plan: nextPlan,
     stripe_subscription_id: subscription?.id || '',
     current_period_end: periodEnd,
   });
-  return { kind: 'restaurant', id: subject.id, plan: entitled ? 'active' : 'cancelled' };
+  return { kind: 'restaurant', id: subject.id, plan: nextPlan };
 }
 
 export async function onRequestPost({ request, env, ctx, requestId = null }) {

@@ -218,6 +218,27 @@ for (const { route, file } of ROUTES) {
        */
       for (const script of document.querySelectorAll('script')) {
         const src = script.getAttribute('src') || '';
+
+        /**
+         * JSON-LD is the one inline script that belongs to the page.
+         *
+         * Seo.jsx injects the Organization schema at runtime, and on
+         * /restaurants the SoftwareApplication offer carrying 149/USD and the
+         * whole FAQPage with it. Runtime injection is the only way a prerendered
+         * route gets its schema at all — which made it indistinguishable, to the
+         * rule below, from the Facebook tag this loop was written to remove.
+         *
+         * So for one deploy every snapshot shipped with zero structured data:
+         * the FAQ rich result and the price markup on the page the $149 plan is
+         * sold from, deleted by a fix aimed at something else entirely.
+         *
+         * Matched on type rather than on the data-seo-schema attribute, because
+         * the type is what makes a crawler read it — anything claiming to be
+         * ld+json is the page describing itself, and the third-party tags this
+         * loop removes are all plain JavaScript with an absolute src.
+         */
+        if (script.type === 'application/ld+json') continue;
+
         if (!src) { script.remove(); continue; }            // injected inline
         if (/^https?:\/\//i.test(src)) {
           try {
@@ -234,6 +255,19 @@ for (const { route, file } of ROUTES) {
     }
     if (html.length < 4000) {
       throw new Error(`only ${html.length} bytes captured`);
+    }
+    /**
+     * Fails the build rather than the rankings.
+     *
+     * The stripping loop above deleted every JSON-LD block for one deploy and
+     * nothing noticed, because a snapshot with no structured data is a valid
+     * page that renders correctly and weighs about the same. The only symptom
+     * would have been rich results quietly disappearing from Google weeks
+     * later. Seo.jsx puts schema on all twelve routes, so an empty one here is
+     * always a regression and never a route that legitimately has none.
+     */
+    if (!html.includes('application/ld+json')) {
+      throw new Error(`${route} lost its JSON-LD — check the script filter in this file`);
     }
 
     await writeFile(join(DIST, file), html);

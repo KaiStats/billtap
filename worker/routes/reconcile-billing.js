@@ -48,7 +48,7 @@ import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
  * should keep whatever it had rather than be knocked off a trial it is still
  * legitimately on.
  */
-const PLAN_FOR = {
+export const PLAN_FOR = {
   active: 'active',
   trialing: 'active',
   past_due: 'past_due',

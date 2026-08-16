@@ -2397,6 +2397,62 @@ test('a guest lands on the items, not on a name wall', async () => {
   } finally { await context.close(); }
 });
 
+test('an even split still asks, because there is nothing to tap', async () => {
+  /**
+   * The regression that moving the gate introduced, and the reason it is worth
+   * a browser test rather than a reading of the code.
+   *
+   * The replacement trigger lives in toggleClaim, and toggleClaim is only
+   * reachable from the item list — which renders on itemized bills only. On an
+   * even split a first-time guest was therefore never asked, never joined, and
+   * never appeared in participants: they were shown the *whole* bill as their
+   * share instead of their fraction of it, the host's screen never showed them
+   * arriving, and "I've Sent Payment" answered 404 for as long as they kept
+   * pressing it.
+   */
+  const even = {
+    ...OPEN_SESSION,
+    split_mode: 'even',
+    participants: [{ participant_id: 'p_host', name: 'Alice', amount_owed: 61.4, payment_status: 'unpaid' }],
+  };
+  const { context, page } = await phone({ hostSession: even });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 15000 });
+  } finally { await context.close(); }
+});
+
+test('an even split lets somebody look at the bill without joining it', async () => {
+  // The gate is a full-screen opaque panel. Without a way off it, a guest who
+  // opened the split only to see what it came to is trapped on a text field.
+  const even = {
+    ...OPEN_SESSION,
+    split_mode: 'even',
+    participants: [{ participant_id: 'p_host', name: 'Alice', amount_owed: 61.4, payment_status: 'unpaid' }],
+  };
+  const { context, page } = await phone({ hostSession: even });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Just looking at the bill/i }).click();
+    await page.getByText(/Even Split/i).waitFor({ timeout: 8000 });
+    // And it stays gone — the effect that opened it must not immediately re-fire.
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('an itemized bill is still shown before the name is asked', async () => {
+  // The other half of the same rule: the improvement must survive the fix.
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0);
+  } finally { await context.close(); }
+});
+
 test('claiming asks the name, then finishes the tap that asked', async () => {
   // Answering must not be a detour: the item they reached for is remembered and
   // claimed for them, so they land back on exactly the thing they tapped.

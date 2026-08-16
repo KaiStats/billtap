@@ -391,7 +391,23 @@ export default function NewReceipt() {
     setFailure(null);
     setSaving(true);
     try {
-      const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
+      /**
+       * Named apart from the state, because it used to shadow it.
+       *
+       * `const restaurantSlug = ...` declared inside this function hid the
+       * state variable of the same name for the whole body, so the spread below
+       * read sessionStorage rather than the guest's answer. A diner who opened
+       * the app instead of scanning the tent, was asked "Is this Herb & Rye?"
+       * and tapped Yes, watched the question disappear as though it had been
+       * recorded — and the split was created with no restaurant at all. No star
+       * rating, no Google review ask, and no low-rating alert for that table,
+       * at a restaurant paying $149 a month for exactly those three things.
+       *
+       * The scanned tent still wins where both exist: it is the table the guest
+       * is physically sitting at, and the question is only ever asked when
+       * there is no tent to have scanned.
+       */
+      const sessionStorageSlug = sessionStorage.getItem("billtap_restaurant_slug");
       // Resolved here rather than during the scan. The upload started when the
       // photo was picked and has had the whole review screen to finish; if it
       // failed, the split is created without an image, which is a missing
@@ -408,6 +424,7 @@ export default function NewReceipt() {
         split_mode: splitMode,
         total_amount: total,
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
+        ...(sessionStorageSlug ? { restaurant_slug: sessionStorageSlug } : {}),
         // Only on this path. The quick even split below is created from a typed
         // total with no photograph, so there is no receipt to have read a table
         // off — sending an empty ticket there would be inventing one.

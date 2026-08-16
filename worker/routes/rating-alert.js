@@ -25,6 +25,7 @@ import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js'
 // api.base44.com/v0, which 404s — every lookup here had been failing silently,
 // because the caller fires this best-effort and never reads the response.
 import { serviceRole } from '../lib/data.js';
+import { supabaseUrl } from '../lib/db.js';
 import { entitlement } from '../../shared/entitlement.js';
 
 const MAX_BODY_BYTES = 512;
@@ -210,10 +211,7 @@ export async function onRequestPost({ request, env }) {
             table: session.ticket_table || null,
             server: session.ticket_server || null,
             number: session.ticket_number || null,
-            // Already a public URL by construction — see publicObjectUrl in
-            // worker/lib/db.js — and the retention sweep deletes the object at
-            // thirty days, so the link rots on the same clock as the data.
-            receipt: typeof session.image_url === 'string' && session.image_url ? session.image_url : null,
+            receipt: receiptLink(env, session.image_url),
           };
         }
       } catch (error) {
@@ -349,7 +347,12 @@ export async function onRequestPost({ request, env }) {
     // is the documented behaviour, so only treat it as failed when the email
     // failed too.
     if (!emailResult.ok && !smsResult.ok) {
-      await stampAlerted(svc, ratingId, null);
+      // The same two arguments the claim above was made with, so the release
+      // gives back exactly what was taken. Without them a failed *follow-up*
+      // cleared `alerted_at` — wiping the record of the first alert, which did
+      // reach the manager — while leaving comment_alerted_at stamped, so the
+      // retry this rollback exists to allow was the one thing still blocked.
+      await stampAlerted(svc, ratingId, null, isFollowUp, hasComment);
       console.error(
         `rating-alert: no channel delivered (email: ${emailResult.reason}, sms: ${smsResult.reason})`,
       );
@@ -370,6 +373,42 @@ export async function onRequestPost({ request, env }) {
     console.error('rating-alert error:', error.message);
     return json({ error: 'Internal server error' }, 500);
   }
+}
+
+/**
+ * The receipt link, but only if it is genuinely one of ours.
+ *
+ * ── Why this is not just the column ─────────────────────────────────────────
+ *
+ * The first version of this trusted session.image_url and put it straight into
+ * an <a href> in the operator's email. It reads like an internal value and it
+ * is not: createSession takes image_url out of the request body, so anybody who
+ * can start a split chooses it. That turned the low-rating alert — a message
+ * the owner opens the moment it arrives, from a sender they trust, about a
+ * problem at one of their tables — into an attacker-controlled link with the
+ * restaurant's own name on it. It is hard to think of a better phishing lure to
+ * hand somebody, and we would have been delivering it.
+ *
+ * So: it must parse, it must be https, and it must be on the Supabase origin
+ * this deployment actually stores objects on, under the public object path that
+ * publicObjectUrl builds. Anything else is dropped and the alert simply goes
+ * without a picture — the table number and the total are what the operator
+ * walks over with anyway.
+ *
+ * @returns {string|null}
+ */
+function receiptLink(env, value) {
+  if (typeof value !== 'string' || !value) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== 'https:') return null;
+
+  let expected;
+  try { expected = new URL(supabaseUrl(env)); } catch { return null; }
+  if (url.origin !== expected.origin) return null;
+  if (!url.pathname.startsWith('/storage/v1/object/public/')) return null;
+
+  return url.href;
 }
 
 /**
