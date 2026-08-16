@@ -36,7 +36,11 @@ export async function onRequestPost({ request, env }) {
   const key = env.STRIPE_SECRET_KEY;
   const price = env.STRIPE_PRO_PRICE_ID;
   if (!key || !price) {
-    console.error('create-pro-checkout: STRIPE_SECRET_KEY or STRIPE_PRO_PRICE_ID not configured');
+    // Named individually, for the reason create-checkout.js gives: a secret
+    // can exist with an empty value, so "or" sends somebody to check two
+    // bindings that both look present.
+    const missing = [!key && 'STRIPE_SECRET_KEY', !price && 'STRIPE_PRO_PRICE_ID'].filter(Boolean);
+    console.error(`create-pro-checkout: not configured — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} empty or unset`);
     return json({ error: 'Billing is not configured yet.', code: 'not_configured' }, 503);
   }
 

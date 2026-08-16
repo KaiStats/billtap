@@ -29,7 +29,21 @@ export async function onRequestPost({ request, env }) {
   const key = env.STRIPE_SECRET_KEY;
   const price = env.STRIPE_PRICE_ID;
   if (!key || !price) {
-    console.error('create-checkout: STRIPE_SECRET_KEY or STRIPE_PRICE_ID not configured');
+    /**
+     * Name the one that is missing.
+     *
+     * "or" was accurate and useless: a secret can exist with an empty value,
+     * so the dashboard shows both bindings present while one of them is a
+     * blank string, and this message sent whoever was debugging it to check
+     * two things that both looked fine. worker/lib/data.js already argues this
+     * — a log saying only "misconfigured" costs an operator the evening it
+     * takes to work out which one.
+     *
+     * The names go to the log, never to the response: which of our bindings is
+     * unset is not a caller's business.
+     */
+    const missing = [!key && 'STRIPE_SECRET_KEY', !price && 'STRIPE_PRICE_ID'].filter(Boolean);
+    console.error(`create-checkout: not configured — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} empty or unset`);
     return json({ error: 'Billing is not configured yet.' }, 503);
   }
 
@@ -62,10 +76,32 @@ export async function onRequestPost({ request, env }) {
     // treating an unknown state as no exposure.
     billing_address_collection: 'required',
 
-    // Keep the address on the Customer, not only on this one Checkout Session,
-    // or it is gone the moment the session expires.
-    'customer_update[address]': 'auto',
-    'customer_update[name]': 'auto',
+    /**
+     * ── Why customer_update is NOT here ─────────────────────────────────────
+     *
+     * It used to be: `customer_update[address]` and `customer_update[name]`,
+     * both 'auto', to keep the address on the Customer rather than only on the
+     * expiring session. Stripe refuses that combination outright —
+     *
+     *   400  `customer_update` can only be used with `customer`.
+     *
+     * — because customer_update tells Stripe how to update an *existing*
+     * customer, and this route never passes one: it hands over
+     * `customer_email` and lets Checkout create the customer itself.
+     *
+     * So every restaurant checkout has been a 400 since that line was added.
+     * The route answered "Could not start checkout" and nothing said why,
+     * because the response body was logged but the log was never read — the
+     * same shape of silent failure the header of worker/lib/base44.js
+     * describes.
+     *
+     * Nothing is lost by removing it. In subscription mode Stripe creates the
+     * Customer and saves the collected address onto it; customer_update was
+     * only ever needed for a customer that already existed. The nexus report
+     * reads it back through verify-checkout, which takes it from
+     * `customer.address` or `customer_details.address` — both still populated
+     * by billing_address_collection above.
+     */
   });
   if (EMAIL_RE.test(email)) params.set('customer_email', email);
 
