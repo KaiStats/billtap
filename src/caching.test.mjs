@@ -441,3 +441,39 @@ test('registration does not tear down its own worker on every page load', () => 
     "the registration must not let the HTTP cache answer the worker's own update check",
   );
 });
+
+// ── The install prompt counts visits, not taps ─────────────────────────────
+//
+// It incremented on every mount, so a guest scanning a table tent and pressing
+// "Start the split" — two pages, ten seconds apart, on their first encounter —
+// hit two and got "Install BillTap" mid-meal. Measured against production
+// before the fix: first page hidden, second page shown, fresh browser both
+// times. The name always said what was meant; the code counted the wrong thing.
+
+test('a whole meal is one visit, however many screens it takes', () => {
+  const src = readFileSync(new URL('./components/PWAInstallPrompt.jsx', import.meta.url), 'utf8');
+
+  assert.match(src, /billtap-last-visit/,
+    'without a timestamp there is no way to tell a return from a tap');
+  assert.match(src, /RETURN_AFTER_MS/,
+    'the gap that separates a visit from a page view has to be a named number');
+
+  // The count may only move when the gap has actually elapsed.
+  const guarded = /isNewVisit\s*\?\s*visitCount\s*\+\s*1\s*:\s*visitCount/.test(src);
+  assert.ok(guarded, 'the counter increments unconditionally again — that is the bug');
+
+  // And the threshold has to outlast a meal.
+  const ms = src.match(/RETURN_AFTER_MS\s*=\s*(\d+)\s*\*\s*(\d+)\s*\*\s*(\d+)/);
+  assert.ok(ms, 'RETURN_AFTER_MS is not a literal any more');
+  const total = Number(ms[1]) * Number(ms[2]) * Number(ms[3]);
+  assert.ok(total >= 20 * 60 * 1000,
+    `${total}ms is shorter than a meal — a table would trip it mid-split`);
+});
+
+test('a clock that jumped backwards is not counted as a visit', () => {
+  // A stored timestamp in the future means the device clock moved, not that
+  // somebody came back. Treating it as a visit would fire the prompt on the
+  // next page load.
+  const src = readFileSync(new URL('./components/PWAInstallPrompt.jsx', import.meta.url), 'utf8');
+  assert.match(src, /lastVisit\s*>\s*now/, 'a future timestamp is unhandled');
+});

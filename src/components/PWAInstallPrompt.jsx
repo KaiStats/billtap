@@ -16,9 +16,45 @@ export default function PWAInstallPrompt({ onDismiss }) {
     const alreadyInstalled = localStorage.getItem("billtap-installed");
     if (alreadyInstalled) return;
 
+    /**
+     * A visit, not a page view.
+     *
+     * ── What this was doing ────────────────────────────────────────────────
+     *
+     * The counter incremented on every mount, so it counted taps rather than
+     * visits. A guest scanning a table tent and pressing "Start the split" —
+     * two pages, about ten seconds apart, on their first ever encounter — hit
+     * two and got "Install BillTap" while they were in the middle of splitting
+     * a bill with friends.
+     *
+     * The name says what was meant: ask somebody who came back, not somebody
+     * who is mid-meal and has not finished the thing they came to do. Measured
+     * against production before changing it — first page hidden, second page
+     * shown, on a fresh browser both times.
+     *
+     * ── Half an hour ───────────────────────────────────────────────────────
+     *
+     * Longer than any single visit to a restaurant table, shorter than the gap
+     * before somebody genuinely comes back. A whole meal, from scanning the
+     * tent to the last person paying, stays one visit however many screens it
+     * takes — and a diner who opens the app again that evening to check what
+     * they owe is a second one, which is exactly when the offer is worth
+     * making: they have used it, it worked, and now it is worth a home screen.
+     */
+    const RETURN_AFTER_MS = 30 * 60 * 1000;
+    const now = Date.now();
+    const lastVisit = parseInt(localStorage.getItem("billtap-last-visit") || "0", 10);
     const visitCount = parseInt(localStorage.getItem("billtap-visit-count") || "0", 10);
-    const newCount = visitCount + 1;
-    localStorage.setItem("billtap-visit-count", newCount.toString());
+
+    // A stored timestamp in the future is a clock that moved, not a visit.
+    const isNewVisit = !lastVisit || now - lastVisit > RETURN_AFTER_MS || lastVisit > now;
+    const newCount = isNewVisit ? visitCount + 1 : visitCount;
+
+    if (isNewVisit) localStorage.setItem("billtap-visit-count", newCount.toString());
+    // Written on every mount, so the clock runs from the last thing they did
+    // rather than from when the sitting began. Someone who spends forty
+    // minutes over dinner is still on their first visit at the end of it.
+    localStorage.setItem("billtap-last-visit", now.toString());
 
     if (newCount < 2) return;
 
