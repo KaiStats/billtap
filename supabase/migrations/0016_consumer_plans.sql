@@ -51,6 +51,13 @@ alter table profiles enable row level security;
 -- insert, update or delete on purpose: a plan is granted by the Worker as
 -- service_role or by hand in the dashboard, and a client that could write this
 -- column could award itself Pro.
+-- Dropped first, for the reason 0001 spells out at length: Postgres has no
+-- `if not exists` for create policy, so a re-run raises 42710 and the Supabase
+-- SQL editor rolls back the whole paste with it — including 0017 and 0018 below
+-- it, which is exactly how `plan_expires_at` and `comment_alerted_at` end up
+-- missing under code that reads them. A file that is idempotent except at the
+-- end is not idempotent.
+drop policy if exists "people read their own profile" on profiles;
 create policy "people read their own profile"
   on profiles for select
   using (auth.uid() = id);

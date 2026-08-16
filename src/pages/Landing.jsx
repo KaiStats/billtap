@@ -468,6 +468,13 @@ export default function Landing() {
         navigate("/login?redirect=" + encodeURIComponent("/#pricing"));
         return;
       }
+      if (data.code === "already_pro") {
+        // Not an error they did anything wrong — they are already paying. The
+        // route refuses because selling a second subscription on the same card
+        // is precisely the bug it exists to prevent.
+        setProError("You're already on Pro — nothing more to do.");
+        return;
+      }
       setProError(
         data.code === "not_configured"
           ? "Pro isn't open for sign-ups yet — check back shortly."

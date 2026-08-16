@@ -25,13 +25,13 @@
 -- to the end of what they paid for and then stop, which is exactly what they
 -- bought.
 
-alter table profiles add column stripe_customer_id     text;
-alter table profiles add column stripe_subscription_id text;
+alter table profiles add column if not exists stripe_customer_id     text;
+alter table profiles add column if not exists stripe_subscription_id text;
 
 -- Epoch milliseconds, matching restaurants.current_period_end and every other
 -- clock in this schema. Null means "no end", which for a hand-granted Pro is
 -- correct and deliberate — see resolvePartyLimit.
-alter table profiles add column plan_expires_at bigint;
+alter table profiles add column if not exists plan_expires_at bigint;
 
 -- Looked up by the webhook on every subscription event, where the id Stripe
 -- sends is the subscription's and not ours. Without this that is a sequential

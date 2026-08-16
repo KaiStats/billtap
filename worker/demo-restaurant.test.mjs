@@ -107,6 +107,10 @@ function stub({ restaurants = [], user = { id: KAI, email: OPERATOR_EMAIL } } = 
       return new Response(JSON.stringify(hit), { status: 200 });
     }
     if (method === 'DELETE') {
+      // Lets a test change a row between the read and the delete, which is the
+      // only way to exercise the `demo=eq.true` predicate that deleteRestaurant
+      // puts on the delete itself.
+      api.onBeforeDelete?.(from, u);
       const hit = rows.filter((row) => matches(row, u.searchParams));
       tables[from] = rows.filter((row) => !hit.includes(row));
       return new Response(JSON.stringify(hit), { status: 200 });
@@ -118,7 +122,8 @@ function stub({ restaurants = [], user = { id: KAI, email: OPERATOR_EMAIL } } = 
     return new Response(JSON.stringify(out), { status: 200 });
   };
 
-  return { tables, restore: () => { globalThis.fetch = original; } };
+  const api = { tables, onBeforeDelete: null, restore: () => { globalThis.fetch = original; } };
+  return api;
 }
 
 async function withStub(opts, fn) {
@@ -569,6 +574,33 @@ test('an expired demo is deleted, along with its ratings and contacts', async ()
     assert.equal(s.tables.restaurants.length, 0);
     assert.equal(s.tables.guest_ratings.length, 0, 'or the average slowly fills with his own taps');
     assert.equal(s.tables.guest_contacts.length, 0);
+  });
+});
+
+test('a row that stopped being a demo is not counted as deleted', async () => {
+  /**
+   * The guard firing is a normal Tuesday, not an edge case: it is what happens
+   * when a prospect signs while the demo is still up and somebody clears the
+   * flag by hand.
+   *
+   * deleteRestaurant carries `demo=eq.true` on the delete itself, so the row
+   * survives and comes back zero rows — and the loop used to add 1 anyway. The
+   * nightly log then claimed a hard delete that had not happened, on a row
+   * still due, and would claim it again every night forever. The children are
+   * gone by then either way, which is the part that makes a wrong count worse
+   * than useless: it says the job is healthy while a real restaurant's row sits
+   * half-dismantled.
+   */
+  await withStub({}, async (s) => {
+    seed(s, [withChildren('signed', NOW - 3600000)]);
+    // What the operator's own hand does — the read still sees a due demo.
+    s.onBeforeDelete = () => { s.tables.restaurants[0].demo = false; };
+
+    const summary = await sweepExpiredDemos(ENV, serviceRole(ENV), { now: NOW });
+
+    assert.equal(summary.deleted, 0, 'nothing was deleted, so nothing is reported');
+    assert.equal(summary.skipped, 1, 'and it is visible rather than merely absent');
+    assert.equal(s.tables.restaurants.length, 1, 'the restaurant that just signed is still there');
   });
 });
 

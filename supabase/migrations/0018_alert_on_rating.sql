@@ -27,7 +27,7 @@
 -- comment it did not have when the first went out. No comment, no second
 -- email, however many times anyone posts the id.
 
-alter table guest_ratings add column comment_alerted_at bigint;
+alter table guest_ratings add column if not exists comment_alerted_at bigint;
 
 -- ── Backfill, or every historical alert can fire a duplicate ───────────────
 --

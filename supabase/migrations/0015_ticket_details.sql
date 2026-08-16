@@ -37,9 +37,9 @@
 -- `table` and `server` are reserved-ish words in SQL and ambiguous in a schema
 -- that already has sessions and restaurants, hence the prefix.
 
-alter table sessions add column ticket_table  text;
-alter table sessions add column ticket_server text;
-alter table sessions add column ticket_number text;
+alter table sessions add column if not exists ticket_table  text;
+alter table sessions add column if not exists ticket_server text;
+alter table sessions add column if not exists ticket_number text;
 
 -- ── No index, on purpose ───────────────────────────────────────────────────
 --

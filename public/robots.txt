@@ -15,6 +15,13 @@ Disallow: /login
 Disallow: /register
 Disallow: /icon-generator
 
+# The demo provisioning tool. Listed for the same reason as the rest, and with
+# more cause than any of them: it publishes pages carrying real businesses'
+# names. NewDemo.jsx does set noindex, but through a React effect — so it only
+# exists for a crawler that runs the JavaScript, and the raw shell served to
+# everything else is index-by-default.
+Disallow: /new
+
 # Per-table guest links from the QR tents. These are one-off session URLs, not
 # pages — indexing them would strand crawlers on dead splits.
 Disallow: /r/

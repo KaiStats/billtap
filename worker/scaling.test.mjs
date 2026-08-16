@@ -385,7 +385,7 @@ test('hitting the guest-split cap is logged, not just refused', async () => {
  * A database of a given size behind the PostgREST paging the backup does, plus
  * an R2 bucket that records what was written.
  */
-function stubBackup({ rowsPerEntity = 1, rowBytes = 10, failEntity = null } = {}) {
+function stubBackup({ rowsPerEntity = 1, rowBytes = 10, failEntity = null, rowsFor = null } = {}) {
   const reads = [];
   const original = globalThis.fetch;
   const filler = 'x'.repeat(rowBytes);
@@ -400,6 +400,9 @@ function stubBackup({ rowsPerEntity = 1, rowBytes = 10, failEntity = null } = {}
     const offset = Number(u.searchParams.get('offset') || 0);
     const remaining = Math.max(0, rowsPerEntity - offset);
     const n = Math.min(limit, remaining);
+    // A test can hand back real-shaped rows for one table — the demo flag and
+    // the restaurant_id the exclusion below turns on.
+    if (rowsFor?.[table]) return new Response(JSON.stringify(offset ? [] : rowsFor[table]));
     const rows = Array.from({ length: n }, (_, i) => ({ id: `${table}-${offset + i}`, filler }));
     return new Response(JSON.stringify(rows));
   };
@@ -512,4 +515,57 @@ test('the backup still refuses to run without a bucket', async () => {
   // loud, because the failure being designed against is one that reports
   // success and stores nothing.
   await assert.rejects(() => runBackup({ ...BASE_ENV }), /BACKUP_BUCKET is not bound/);
+});
+
+
+test('a demo restaurant and its guest rows never reach the bucket', async () => {
+  /**
+   * retention.js hard-deletes an expired demo at twenty-four hours and argues
+   * at length for why it is a hard delete: the ratings are stars a salesman
+   * tapped himself, and the page carried a real business's name for a business
+   * that had never agreed to anything.
+   *
+   * This job copied all of it to R2 the night before, so the delete removed the
+   * live rows and left the bucket holding the restaurant's name, the fabricated
+   * ratings and any email address collected on that public page — for the whole
+   * backup retention window, and restorable.
+   */
+  const stub = stubBackup({
+    rowsPerEntity: 0,
+    rowsFor: {
+      restaurants: [
+        { id: 'r_real', name: 'Herb & Rye', demo: false },
+        { id: 'r_demo', name: 'Mariposa', demo: true },
+      ],
+      guest_ratings: [
+        { id: 'gr_real', restaurant_id: 'r_real', stars: 5 },
+        { id: 'gr_demo', restaurant_id: 'r_demo', stars: 5 },
+      ],
+      guest_contacts: [
+        { id: 'gc_real', restaurant_id: 'r_real', email: 'diner@example.com' },
+        { id: 'gc_demo', restaurant_id: 'r_demo', email: 'walked-past@example.com' },
+      ],
+    },
+  });
+  try {
+    const result = await runBackup({ ...BASE_ENV, BACKUP_BUCKET: stub.BACKUP_BUCKET });
+    assert.equal(result.failed.length, 0, JSON.stringify(result.entities));
+
+    const read = (name) => JSON.parse(
+      stub.written.get([...stub.written.keys()].find((k) => k.endsWith(`/${name}.json`))).body,
+    ).records;
+
+    assert.deepEqual(read('Restaurant').map((r) => r.id), ['r_real']);
+    assert.deepEqual(read('GuestRating').map((r) => r.id), ['gr_real'],
+      "or the average is rebuilt from the salesman's own taps");
+    assert.deepEqual(read('GuestContact').map((r) => r.id), ['gc_real'],
+      'and this one is somebody who never agreed to be in a database');
+  } finally { stub.restore(); }
+});
+
+test('Restaurant is backed up before the rows that are filtered against it', () => {
+  // dropDemoRows learns the demo ids while Restaurant is processed and the loop
+  // holds one entity at a time, so this ordering is the mechanism, not a style.
+  assert.ok(ENTITIES.indexOf('Restaurant') < ENTITIES.indexOf('GuestRating'));
+  assert.ok(ENTITIES.indexOf('Restaurant') < ENTITIES.indexOf('GuestContact'));
 });

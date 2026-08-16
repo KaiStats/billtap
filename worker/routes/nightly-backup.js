@@ -45,9 +45,14 @@ import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
  * bill with no way left to say who paid it.
  */
 export const ENTITIES = [
+  /**
+   * First, and that ordering is load-bearing — see dropDemoRows below. The
+   * demo restaurant ids have to be known before GuestRating and GuestContact
+   * are filtered against them, and this loop holds one entity at a time.
+   */
+  'Restaurant',
   'Session',
   'Receipt',
-  'Restaurant',
   'GuestRating',
   'GuestContact',
   'RestaurantLead',
@@ -59,9 +64,17 @@ export const ENTITIES = [
    * Small and easy to overlook, and the one table here whose loss is silently
    * expensive: a restored database without it puts every Pro account back on
    * free, and nobody finds out until an eleventh person cannot join a split
-   * somebody has already paid for. There is no consumer checkout yet either,
-   * so these rows are granted by hand and there is no Stripe record to rebuild
-   * them from.
+   * somebody has already paid for.
+   *
+   * Recovering it: Stripe is authoritative, not this file. Since
+   * create-pro-checkout and the webhook shipped, a Pro row is created by a
+   * subscription event, so `plan`, `plan_expires_at` and both stripe_* columns
+   * can be rebuilt by listing subscriptions on the $0.99 price and replaying
+   * them through applySubscription. This comment used to say the opposite —
+   * that the rows were granted by hand with no Stripe record behind them —
+   * which was true when it was written and was made false by a later commit on
+   * the same branch. It is the only written guidance on restoring consumer
+   * plans, so pointing it at "impossible" was worse than saying nothing.
    */
   'Profile',
 ];
@@ -177,6 +190,47 @@ async function fetchAll(svc, name, budget) {
 }
 
 /**
+ * Demo rows never reach the bucket.
+ *
+ * ── What this closes ────────────────────────────────────────────────────────
+ *
+ * retention.js hard-deletes an expired demo at twenty-four hours — the row, its
+ * ratings and its contacts — and argues at length for why it is a hard delete
+ * rather than the redaction used everywhere else: the data belongs to nobody,
+ * it is stars a salesman tapped himself, and the page carried a real business's
+ * name for a business that had not agreed to anything.
+ *
+ * This job ran on its own nightly schedule and copied all of it to R2 first. A
+ * demo put up at two in the afternoon was backed up that night and deleted the
+ * next day, so the restaurant's name, the fabricated ratings and any email
+ * addresses collected on that public page survived in the bucket for the whole
+ * backup retention window — and a restore would have put them back live, with
+ * an expiry already in the past. reconcile-billing and monthly-report both got
+ * their demo exclusions in this branch; this was the scheduled job that did not.
+ *
+ * Filtered here rather than in the query so it holds whichever backend is live:
+ * DATA_BACKEND still switches to base44, and its list() takes no predicate.
+ *
+ * @returns {any[]} the rows worth restoring
+ */
+function dropDemoRows(name, records, demoIds) {
+  if (name === 'Restaurant') {
+    const keep = [];
+    for (const row of records) {
+      if (row?.demo) demoIds.add(String(row.id));
+      else keep.push(row);
+    }
+    return keep;
+  }
+  // Exactly the two tables the sweep deletes alongside the restaurant, so the
+  // backup and the retention job agree about what a demo consists of.
+  if (name === 'GuestRating' || name === 'GuestContact') {
+    return demoIds.size ? records.filter((row) => !demoIds.has(String(row?.restaurant_id))) : records;
+  }
+  return records;
+}
+
+/**
  * Runs the backup and returns a per-entity summary.
  *
  * Throws when the bucket is missing or a write fails. Callers must not swallow
@@ -207,6 +261,8 @@ export async function runBackup(env) {
   const prefix = `billtap-backup-${day}`;
   const budget = readBudget();
   const summary = {};
+  /** Filled while Restaurant is processed, read when its children are. */
+  const demoIds = new Set();
   const failed = [];
   const objects = [];
   let bytes = 0;
@@ -224,7 +280,7 @@ export async function runBackup(env) {
   for (const name of ENTITIES) {
     const key = `${prefix}/${name}.json`;
     try {
-      const records = await fetchAll(svc, name, budget);
+      const records = dropDemoRows(name, await fetchAll(svc, name, budget), demoIds);
       const body = JSON.stringify({ exported_at: exportedAt, entity: name, count: records.length, records });
 
       if (body.length > ENTITY_MAX_BYTES) {

@@ -37,20 +37,20 @@
 -- The cleanup job in worker/routes/retention.js is what makes the clock real;
 -- the column is only what it reads.
 
-alter table restaurants add column demo boolean not null default false;
+alter table restaurants add column if not exists demo boolean not null default false;
 
 -- Epoch milliseconds as bigint, matching trial_ends_at and current_period_end.
 -- 0011 established the representation and shared/entitlement.js depends on it:
 -- every clock in that file is `Number(column)` compared against `Date.now()`.
 -- A timestamptz here would coerce to NaN, `now < NaN` is false for every value,
 -- and every demo would read as expired the moment it was created.
-alter table restaurants add column demo_expires_at bigint;
+alter table restaurants add column if not exists demo_expires_at bigint;
 
 -- Partial, because demo rows are a rounding error next to real ones and the
 -- only query that ever asks about this column is the nightly delete, which
 -- already restricts to demos. Indexing the nulls would be paying for the whole
 -- table to answer a question that is only ever about a handful of rows.
-create index restaurants_demo_expiry on restaurants (demo_expires_at) where demo;
+create index if not exists restaurants_demo_expiry on restaurants (demo_expires_at) where demo;
 
 -- ── What is deliberately not done here ─────────────────────────────────────
 --

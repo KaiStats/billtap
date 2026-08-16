@@ -219,12 +219,37 @@ test('a trialing subscription is Pro, because that is what a trial is', async ()
   });
 });
 
-test('a cancellation drops them back to free', async () => {
+test('a cancellation takes effect when the paid period runs out, not on the spot', async () => {
+  /**
+   * Migration 0017's stated design, which the code did not implement: "nobody
+   * is cut off mid-month and nobody keeps Pro forever: they run to the end of
+   * what they paid for." resolvePartyLimit reads plan_expires_at only from
+   * inside `if (plan === 'pro')`, so writing 'free' here skipped the expiry
+   * entirely and took the month back off somebody who had paid for it.
+   */
   const existing = [{ id: 'user_kai', plan: 'pro', stripe_subscription_id: 'sub_pro_1' }];
   await withStub({ profiles: existing }, async ({ tables }) => {
     await deliver({
       type: 'customer.subscription.deleted',
       data: { object: PRO_SUB({ status: 'canceled' }) },
+    });
+    assert.equal(tables.profiles[0].plan, 'pro', 'through to the end of the period');
+    assert.ok(tables.profiles[0].plan_expires_at > Date.now(), 'and the expiry is what ends it');
+  });
+});
+
+test('a cancellation with nothing left to run drops to free immediately', async () => {
+  // The other half of the same rule. cancel_at_period_end means the deleted
+  // event arrives *at* the period end, so this is the ordinary case — and a
+  // trial abandoned on day one has no paid period to honour at all.
+  const existing = [{ id: 'user_kai', plan: 'pro', stripe_subscription_id: 'sub_pro_1' }];
+  await withStub({ profiles: existing }, async ({ tables }) => {
+    await deliver({
+      type: 'customer.subscription.deleted',
+      data: { object: PRO_SUB({
+        status: 'canceled',
+        current_period_end: Math.floor(Date.now() / 1000) - 60,
+      }) },
     });
     assert.equal(tables.profiles[0].plan, 'free');
   });

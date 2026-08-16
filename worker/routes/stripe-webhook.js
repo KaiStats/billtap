@@ -202,11 +202,45 @@ async function applySubscription(env, subject, subscription) {
        * period they paid for — which is what the comment this replaced claimed
        * was happening, while the code cut them off mid-retry instead.
        */
-      plan: entitled ? 'pro' : 'free',
-      stripe_customer_id: typeof subscription?.customer === 'string' ? subscription.customer : null,
-      stripe_subscription_id: subscription?.id || null,
+      /**
+       * The clock ends Pro, not the event — which is what migration 0017 says
+       * this column is for: "nobody is cut off mid-month and nobody keeps Pro
+       * forever: they run to the end of what they paid for."
+       *
+       * The code did the first half of that and not the second. Writing 'free'
+       * the moment a cancellation or a failed retry arrived took the plan away
+       * immediately, because resolvePartyLimit only ever reads plan_expires_at
+       * from inside `if (plan === 'pro')` — so once the row says free, the
+       * expiry it was supposed to be governed by is never consulted again. A
+       * subscriber who cancelled three days into a month they had already paid
+       * for sat down with eleven friends that evening and the eleventh was
+       * turned away.
+       *
+       * Cancelling still means cancelled; it just takes effect when the paid
+       * period runs out. With no future expiry to honour — an immediate
+       * cancellation, a trial abandoned, a subscription that never had a period
+       * — it falls to free right now, as it should.
+       */
+      plan: entitled || (periodEnd && periodEnd > Date.now()) ? 'pro' : 'free',
       plan_expires_at: periodEnd,
     };
+
+    /**
+     * Written only when there is something to write.
+     *
+     * These were plain assignments that fell back to null, which quietly
+     * cleared a good value: Stripe returns `customer` as an id string on a bare
+     * read and as an expanded object when anything expands it, and the second
+     * shape wrote null over the first. That matters more than it looks, because
+     * create-pro-checkout now reads stripe_customer_id for two decisions — reuse
+     * the existing Stripe customer rather than minting a second one, and refuse
+     * a second fourteen-day trial. Blanking it hands back both bugs.
+     */
+    const customerId = typeof subscription?.customer === 'string'
+      ? subscription.customer
+      : subscription?.customer?.id;
+    if (customerId) patch.stripe_customer_id = String(customerId);
+    if (subscription?.id) patch.stripe_subscription_id = subscription.id;
     if (rows.length) await svc.entity('Profile').update(subject.id, patch);
     else await svc.entity('Profile').create({ id: subject.id, ...patch });
     return { kind: 'pro', id: subject.id, plan: patch.plan };

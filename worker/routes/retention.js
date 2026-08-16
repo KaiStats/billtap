@@ -376,7 +376,7 @@ const DEMO_BATCH = 50;
  * demo whose delete loses a race must not stop the other forty-nine.
  */
 export async function sweepExpiredDemos(env, svc, { now = Date.now(), limit = DEMO_BATCH } = {}) {
-  const summary = { considered: 0, deleted: 0, ratings_deleted: 0, contacts_deleted: 0, failed: 0 };
+  const summary = { considered: 0, deleted: 0, skipped: 0, ratings_deleted: 0, contacts_deleted: 0, failed: 0 };
 
   const due = await svc.entity('Restaurant').filter(
     { demo: true, demo_expires_at: { lt: now } },
@@ -394,8 +394,24 @@ export async function sweepExpiredDemos(env, svc, { now = Date.now(), limit = DE
     try {
       summary.ratings_deleted += await deleteChildren(env, 'guest_ratings', demo.id);
       summary.contacts_deleted += await deleteChildren(env, 'guest_contacts', demo.id);
-      await deleteRestaurant(env, demo.id);
-      summary.deleted += 1;
+      /**
+       * The count Postgres reported, not an assumption that the call worked.
+       *
+       * deleteRestaurant carries a `demo=eq.true` predicate on purpose, so an
+       * id that has stopped being a demo since it was read matches nothing and
+       * comes back zero — which is exactly what happens when a prospect signs
+       * on the spot and the flag is cleared by hand. Adding 1 regardless
+       * reported a hard delete that had not happened, on a row still due, which
+       * would then be picked up and re-reported every night thereafter.
+       *
+       * This function's own header is the standard being met here: `deleted: 12`
+       * on its own has to be worth believing. The child counts were already
+       * taken from their return values; the row that names the business was the
+       * one that was not.
+       */
+      const removed = await deleteRestaurant(env, demo.id);
+      summary.deleted += removed;
+      if (!removed) summary.skipped += 1;
     } catch (error) {
       summary.failed += 1;
       console.error(JSON.stringify({
