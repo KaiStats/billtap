@@ -101,6 +101,80 @@ test('the analytics tags are still actually loaded', () => {
   assert.match(analytics, /googletagmanager\.com\/gtag\/js/, 'the Google tag loader is missing');
 });
 
+/**
+ * Runs public/analytics.js against a fake window at a given path and reports
+ * which tags it decided to load. Executing the real file is the point — the
+ * matcher below is the thing being tested, and a regex over the source would
+ * pass while the logic was wrong.
+ */
+function analyticsAt(pathname) {
+  const src = read('public/analytics.js');
+  const loaded = [];
+  const scriptEl = () => ({
+    set src(v) { loaded.push(String(v)); },
+    get src() { return ''; },
+    setAttribute() {}, async: false, defer: false,
+  });
+  const head = { appendChild() {}, insertBefore() {} };
+  const win = {
+    location: { pathname },
+    dataLayer: [],
+    document: {
+      createElement: scriptEl,
+      getElementsByTagName: () => [{ parentNode: head }],
+      head,
+      body: head,
+    },
+  };
+  win.window = win;
+  /**
+   * `with` so bare identifiers resolve against the fake window.
+   *
+   * The Pixel snippet does `f.fbq = ...` with f === window and then calls plain
+   * `fbq(...)`, which only works because assigning to a property of the real
+   * window creates a global. A parameter named `window` gets no such treatment,
+   * so without this the file throws ReferenceError on the one path where it is
+   * supposed to succeed — and the test would be reporting on its own harness.
+   */
+  // eslint-disable-next-line no-new-func
+  new Function('sandbox', `with (sandbox) { ${src} }`)(win);
+  return { loaded, pixel: loaded.some((u) => /facebook/.test(u)), ga: loaded.some((u) => /googletagmanager/.test(u)) };
+}
+
+test('the Meta Pixel loads on the pages that are sold from', () => {
+  // Failing this direction costs money: no Pixel on a marketing page means ad
+  // spend attributed to nothing.
+  for (const path of ['/', '/restaurants', '/about', '/blog', '/blog/podium-alternative', '/changelog', '/security', '/pricing-experiment']) {
+    assert.equal(analyticsAt(path).pixel, true, `the Pixel is missing on ${path}`);
+  }
+});
+
+test('the Meta Pixel does not load on the guest or signed-in surfaces', () => {
+  /**
+   * 140 KB over the wire and better than half a megabyte parsed, on a diner's
+   * phone in a restaurant, for an audience that is by definition never the
+   * buyer — see the header in public/analytics.js.
+   */
+  for (const path of ['/claim', '/claim/', '/r/mariposa', '/f/mariposa', '/session-host', '/new', '/new-receipt', '/dashboard', '/profile', '/login']) {
+    assert.equal(analyticsAt(path).pixel, false, `the Pixel is still loading on ${path}`);
+  }
+});
+
+test('/restaurants is not swallowed by the /r/ guest prefix', () => {
+  // The trap in a prefix match, and the most expensive page in the product to
+  // get wrong: /restaurants is where the $149 plan is sold.
+  assert.equal(analyticsAt('/restaurants').pixel, true);
+  assert.equal(analyticsAt('/r/mariposa').pixel, false);
+});
+
+test('the Google tag loads everywhere, including for guests', () => {
+  // It is the product analytics rather than an ad tag, it costs effectively
+  // nothing measured against production, and Claim.jsx calls window.gtag.
+  for (const path of ['/', '/restaurants', '/claim', '/r/mariposa', '/dashboard']) {
+    assert.equal(analyticsAt(path).ga, true, `the Google tag is missing on ${path}`);
+  }
+});
+
 test('the fonts are still actually applied', () => {
   assert.match(html, /<script defer src="\/fonts\.js">/, 'fonts.js is not loaded');
   assert.match(html, /rel="preload"\s+as="style"\s+data-fonts/, 'the preload lost its data-fonts hook');
