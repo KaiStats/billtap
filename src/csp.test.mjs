@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const html = read('index.html');
@@ -167,4 +167,50 @@ test('the pitch page states no performance metric it cannot support', () => {
       + 'or it needs to not be there',
     );
   }
+});
+
+// ── Prerendered snapshots carry no third-party tags ─────────────────────────
+//
+// public/analytics.js loads the Meta Pixel and GTM at runtime, so by the time
+// prerender serialises the DOM those have injected their own <script> tags —
+// including a Facebook config URL carrying `domain=localhost`, because that is
+// where the prerender ran. All twelve snapshots were shipping it: each telling
+// Facebook it was a different site than it is, loading fbevents.js a second
+// time, and throwing "fbq is not defined" in every visitor's console.
+//
+// Checked against dist/ when it exists, because that is the artifact that
+// ships. A build has not always been run, so an absent dist is skipped rather
+// than failed — the guard on prerender.mjs itself below always runs.
+
+test('no prerendered snapshot carries a cross-origin script tag', () => {
+  const dist = new URL('../dist/', import.meta.url);
+  let files = [];
+  try {
+    files = readdirSync(dist).filter((f) => f.endsWith('.html'));
+  } catch {
+    return; // no build in this working tree
+  }
+  if (!files.length) return;
+
+  for (const file of files) {
+    const html = readFileSync(new URL(file, dist), 'utf8');
+    const tags = [...html.matchAll(/<script[^>]*\ssrc=["']([^"']+)["']/gi)].map((m) => m[1]);
+    const foreign = tags.filter((src) => /^https?:\/\//i.test(src));
+    assert.deepEqual(
+      foreign, [],
+      `${file} ships a third-party script baked in at build time. analytics.js `
+      + 'adds the real ones on the visitor\'s own browser, scoped to the real domain.',
+    );
+    assert.ok(
+      !/domain=localhost/.test(html),
+      `${file} tells a third party it is localhost — captured from the prerender machine`,
+    );
+  }
+});
+
+test('prerender strips what the build machine injected', () => {
+  // The stripping itself, so the guard survives a dist that was never built.
+  const src = readFileSync(new URL('../scripts/prerender.mjs', import.meta.url), 'utf8');
+  assert.match(src, /querySelectorAll\('script'\)/, 'the snapshot no longer strips injected scripts');
+  assert.match(src, /location\.origin/, 'cross-origin is how an injected tag is recognised');
 });

@@ -197,6 +197,35 @@ for (const { route, file } of ROUTES) {
       for (const img of document.querySelectorAll('img')) {
         if (img.style.display === 'none') img.style.removeProperty('display');
       }
+
+      /**
+       * Third-party tags this run happened to inject, for the same reason.
+       *
+       * public/analytics.js loads the Meta Pixel and GTM at runtime, and by the
+       * time the DOM is serialised those have added their own <script> tags —
+       * including a Facebook config URL carrying `domain=localhost`, because
+       * localhost is where the prerender ran. Every snapshot was shipping it:
+       * twelve routes each telling Facebook they were a different site than
+       * they are, loading fbevents.js a second time, and throwing "fbq is not
+       * defined" in the console of every visitor before analytics.js had
+       * defined it.
+       *
+       * index.html declares only same-origin scripts — /fonts.js,
+       * /analytics.js and the bundle — and src/csp.test.mjs enforces that it
+       * carries no inline ones. So anything else in here arrived at runtime and
+       * belongs to this machine rather than to the page. analytics.js puts the
+       * real tags back on the visitor's own browser, scoped to the real domain.
+       */
+      for (const script of document.querySelectorAll('script')) {
+        const src = script.getAttribute('src') || '';
+        if (!src) { script.remove(); continue; }            // injected inline
+        if (/^https?:\/\//i.test(src)) {
+          try {
+            if (new URL(src).origin !== location.origin) script.remove();
+          } catch { script.remove(); }
+        }
+      }
+
       return '<!doctype html>\n' + document.documentElement.outerHTML;
     });
 
