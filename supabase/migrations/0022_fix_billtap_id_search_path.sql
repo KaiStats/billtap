@@ -1,0 +1,27 @@
+-- Regression fix: restore `extensions` to billtap_id()'s search_path.
+--
+-- ── What broke ──────────────────────────────────────────────────────────────
+--
+-- Migration 0019 pinned billtap_id()'s search_path to `pg_catalog, public` as
+-- part of the function-hardening pass (the function_search_path_mutable lint).
+-- billtap_id() calls gen_random_bytes(), which pgcrypto provides in the
+-- `extensions` schema on Supabase — not public or pg_catalog. Pinning the path
+-- without extensions made gen_random_bytes() unresolvable, so every insert that
+-- leans on the billtap_id() column default failed with 42883
+-- "function gen_random_bytes(integer) does not exist".
+--
+-- billtap_id() is the id default on seven tables (restaurants, sessions,
+-- receipts, guest_ratings, guest_contacts, restaurant_leads, waitlist). Demo
+-- provisioning surfaced it first because createDemoRestaurant is the path that
+-- relies on the default rather than supplying its own id.
+--
+-- ── The fix, and why it keeps the pin ───────────────────────────────────────
+--
+-- A pinned search_path is still the right posture — a role-mutable one is the
+-- lint 0019 was closing — so this keeps the pin and simply includes the schema
+-- the function genuinely needs. `extensions` goes last so it cannot shadow a
+-- same-named object in pg_catalog or public. The other two functions 0019
+-- pinned (touch_updated_date, audit_log_is_append_only) call only now() and
+-- raise, both in pg_catalog, so they were and remain correct on the tighter
+-- path.
+alter function public.billtap_id() set search_path = pg_catalog, public, extensions;
