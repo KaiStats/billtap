@@ -39,7 +39,9 @@
  * every bundle this app has ever shipped, with nothing that ever removed one.
  */
 
-const VERSION = 'v4';
+// v5: the precache list changed, and every v4 cache in the wild is an empty
+// one left behind by an install that could never finish.
+const VERSION = 'v5';
 const PRECACHE = `billtap-precache-${VERSION}`;
 const RUNTIME = `billtap-runtime-${VERSION}`;
 const CURRENT = new Set([PRECACHE, RUNTIME]);
@@ -54,7 +56,12 @@ const CURRENT = new Set([PRECACHE, RUNTIME]);
  * worker never activates, taking the offline page down with it.
  */
 const PRECACHE_URLS = [
-  '/offline.html',
+  /**
+   * `/offline`, not `/offline.html`, because the assets binding 307s the latter
+   * and a redirected response is the wrong thing to hold in a precache. The
+   * extensionless form is the canonical URL Cloudflare serves the file at.
+   */
+  '/offline',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -117,7 +124,7 @@ async function store(request, response) {
 }
 
 async function offline() {
-  const cached = await caches.match('/offline.html');
+  const cached = await caches.match('/offline');
   return cached || new Response('Offline', { status: 503 });
 }
 
