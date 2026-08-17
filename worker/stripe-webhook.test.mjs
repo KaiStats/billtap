@@ -294,6 +294,64 @@ test('a cancelled restaurant is cancelled, not left active', async () => {
 
 // ── Everything else in the Stripe account ───────────────────────────────────
 
+test('a paid subscription we cannot match to an account raises an alarm', async () => {
+  /**
+   * The failure this was written for, found the hard way.
+   *
+   * A live $0.99 Pro subscription was bought through a Stripe Payment Link.
+   * Payment Links attach none of the metadata create-pro-checkout sets, so
+   * subjectOf matched nothing — correctly, because guessing would award a paid
+   * plan to whichever row happened to be nearest. The event was then dropped in
+   * silence: money taken, nothing provisioned, and no record anywhere to notice
+   * it by. It surfaced only by reading the Stripe dashboard against an empty
+   * profiles table.
+   *
+   * Still a 200, because Stripe must stop retrying. But no longer silent.
+   */
+  const orphan = {
+    id: 'sub_link_1',
+    object: 'subscription',
+    status: 'active',
+    customer: 'cus_link_1',
+    current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+    metadata: {},
+  };
+  // Captured rather than passed in: this route calls the audit helper directly,
+  // so a callback on the event object would be quietly ignored — and a test
+  // asserting on an argument nobody reads is worse than no test at all.
+  const logged = [];
+  const realError = console.error;
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  try {
+    await withStub({ subscription: orphan }, async ({ tables }) => {
+      const res = await deliver({ type: 'customer.subscription.created', data: { object: orphan } });
+      assert.equal(res.status, 200, 'Stripe must not retry an event nothing can act on');
+      assert.equal((await res.json()).reason, 'no_subject');
+      assert.equal(tables.profiles.length, 0, 'and nothing is provisioned on a guess');
+    });
+  } finally { console.error = realError; }
+
+  const alarm = logged.find((line) => line.includes('paid_subscription_not_matched_to_an_account'));
+  assert.ok(alarm, `the unmatched subscription was dropped in silence again:\n${logged.join('\n')}`);
+  assert.match(alarm, /sub_link_1/, 'the alarm must name the subscription, or it cannot be found in Stripe');
+  assert.match(alarm, /cus_link_1/, 'and the customer, which is how you reach the person who paid');
+});
+
+test('an ordinary unrelated event does not cry wolf', async () => {
+  // Another product in the same Stripe account is genuinely uninteresting, and
+  // an alarm on every one of those is how a real orphaned subscription gets
+  // scrolled past.
+  const logged = [];
+  const realError = console.error;
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  try {
+    await withStub({ subscription: null }, async () => {
+      await deliver({ type: 'invoice.paid', data: { object: { subscription: null } } });
+    });
+  } finally { console.error = realError; }
+  assert.equal(logged.filter((l) => l.includes('paid_subscription_not_matched')).length, 0);
+});
+
 test('an event about somebody else is acknowledged and ignored', async () => {
   // A subscription created by hand in the dashboard, or another product in the
   // same account. A 200 stops Stripe retrying something nothing here will act

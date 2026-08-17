@@ -21,6 +21,7 @@ import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as createProCheckout } from './routes/create-pro-checkout.js';
 import { onRequestPost as stripeWebhook } from './routes/stripe-webhook.js';
+import { onRequestPost as deleteAccount } from './routes/delete-account.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
@@ -74,6 +75,7 @@ const POST_ROUTES = {
    * The HMAC on every delivery is the control -- see the route.
    */
   '/api/stripe-webhook': stripeWebhook,
+  '/api/delete-account': deleteAccount,
   '/api/monthly-report': monthlyReport,
   // The receipt parse, straight to the model. See routes/scan-receipt.js for
   // why it no longer goes through Base44.
@@ -153,8 +155,29 @@ const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
  */
 const PRINT_PREFIX_REDIRECT = /^\/f\/([^/]+)\/?$/i;
 
-/** Real HTML files that are not SPA routes and must pass through untouched. */
-const STATIC_HTML = new Set(['/offline.html']);
+/**
+ * Real HTML files that are not SPA routes and must pass through untouched.
+ *
+ * Both spellings, and the second one is why the app had no service worker at
+ * all. Cloudflare's assets binding strips `.html`, so `/offline.html` answers
+ * 307 to `/offline` — and `/offline` was in none of the known-route sets, so
+ * the block at the bottom of this file did what it does to any unrecognised
+ * path and rewrote the binding's perfectly good 200 into a 404.
+ *
+ * The page itself was always there and always correct. But the service worker
+ * precaches it, `cache.addAll` is atomic, and one 404 rejects the whole install
+ * — so the worker never activated. No offline fallback, no runtime caching, and
+ * no installable PWA, because Chrome requires an active worker with a fetch
+ * handler before it will offer "Add to Home Screen". Measured in production:
+ * `navigator.serviceWorker.getRegistrations()` returned zero and
+ * `billtap-precache-v4` existed but was empty — the cache opened, the addAll
+ * rejected, and nothing was ever put in it.
+ *
+ * The comment in public/service-worker.js predicted this exactly: "addAll is
+ * atomic: a single 404 rejects the install and the worker never activates,
+ * taking the offline page down with it."
+ */
+const STATIC_HTML = new Set(['/offline.html', '/offline']);
 
 /**
  * Routes with a prerendered snapshot, written by scripts/prerender.mjs during

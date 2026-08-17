@@ -154,13 +154,33 @@ export default function NewReceipt() {
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
-        const response = await fetch("/api/fn/list-restaurants", { method: "POST", body: JSON.stringify({}) });
+        /**
+         * listRestaurants, not list-restaurants.
+         *
+         * The fn map is dispatched by exact key — `HANDLERS[name]` — and the
+         * handler has always been camelCase, so this 404'd every single time.
+         * The catch below called it an optional feature and swallowed it, which
+         * is why nobody noticed: the restaurant list simply stayed empty, and an
+         * empty list renders as no picker at all rather than as an error.
+         *
+         * So the "which restaurant are you at?" picker has never worked for
+         * anyone who opened the app without scanning a table tent. Found in
+         * production traffic, not in a test — every test that touches this
+         * screen stubs the fetch.
+         */
+        const response = await fetch("/api/fn/listRestaurants", { method: "POST", body: JSON.stringify({}) });
         if (response.ok) {
           const data = await response.json();
           setRestaurants(data.restaurants || []);
+        } else {
+          logClientError("load the restaurant list", new Error(`HTTP ${response.status}`), { feature: "restaurant_picker" });
         }
       } catch (err) {
-        // Silent fail — optional feature
+        // Still not fatal — the guest can carry on without naming a restaurant,
+        // and the question is only ever an extra offer. But it is reported now
+        // rather than vanishing, which is the whole reason the bug above lived
+        // this long.
+        logClientError("load the restaurant list", err, { feature: "restaurant_picker" });
       }
     };
     fetchRestaurants();

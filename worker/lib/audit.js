@@ -77,6 +77,24 @@ export const ACTIONS = {
   // and neither is answerable from the row itself, which keeps only the
   // current plan.
   BILLING_RECONCILED: 'billing.reconciled',
+  // Somebody paid and we could not tell who they were.
+  //
+  // A subscription that reaches the webhook carrying none of the metadata our
+  // own checkout routes attach — bought through a Stripe Payment Link, or made
+  // by hand in the dashboard. The money is collected and nothing is
+  // provisioned, and until this existed there was no trace of it anywhere: a
+  // live $0.99 plan was found only by reading the Stripe dashboard against an
+  // empty profiles table. The $149 links have the same shape, where the silence
+  // costs a restaurant its service and us the customer.
+  BILLING_UNMATCHED: 'billing.unmatched',
+  // Somebody exercised the right the privacy policy grants them.
+  //
+  // The one action whose absence from this log is indistinguishable from it
+  // never having been asked for, which is exactly what a regulator or a support
+  // conversation needs to establish. Recorded against a one-way fingerprint
+  // rather than the user id, because writing the id would put back the
+  // identifier every other row belonging to that person just had removed.
+  ACCOUNT_DELETED: 'account.deleted',
   // A public page put up bearing a real business's name, by us, for a business
   // that has not agreed to anything. It is the one action in this app that
   // creates something in somebody else's name, so "who stood that page up, and

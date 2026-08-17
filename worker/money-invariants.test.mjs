@@ -134,6 +134,17 @@ test('Stripe stays confined to subscription billing', () => {
      * HMAC on every delivery is what stands in for a credential.
      */
     'routes/stripe-webhook.js',
+    /**
+     * Cancels a live subscription on the way out of account deletion.
+     *
+     * Deliberate, and the one place outside the billing routes that touches
+     * money. It is here because deleting the account first would leave a
+     * subscription nothing in this app can reach and Stripe still billing it —
+     * the same orphan a Payment Link once created here, except self-inflicted.
+     * It only ever cancels, never charges, and a Stripe failure is logged
+     * rather than blocking the deletion.
+     */
+    'routes/delete-account.js',
   ];
 
   const found = [];

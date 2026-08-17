@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { invoke } from "@/api/functions";
+import { accessToken } from "@/lib/supabase";
 import { listSplits } from "@/lib/splitHistory";
 import { useAuth } from "@/lib/AuthContext";
 import AppHeader from "@/components/AppHeader";
@@ -84,7 +85,43 @@ export default function Profile() {
     if (confirmText !== "DELETE") return;
     setDeleting(true);
     try {
-      await invoke('deleteAccount', {});
+      /**
+       * A top-level route, not a fn-map name.
+       *
+       * This was invoke('deleteAccount'), which posts to /api/fn/deleteAccount,
+       * and no such handler has ever existed — so the one button the privacy
+       * policy points people at answered 404 for the life of the feature. It
+       * sits beside /api/create-pro-checkout for the same reason that one does:
+       * it acts on a person rather than on a split, so it authenticates from
+       * the session and never from the body.
+       *
+       * The bearer is attached by hand because, unlike the fn map, nothing
+       * does it for us here — without it the Worker sees an anonymous caller
+       * and refuses, which is the correct answer to an unauthenticated request
+       * to delete an account and a baffling one to look at.
+       */
+      const token = await accessToken();
+      const res = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        // The same word they typed, carried through. The endpoint checks it
+        // again rather than trusting that a screen asked.
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (data.code === 'owns_restaurant') {
+          const names = (data.restaurants || []).map((r) => r.name).filter(Boolean).join(', ');
+          throw new Error(
+            `Your account still owns ${names || 'a restaurant'}. Cancel or transfer it first — deleting it here would take its QR codes down mid-service.`,
+          );
+        }
+        throw new Error(data.error || 'Could not delete your account. Please try again.');
+      }
       logout();
     } catch (error) {
       setFailure(error);
