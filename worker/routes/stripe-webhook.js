@@ -309,10 +309,58 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     }
 
     if (!subject || !subscription) {
-      // Signed, understood, and about something that is not ours — a
-      // subscription created in the dashboard by hand, or another product in
-      // the same Stripe account. Answering 200 stops Stripe retrying an event
-      // nothing here will ever act on.
+      /**
+       * Signed, understood, and not matchable to anybody here.
+       *
+       * Answering 200 is still right — Stripe must stop retrying an event
+       * nothing will ever act on, and subjectOf refuses to guess a subject on
+       * purpose: awarding a paid plan to whichever row happened to match is a
+       * worse failure than awarding none.
+       *
+       * ── Why this now shouts ─────────────────────────────────────────────
+       *
+       * It used to return silently, and that silence hid a live subscription.
+       * A $0.99 Pro plan was bought through a Stripe Payment Link, which
+       * attaches none of the metadata create-pro-checkout sets, so the event
+       * arrived, matched nothing, and vanished — money collected, nothing
+       * provisioned, and no trace anywhere to notice it by. It was only found
+       * by reading the Stripe dashboard against an empty profiles table.
+       *
+       * The same hole is open on the $149 restaurant links. So an unmatched
+       * *subscription* is now an incident: logged loudly with the ids needed to
+       * find it in Stripe, and written to the audit log so it shows up in the
+       * same place every other billing event does.
+       *
+       * Scoped to subscription-bearing events on purpose. A plain 'no_subject'
+       * on some other product in the same account is genuinely uninteresting,
+       * and crying wolf about it is how a real one gets scrolled past.
+       */
+      if (subscription || type === 'checkout.session.completed') {
+        const customer = typeof subscription?.customer === 'string'
+          ? subscription.customer
+          : subscription?.customer?.id || object?.customer || null;
+        console.error(JSON.stringify({
+          at: new Date().toISOString(),
+          job: 'stripe-webhook',
+          alarm: 'paid_subscription_not_matched_to_an_account',
+          event: type,
+          subscription_id: subscription?.id || object?.subscription || null,
+          customer_id: customer,
+          status: subscription?.status || null,
+          hint: 'created outside create-pro-checkout/create-checkout — a Payment Link or the Stripe dashboard. Nothing was provisioned.',
+        }));
+        await audit(env, ctx, {
+          action: ACTIONS.BILLING_UNMATCHED,
+          request,
+          requestId,
+          outcome: 'error',
+          detail: {
+            event: type,
+            subscription_id: subscription?.id || object?.subscription || null,
+            customer_id: customer,
+          },
+        });
+      }
       return json({ ok: true, ignored: type, reason: 'no_subject' });
     }
 
