@@ -38,6 +38,7 @@
 import { serviceRole } from '../lib/data.js';
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
+import { subscriptionPeriodEnd } from '../lib/stripe.js';
 
 /**
  * Stripe subscription status to the plan column.
@@ -116,7 +117,7 @@ export async function scheduled(env) {
       const plan = PLAN_FOR[sub.status];
       if (!plan) continue;
 
-      const periodEnd = sub.current_period_end ? sub.current_period_end * 1000 : null;
+      const periodEnd = subscriptionPeriodEnd(sub);
       const planChanged = plan !== r.plan;
       const periodChanged = periodEnd && periodEnd !== Number(r.current_period_end);
       if (!planChanged && !periodChanged) continue;

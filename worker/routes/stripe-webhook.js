@@ -37,6 +37,7 @@ import { serviceRole } from '../lib/data.js';
 import { audit, ACTIONS } from '../lib/audit.js';
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 import { PLAN_FOR } from './reconcile-billing.js';
+import { subscriptionPeriodEnd } from '../lib/stripe.js';
 
 /**
  * How far out of step with Stripe's clock a request may be, in seconds.
@@ -161,9 +162,7 @@ function subjectOf(object) {
 async function applySubscription(env, subject, subscription) {
   const svc = serviceRole(env);
   const status = subscription?.status || null;
-  const periodEnd = subscription?.current_period_end
-    ? subscription.current_period_end * 1000
-    : null;
+  const periodEnd = subscriptionPeriodEnd(subscription);
 
   /**
    * The same map the nightly reconciler uses, imported rather than restated.

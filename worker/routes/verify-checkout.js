@@ -23,6 +23,7 @@ import { audit, ACTIONS } from '../lib/audit.js';
 import { serviceRole } from '../lib/data.js';
 
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+import { subscriptionPeriodEnd } from '../lib/stripe.js';
 
 export async function onRequestPost({ request, env, ctx, requestId = null }) {
   let body;
@@ -82,7 +83,7 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
 
     const restaurantId = data.client_reference_id || null;
     const subscriptionId = sub?.id || (typeof data.subscription === 'string' ? data.subscription : null);
-    const currentPeriodEnd = sub?.current_period_end ? sub.current_period_end * 1000 : null;
+    const currentPeriodEnd = subscriptionPeriodEnd(sub);
 
     // The plan change, written here rather than handed back for the browser to
     // apply. Only on a paid session, and only when Stripe told us which
