@@ -2846,6 +2846,23 @@ const HANDLERS = {
   },
 
   /**
+   * What the pricing card is allowed to offer.
+   *
+   * The annual plan is a distinct Stripe price, and it exists only once
+   * STRIPE_PRO_ANNUAL_PRICE_ID is bound. The Landing page asks this on mount so
+   * it shows the yearly toggle only when a checkout for it would actually
+   * succeed — the alternative is a button that looks live and answers
+   * 'not_configured', which is a worse thing to ship than no button.
+   *
+   * Public and unauthenticated: it reveals a boolean about our own pricing, not
+   * anything about a person. Returns only the flag — never the price id itself,
+   * which the client has no use for and which belongs on the server.
+   */
+  async getBillingConfig({ env }) {
+    return json({ annual_available: Boolean(env?.STRIPE_PRO_ANNUAL_PRICE_ID) });
+  },
+
+  /**
    * The operator's own ratings and contacts. Ownership from their identity.
    *
    * See readAll below for why these are paged rather than limited.

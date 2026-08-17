@@ -429,6 +429,26 @@ export default function Landing() {
   const [proError, setProError] = useState(null);
 
   /**
+   * Monthly by default; the yearly toggle appears only when the server says a
+   * checkout for it would succeed.
+   *
+   * getBillingConfig returns a plain boolean — annual exists once its Stripe
+   * price is bound. Asking rather than hardcoding means the deploy is safe
+   * before the price is created: the toggle is simply absent until it is, then
+   * appears on its own, with nothing to change here.
+   */
+  const [billingInterval, setBillingInterval] = useState("monthly");
+  const [annualAvailable, setAnnualAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/fn/getBillingConfig", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then((r) => r.json())
+      .then((d) => { if (alive) setAnnualAvailable(Boolean(d?.annual_available)); })
+      .catch(() => { /* no toggle, monthly only — the safe default */ });
+    return () => { alive = false; };
+  }, []);
+
+  /**
    * Ask the Worker for a Stripe Checkout URL and go there.
    *
    * The redirect is a full navigation rather than a new tab: Safari blocks a
@@ -458,7 +478,10 @@ export default function Landing() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: "{}",
+        // The interval the toggle is on. The server treats anything but
+        // 'annual' as monthly, so a stale value can only ever undersell, never
+        // overcharge.
+        body: JSON.stringify({ plan: billingInterval }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -731,10 +754,50 @@ export default function Landing() {
               <div className="absolute -top-3 left-8"><span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-3 py-1 shadow-glow">Most popular</span></div>
               <p className="mono text-xs uppercase tracking-[0.2em] text-primary">Pro</p>
               <p className="text-sm text-muted-foreground mt-2">Never lose track of who's paid you back.</p>
+
+              {/* The interval toggle, present only when a yearly checkout would
+                  actually succeed — see getBillingConfig. Monthly-only shows no
+                  toggle at all, so the card is unchanged until annual exists. */}
+              {annualAvailable && (
+                <div className="mt-5 inline-flex rounded-xl p-1 text-sm font-semibold" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} role="group" aria-label="Billing interval">
+                  <button
+                    type="button"
+                    onClick={() => setBillingInterval("monthly")}
+                    aria-pressed={billingInterval === "monthly"}
+                    className={`press px-3 py-1.5 rounded-lg transition ${billingInterval === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingInterval("annual")}
+                    aria-pressed={billingInterval === "annual"}
+                    className={`press px-3 py-1.5 rounded-lg transition ${billingInterval === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Yearly
+                    <span className="ml-1.5 text-[10px] font-bold" style={{ color: billingInterval === "annual" ? "inherit" : "#00c896" }}>SAVE 39%</span>
+                  </button>
+                </div>
+              )}
+
               <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="mono text-5xl font-semibold tabular-nums">$3.99</span>
-                <span className="text-muted-foreground">/ month</span>
+                {billingInterval === "annual" ? (
+                  <>
+                    <span className="mono text-5xl font-semibold tabular-nums">$29</span>
+                    <span className="text-muted-foreground">/ year</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="mono text-5xl font-semibold tabular-nums">$3.99</span>
+                    <span className="text-muted-foreground">/ month</span>
+                  </>
+                )}
               </div>
+              {billingInterval === "annual" && (
+                // $29 / 12 = $2.42, and the honest anchor is the real monthly
+                // price, not a round number invented to flatter the saving.
+                <p className="text-xs text-primary mt-1.5">Just $2.42/mo, billed yearly · vs $3.99/mo</p>
+              )}
               <ul className="space-y-3 mt-7 mb-8 flex-1">
                 {proFeatures.map(f => (
                   <li key={f} className="flex items-start gap-3">
@@ -769,7 +832,7 @@ export default function Landing() {
               {proError && (
                 <p className="text-center text-xs mt-3" style={{ color: "#e5484d" }}>{proError}</p>
               )}
-              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $3.99/mo</p>
+              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then {billingInterval === "annual" ? "$29/yr" : "$3.99/mo"}</p>
             </div>
           </div>
 
