@@ -2807,6 +2807,45 @@ const HANDLERS = {
   },
 
   /**
+   * Whether this person is on consumer Pro, and until when.
+   *
+   * The client needs an answer to decide what to draw — the running-tab view is
+   * Pro, and everything else on that screen is an upsell. resolvePartyLimit
+   * already reads exactly this to enforce the party cap server-side; this is the
+   * same read, exposed so the UI can match what the server will do rather than
+   * guess and then be corrected by a 403 at the worst possible moment.
+   *
+   * Not a 401 for an anonymous caller. Asking "am I Pro" before signing in is an
+   * ordinary thing a screen does on load, and the honest answer is "no", not an
+   * error. The expiry is the authority, by the clock, for the reason migration
+   * 0017 gives: a lapse happens when plan_expires_at passes, with no webhook
+   * needing to arrive on time, and a null expiry is a hand-granted plan that has
+   * no end. This is a convenience read, not a security boundary — the cap that
+   * actually costs money to bypass is enforced in resolvePartyLimit, server-side,
+   * every time a split is created.
+   */
+  async getMyPlan({ env, request }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ plan: 'free', pro: false });
+
+    try {
+      const rows = await serviceRole(env).entity('Profile')
+        .filter({ id: user.id }, { select: 'id,plan,plan_expires_at' });
+      const profile = rows[0];
+      const expires = Number(profile?.plan_expires_at) || null;
+      const pro = profile?.plan === 'pro' && (!expires || Date.now() < expires);
+      return json({ plan: pro ? 'pro' : 'free', pro, plan_expires_at: expires });
+    } catch (error) {
+      // A read that fails answers free rather than throwing onto a screen
+      // somebody opened to look at their own bills. It is the safe direction:
+      // the worst case is a Pro user briefly not shown their tab, not a free
+      // user handed it — and the server would refuse the party cap regardless.
+      console.error('getMyPlan: profile read failed', error?.message);
+      return json({ plan: 'free', pro: false });
+    }
+  },
+
+  /**
    * The operator's own ratings and contacts. Ownership from their identity.
    *
    * See readAll below for why these are paged rather than limited.
