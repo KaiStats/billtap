@@ -56,12 +56,30 @@ export default function NewReceipt() {
   const [items, setItems] = useState([]);
   const [tax, setTax] = useState(0);
   const [tip, setTip] = useState(0);
+  /**
+   * Table, server and check number, when the receipt printed them.
+   *
+   * Carried through untouched and never shown to the diner. It is not their
+   * information and there is nothing for them to correct — it exists so that
+   * when this table leaves a low rating, the alert can say "Table 14" instead
+   * of asking a manager to walk the room. See supabase/migrations/0015.
+   */
+  const [ticket, setTicket] = useState(null);
   const [splitMode, setSplitMode] = useState("itemized");
   const [saving, setSaving] = useState(false);
   const [restaurantSlug, setRestaurantSlug] = useState(null);
   const [restaurants, setRestaurants] = useState([]);
   // Drives the inline picker that replaced a blocking prompt() dialog.
   const [picking, setPicking] = useState(false);
+  /**
+   * Whether the "is this <restaurant>?" question has been dealt with.
+   *
+   * Its own flag rather than a signal borrowed from `title`, because the title
+   * is the name of the bill and clearing it to hide a prompt left the split
+   * uncreatable. Reset with the receipt below, so a second photograph asks
+   * again rather than inheriting the last one's answer.
+   */
+  const [restaurantAsked, setRestaurantAsked] = useState(false);
   const [restaurantQuery, setRestaurantQuery] = useState("");
   /**
    * The last failure, shown in the page rather than in a modal.
@@ -102,6 +120,30 @@ export default function NewReceipt() {
    */
   const quickEvenRef = useRef(null);
   const scrollToQuickEven = useRef(false);
+
+  /**
+   * The restaurant the table tent already told us about.
+   *
+   * TableEntry writes the slug into sessionStorage when a guest scans
+   * `/r/<slug>`, and both create paths read it back at the moment they submit —
+   * so attribution has always been correct. What was not correct was the
+   * question: this state stayed null on the tent path, and the confirmation
+   * below is gated on it being null, so a guest who had just scanned Herb &
+   * Rye's own table tent was asked "Is this HERB & RYE?".
+   *
+   * One wasted tap, and an odd one — it invites somebody to correct a fact the
+   * tent is more certain about than the scan is. Seeding it here answers the
+   * question before it is asked.
+   */
+  useEffect(() => {
+    try {
+      const fromTent = sessionStorage.getItem("billtap_restaurant_slug");
+      if (fromTent) setRestaurantSlug(fromTent);
+    } catch {
+      // Private mode. The create paths read sessionStorage directly, so the
+      // split is still attributed; the guest just gets asked to confirm.
+    }
+  }, []);
 
   useEffect(() => {
     if (!showQuickEven || !scrollToQuickEven.current) return;
@@ -286,9 +328,16 @@ export default function NewReceipt() {
       }
 
       setTitle(result.title || "Receipt");
+      // A new receipt is a new question. Without this, waving the prompt away
+      // once would silently suppress it for every later photograph in the
+      // same visit, including one taken at a different restaurant.
+      setRestaurantAsked(false);
       setItems((result.items || []).map((item, i) => ({ ...item, id: `item-${i}`, claimed_by: [] })));
       setTax(result.tax || 0);
       setTip(result.tip || 0);
+      // Absent on most receipts and on the Base44 fallback path, which is why
+      // this is `|| null` rather than a shape the rest of the screen relies on.
+      setTicket(result.ticket || null);
       if (validation) setParseValidation(validation);
       // Only pre-open the editor when we already know the numbers are suspect.
       // Anything else and the diner is being asked to fix what is not broken.
@@ -342,7 +391,23 @@ export default function NewReceipt() {
     setFailure(null);
     setSaving(true);
     try {
-      const restaurantSlug = sessionStorage.getItem("billtap_restaurant_slug");
+      /**
+       * Named apart from the state, because it used to shadow it.
+       *
+       * `const restaurantSlug = ...` declared inside this function hid the
+       * state variable of the same name for the whole body, so the spread below
+       * read sessionStorage rather than the guest's answer. A diner who opened
+       * the app instead of scanning the tent, was asked "Is this Herb & Rye?"
+       * and tapped Yes, watched the question disappear as though it had been
+       * recorded — and the split was created with no restaurant at all. No star
+       * rating, no Google review ask, and no low-rating alert for that table,
+       * at a restaurant paying $149 a month for exactly those three things.
+       *
+       * The scanned tent still wins where both exist: it is the table the guest
+       * is physically sitting at, and the question is only ever asked when
+       * there is no tent to have scanned.
+       */
+      const sessionStorageSlug = sessionStorage.getItem("billtap_restaurant_slug");
       // Resolved here rather than during the scan. The upload started when the
       // photo was picked and has had the whole review screen to finish; if it
       // failed, the split is created without an image, which is a missing
@@ -359,6 +424,11 @@ export default function NewReceipt() {
         split_mode: splitMode,
         total_amount: total,
         ...(restaurantSlug ? { restaurant_slug: restaurantSlug } : {}),
+        ...(sessionStorageSlug ? { restaurant_slug: sessionStorageSlug } : {}),
+        // Only on this path. The quick even split below is created from a typed
+        // total with no photograph, so there is no receipt to have read a table
+        // off — sending an empty ticket there would be inventing one.
+        ...(ticket ? { ticket } : {}),
       });
       if (res.data?.error) {
         // The server's own sentence — it has the amounts and the names, and a
@@ -628,8 +698,19 @@ export default function NewReceipt() {
         {step === 2 && (
           <div className="space-y-4">
 
-            {/* Restaurant confirmation */}
-            {!restaurantSlug && title && (
+            {/*
+              Restaurant confirmation.
+
+              Hidden once it has been answered *or* waved away — see
+              `restaurantAsked`. It used to be dismissed by clearing the title,
+              which hid it for the right reason and broke the split for the
+              wrong one: `title` is also the name of the bill, createSession
+              refuses without one, and the diner was left on a screen holding a
+              fully parsed receipt and a button that answered "title is
+              required" every time they pressed it. Found by walking the guest
+              path with a real photograph.
+            */}
+            {!restaurantSlug && title && !restaurantAsked && (
               <div className="bg-brand/10 border border-brand/30 rounded-2xl p-4 space-y-3">
                 <p className="text-sm font-semibold text-foreground">Is this {title}?</p>
                 <div className="flex gap-2">
@@ -649,7 +730,11 @@ export default function NewReceipt() {
                     Find it
                   </button>
                   <button
-                    onClick={() => setTitle("")}
+                    // Dismiss the question, keep the bill's name. "Do not ask
+                    // me which restaurant this is" and "this bill has no name"
+                    // are different answers, and only one of them was asked.
+                    onClick={() => setRestaurantAsked(true)}
+                    aria-label="Not a restaurant"
                     className="px-3 py-2 text-muted-foreground hover:text-foreground transition"
                   >
                     ✕

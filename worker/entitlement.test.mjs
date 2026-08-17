@@ -88,6 +88,61 @@ test('an active row nobody has refreshed lapses only after the backstop', () => 
   assert.match(entitlement(abandoned, NOW).reason, /reconcile/);
 });
 
+// ── The demo ────────────────────────────────────────────────────────────────
+//
+// A page stood up at a table for somebody who has bought nothing. It is ours,
+// there is no customer, and so there is no payment question to fail open about
+// — which makes it the least ambiguous case in the function and the one whose
+// answer matters most in the moment it is being watched.
+
+test('a demo inside its window is served', () => {
+  const live = { demo: true, demo_expires_at: inDays(0.5) };
+  assert.equal(isEntitled(live, NOW), true);
+  assert.equal(entitlement(live, NOW).state, 'demo');
+});
+
+test('a demo past its expiry is denied outright, with no grace', () => {
+  // Grace protects a paying restaurant from our own billing errors. There is
+  // nobody here to protect, and every extra hour is a page carrying a
+  // stranger's business name staying live past the conversation it was for.
+  const done = { demo: true, demo_expires_at: inDays(-0.5) };
+  assert.equal(isEntitled(done, NOW), false);
+  assert.equal(entitlement(done, NOW).state, 'demo_expired');
+});
+
+test('a demo with no expiry is served, consistent with the rest of the file', () => {
+  // The Mariposa direction: a gap in our own data entry is not a reason to
+  // break the demo while a prospect is holding the phone. The cleanup job is
+  // what makes the clock real; the column is only what it reads.
+  assert.equal(isEntitled({ demo: true, demo_expires_at: null }, NOW), true);
+  assert.equal(isEntitled({ demo: true }, NOW), true);
+});
+
+test('nothing downstream can override the demo arm', () => {
+  // The arm comes first on purpose. A demo row is `plan: 'trial'` with a null
+  // trial date, but it must stay entitled even carrying the states that stop a
+  // real restaurant — otherwise a stale column decides whether the one moment
+  // this whole feature exists for happens at all.
+  const expires = inDays(0.5);
+  for (const contamination of [
+    { plan: 'cancelled' },
+    { plan: 'trial', trial_ends_at: inDays(-30) },
+    { plan: 'past_due', current_period_end: inDays(-90) },
+    { plan: 'active', current_period_end: inDays(-(STALE_DAYS + 10)) },
+  ]) {
+    const row = { ...contamination, demo: true, demo_expires_at: expires };
+    assert.equal(isEntitled(row, NOW), true, JSON.stringify(contamination));
+    assert.equal(entitlement(row, NOW).state, 'demo', JSON.stringify(contamination));
+  }
+});
+
+test('demo is a flag, not a guess — a real restaurant is unaffected', () => {
+  // `demo: false` is what migration 0013 gives every existing row, so the arm
+  // must be inert for all of them.
+  assert.equal(entitlement({ demo: false, plan: 'cancelled' }, NOW).state, 'cancelled');
+  assert.equal(entitlement({ plan: 'cancelled' }, NOW).state, 'cancelled');
+});
+
 // ── The unknowns ────────────────────────────────────────────────────────────
 
 test('an unrecognised plan is a trial, never a subscription', () => {
@@ -114,6 +169,9 @@ test('every answer carries a state and a reason worth logging', () => {
     { plan: 'past_due', current_period_end: inDays(-1) },
     { plan: 'cancelled' },
     { plan: 'nonsense' },
+    { demo: true, demo_expires_at: inDays(0.5) },
+    { demo: true, demo_expires_at: inDays(-0.5) },
+    { demo: true },
   ];
   for (const r of rows) {
     const e = entitlement(r, NOW);

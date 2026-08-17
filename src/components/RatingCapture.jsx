@@ -99,7 +99,34 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
         session_id: sessionId,
         stars: value,
       });
-      setRatingId(res?.data?.rating_id || null);
+      const id = res?.data?.rating_id || null;
+      setRatingId(id);
+
+      /**
+       * Page the manager now, before the guest has typed anything.
+       *
+       * This used to wait for "Send to the manager" on the next screen, which
+       * meant a guest who tapped one star and walked out paged nobody — and
+       * that is the guest this product exists to catch. Somebody angry enough
+       * to write a paragraph is already engaged; the one who leaves without a
+       * word is the one who is not coming back, and they were the only one the
+       * manager never heard about.
+       *
+       * Not awaited. The guest's next screen must not wait on an email, and
+       * they may well close the tab before this resolves — which is fine, the
+       * request is already on its way. If they do go on to say what happened,
+       * sendPrivate fires again and the server sends one follow-up carrying
+       * the comment; it decides that, not this component.
+       */
+      if (needsManager && id) {
+        fetch("/api/rating-alert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rating_id: id }),
+          // So the browser finishes it even if the page goes away underneath.
+          keepalive: true,
+        }).catch(() => { /* Best effort, like the call in sendPrivate. */ });
+      }
     } catch {
       /* Never block the guest on our bookkeeping. */
     }

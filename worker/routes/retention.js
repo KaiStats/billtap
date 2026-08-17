@@ -148,6 +148,22 @@ export async function redactSession(env, svc, session) {
     await svc.entity('Session').update(session.id, {
       participants,
       items,
+      /**
+       * The server's name goes with the guests' names.
+       *
+       * A named person, read off the receipt by the scan — see migration 0015.
+       * The restaurant's own employee rather than a guest, so the published
+       * policy does not name it, but the reason the policy exists applies
+       * unchanged: it is useful for the twenty minutes after a bad rating,
+       * when a manager is deciding who to talk to, and after that it is a
+       * record of who was working when something went wrong, kept for years,
+       * serving nobody.
+       *
+       * ticket_table and ticket_number are deliberately kept. They identify a
+       * piece of furniture and a POS record, not a person, and they belong to
+       * the host's own account of the bill exactly as the line items do.
+       */
+      ticket_server: null,
       // Cleared so nothing links to an object that is no longer there, and so a
       // second run does not try to delete it again.
       image_url: null,
@@ -305,6 +321,163 @@ export async function sweepOrphans(env, svc, { limit = 200 } = {}) {
 }
 
 /**
+ * Demo pages per run.
+ *
+ * A day's door-knocking is tens of these, not hundreds, and each one costs
+ * three deletes plus the read. Bounded like everything else here so a backlog
+ * drains over a few nights rather than spending a whole invocation's subrequest
+ * budget in one go.
+ */
+const DEMO_BATCH = 50;
+
+/**
+ * Expired demo pages, deleted outright — the rows and everything hanging off
+ * them.
+ *
+ * ── Why this is a hard delete when nothing else here is ────────────────────
+ *
+ * The rest of this file redacts. The argument for that is at the top: guest
+ * data is the restaurant's, it cannot be recovered once refused, and a
+ * redacted session still tells its host what their meal cost. Every clause of
+ * that reasoning points the other way here.
+ *
+ * This data belongs to nobody. A demo's ratings are stars the operator tapped
+ * himself to make a phone buzz in front of a prospect, on a restaurant that
+ * never signed up. There is no host whose record this is, no guest whose
+ * privacy is at stake, and nobody who could ever want it back.
+ *
+ * And keeping it costs something specific: it pollutes exactly the numbers this
+ * product is sold on. "Ratings collected", "caught before going public", the
+ * average — all of it would slowly fill with a salesman's own taps. A metric
+ * that quietly counts its own demos is worse than no metric, because it is
+ * still quoted.
+ *
+ * ── Children first, even though the database would do it ───────────────────
+ *
+ * Migration 0001 declares guest_ratings.restaurant_id and
+ * guest_contacts.restaurant_id `on delete cascade`, so deleting the restaurant
+ * alone would take both with it. The cascade is the guarantee; these two calls
+ * are not. They exist for the count — `deleted: 12` on its own says nothing
+ * about whether a demo's ratings really went, and this is a hard delete, which
+ * is the kind of job whose log line has to be worth believing.
+ *
+ * Doing them first is what makes that ordering safe rather than merely tidy: a
+ * child delete that fails leaves the restaurant row behind, still expired, so
+ * tomorrow's run tries the whole thing again. The reverse order would leave
+ * rows whose only handle was the row that just went.
+ *
+ * `sessions.restaurant_id` is `on delete set null`, deliberately not touched
+ * here. Those are real splits, made on real phones during the demo — a receipt
+ * somebody photographed — and they are the diner's, not the demo's. They lose
+ * the pointer and are then redacted on the ordinary thirty-day clock like any
+ * other split.
+ *
+ * Failures are recorded and survived, like everything else in this file. One
+ * demo whose delete loses a race must not stop the other forty-nine.
+ */
+export async function sweepExpiredDemos(env, svc, { now = Date.now(), limit = DEMO_BATCH } = {}) {
+  const summary = { considered: 0, deleted: 0, skipped: 0, ratings_deleted: 0, contacts_deleted: 0, failed: 0 };
+
+  const due = await svc.entity('Restaurant').filter(
+    { demo: true, demo_expires_at: { lt: now } },
+    {
+      select: 'id,slug,demo_expires_at',
+      // Oldest expiry first, so a backlog drains in the order it accrued and
+      // the page that has been up longest is the first to come down.
+      order: 'demo_expires_at',
+      limit,
+    },
+  );
+  summary.considered = due.length;
+
+  for (const demo of due) {
+    try {
+      summary.ratings_deleted += await deleteChildren(env, 'guest_ratings', demo.id);
+      summary.contacts_deleted += await deleteChildren(env, 'guest_contacts', demo.id);
+      /**
+       * The count Postgres reported, not an assumption that the call worked.
+       *
+       * deleteRestaurant carries a `demo=eq.true` predicate on purpose, so an
+       * id that has stopped being a demo since it was read matches nothing and
+       * comes back zero — which is exactly what happens when a prospect signs
+       * on the spot and the flag is cleared by hand. Adding 1 regardless
+       * reported a hard delete that had not happened, on a row still due, which
+       * would then be picked up and re-reported every night thereafter.
+       *
+       * This function's own header is the standard being met here: `deleted: 12`
+       * on its own has to be worth believing. The child counts were already
+       * taken from their return values; the row that names the business was the
+       * one that was not.
+       */
+      const removed = await deleteRestaurant(env, demo.id);
+      summary.deleted += removed;
+      if (!removed) summary.skipped += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error(JSON.stringify({
+        job: 'retention', step: 'demo', restaurant_id: demo.id, message: error?.message,
+      }));
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Straight to PostgREST, because db.js has no delete.
+ *
+ * That absence is deliberate and worth keeping — see worker/lib/db.js, whose
+ * whole interface is the four operations the business functions use. Adding a
+ * general `delete()` there to serve one nightly job would put a delete within
+ * reach of every handler in functions.js, which is a much larger change than
+ * this needs.
+ *
+ * The filter is two scalars sent as query parameters, which URLSearchParams
+ * percent-encodes and PostgREST never parses for structure — the property the
+ * orphan sweep above learned the hard way. `Prefer: return=representation` so
+ * the count is what the database actually removed rather than what we hoped.
+ */
+async function deleteWhere(env, table, params) {
+  const res = await fetchWithTimeout(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, '')}/rest/v1/${table}?${params}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: 'return=representation',
+      },
+    },
+    TIMEOUTS.database,
+  );
+  if (!res.ok) throw new Error(`${table} delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+function deleteChildren(env, table, restaurantId) {
+  const params = new URLSearchParams();
+  params.append('restaurant_id', `eq.${restaurantId}`);
+  return deleteWhere(env, table, params);
+}
+
+/**
+ * The restaurant row, and only if it is still a demo.
+ *
+ * `demo=eq.true` is on the delete itself rather than trusted from the read
+ * above. It is the difference between a bug in this file and a deleted
+ * restaurant: the predicate that decides what is disposable is evaluated by
+ * Postgres at the moment of the delete, so an id that has somehow stopped being
+ * a demo since it was read matches nothing and comes back as zero rows.
+ */
+function deleteRestaurant(env, restaurantId) {
+  const params = new URLSearchParams();
+  params.append('id', `eq.${restaurantId}`);
+  params.append('demo', 'eq.true');
+  return deleteWhere(env, 'restaurants', params);
+}
+
+/**
  * The nightly pass. Called from the Worker's scheduled handler.
  *
  * Returns a summary rather than logging only, so the scheduled handler can put
@@ -378,6 +551,23 @@ export async function scheduled(env) {
     summary.orphans = await sweepOrphans(env, svc);
   } catch (error) {
     summary.orphans = { error: error?.message || String(error) };
+  }
+
+  /**
+   * Then the demo pages whose day is up.
+   *
+   * Isolated in its own catch, like the sweep above and for the same reason:
+   * this deletes rows nobody owns, and it must not be able to report the guest
+   * redaction — which is the thing a published policy promises — as failed.
+   *
+   * After the session pass rather than before, so a demo's splits have already
+   * had their receipt images dealt with by the code that knows how. The rows
+   * themselves go here.
+   */
+  try {
+    summary.demos = await sweepExpiredDemos(env, svc);
+  } catch (error) {
+    summary.demos = { error: error?.message || String(error) };
   }
 
   /**

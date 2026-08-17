@@ -19,6 +19,8 @@ import { onRequestPost as waitlist } from './routes/waitlist.js';
 import { onRequestPost as ratingAlert } from './routes/rating-alert.js';
 import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
+import { onRequestPost as createProCheckout } from './routes/create-pro-checkout.js';
+import { onRequestPost as stripeWebhook } from './routes/stripe-webhook.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
@@ -61,6 +63,17 @@ const POST_ROUTES = {
   '/api/rating-alert': ratingAlert,
   '/api/create-checkout': createCheckout,
   '/api/verify-checkout': verifyCheckout,
+  // Consumer Pro. Authenticated, unlike the restaurant one above -- the plan
+  // attaches to a person, so who it is for must come from a verified session.
+  '/api/create-pro-checkout': createProCheckout,
+  /**
+   * Stripe telling us what happened, for both products.
+   *
+   * Not rate limited and not authenticated, because Stripe is neither: it
+   * retries with backoff for days and carries no credential this app issued.
+   * The HMAC on every delivery is the control -- see the route.
+   */
+  '/api/stripe-webhook': stripeWebhook,
   '/api/monthly-report': monthlyReport,
   // The receipt parse, straight to the model. See routes/scan-receipt.js for
   // why it no longer goes through Base44.
@@ -111,10 +124,34 @@ const SPA_ROUTES = new Set([
   '/receipt-detail',
   '/profile',
   '/restaurant-dashboard',
+  // Listed for the same reason as everything else here — an unlisted path is
+  // served with a 404 status, so the screen would boot and work while
+  // reporting itself as missing. It carries noindex of its own; being a real
+  // route and being crawlable are different questions.
+  '/new',
 ]);
 
 /** Per-table guest links from the QR tents: /r/<slug>. */
 const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
+
+/**
+ * The prefix a batch of printed cards used by mistake — see the redirect below.
+ *
+ * A slug is required. Bare `/f` and `/f/` match nothing here and go on 404ing,
+ * which is right: there is no card that says just `/f`, so a request for one is
+ * a crawler or a typo, and answering it with a redirect to `/r/` would invent a
+ * destination nobody printed.
+ *
+ * Case-insensitive, and the slug is lowercased on the way out. LEGACY_REDIRECTS
+ * already exists because capitalised paths reached this app in the wild, and a
+ * printed card is read by more things than a browser — a QR decoder, an OCR, a
+ * person typing it off a flyer, an SMS client that title-cases what it thinks
+ * is a sentence. `/F/Mariposa` used to 404 outright, and getting past that only
+ * to hand `/r/Mariposa` to a slug lookup that is byte-exact would have moved
+ * the dead end rather than removed it: slugify() guarantees every stored slug is
+ * lowercase, so anything else cannot match a row.
+ */
+const PRINT_PREFIX_REDIRECT = /^\/f\/([^/]+)\/?$/i;
 
 /** Real HTML files that are not SPA routes and must pass through untouched. */
 const STATIC_HTML = new Set(['/offline.html']);
@@ -485,6 +522,48 @@ async function serve(request, env, ctx, outerId) {
     const legacy = LEGACY_REDIRECTS[path] || PRERENDERED_ALIASES[path];
     if (legacy) {
       return Response.redirect(new URL(legacy + url.search, url.origin).toString(), 301);
+    }
+
+    /**
+     * Table tents that went to print with the wrong prefix.
+     *
+     * ── What happened ─────────────────────────────────────────────────────
+     *
+     * Cards and flyers were printed carrying `billtap.app/f/<slug>`. This app
+     * has only ever served `/r/<slug>` — one route in src/App.jsx, one pattern
+     * in DYNAMIC_ROUTES above, and nothing anywhere in the repo has ever
+     * emitted an `/f/` URL. So every one of those printed codes fell through
+     * to the SPA shell, missed the known-route check below, and came back 404.
+     * Not degraded: dead, since the first piece came off the press.
+     *
+     * The slug on the cards is correct. Only the letter in front of it is
+     * wrong, which is why nothing needs reprinting.
+     *
+     * ── Why a redirect and not a second route ─────────────────────────────
+     *
+     * Adding `/f/:slug` alongside `/r/:slug` would be fewer moving parts and
+     * it is the wrong shape. `/r/<slug>` is where the slug gets resolved and
+     * the session gets attributed to the restaurant, and that attribution is
+     * what drives contact capture, review routing and the low-rating alert.
+     * Two URLs for one screen means two paths into that, and the second one
+     * only exists because of a printing error. A 301 keeps one canonical
+     * guest page and lets the wrong cards point at it.
+     *
+     * Handled at the edge rather than only in the client because the assets
+     * binding answers before React does — the SPA route added alongside this
+     * covers the dev server and in-app navigation, where nothing sits in
+     * front of the app.
+     *
+     * The query string is carried across. Anything a card or a campaign hangs
+     * on the end — `?table=12`, a utm — belongs to the page being redirected
+     * to, and dropping it silently would lose whatever it was for.
+     */
+    const printed = path.match(PRINT_PREFIX_REDIRECT);
+    if (printed) {
+      return Response.redirect(
+        new URL(`/r/${printed[1].toLowerCase()}${url.search}`, url.origin).toString(),
+        301,
+      );
     }
 
     // Treat /about/ and /about as the same route.

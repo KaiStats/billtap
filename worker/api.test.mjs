@@ -651,13 +651,44 @@ test('joining an expired session is a 410, not a silent success', async () => {
 });
 
 test('the fifty-first diner is turned away', async () => {
+  /**
+   * Fifty is the hard ceiling on the row, not the consumer tier.
+   *
+   * This session is attributed to a restaurant, which is what exempts it from
+   * the party-size gate migration 0016 added — a restaurant pays $149 a month
+   * and its table of twelve is the business it bought. Without that the split
+   * would stop at ten and this would be testing the free tier by accident.
+   *
+   * The ceiling still exists above the exemption: participants is a jsonb
+   * column on an endpoint that takes no credentials, so "unlimited" is a
+   * marketing word rather than a number.
+   */
   const participants = Array.from({ length: 50 }, (_, i) => ({
+    participant_id: `p_170000000000${i}_x${i}`, name: `P${i}`, amount_owed: 0, payment_status: 'unpaid',
+  }));
+  const atARestaurant = { ...simpleSession(), participants, restaurant_id: 'r_paying' };
+  await withStub({ entities: { Session: [atARestaurant] } }, async ({ env }) => {
+    const res = await join(env, { session_id: 's1', participant_id: ALICE, items: [] });
+    assert.equal(res.status, 400);
+    const out = await body(res);
+    assert.match(out.error, /full/);
+    assert.equal(out.code, 'session_full', 'not the consumer limit');
+  });
+});
+
+test('a consumer split stops at ten, not fifty', async () => {
+  // The gate the homepage has described since it was written and the code has
+  // never had. No restaurant_id and no created_by_id: an account-less host,
+  // which is most of them, and which resolves to free.
+  const participants = Array.from({ length: 10 }, (_, i) => ({
     participant_id: `p_170000000000${i}_x${i}`, name: `P${i}`, amount_owed: 0, payment_status: 'unpaid',
   }));
   await withStub({ entities: { Session: [{ ...simpleSession(), participants }] } }, async ({ env }) => {
     const res = await join(env, { session_id: 's1', participant_id: ALICE, items: [] });
     assert.equal(res.status, 400);
-    assert.match((await body(res)).error, /full/);
+    const out = await body(res);
+    assert.equal(out.code, 'party_limit');
+    assert.equal(out.limit, 10);
   });
 });
 
@@ -1139,7 +1170,7 @@ test('an unknown restaurant is a 404', async () => {
   });
 });
 
-test('the public lookup returns five fields and withholds the rest', async () => {
+test('the public lookup returns six fields and withholds the rest', async () => {
   const full = {
     id: 'r1', name: "Joe's", slug: 'joes',
     google_review_url: 'https://g.page/joes', rating_threshold: 4,
@@ -1148,8 +1179,12 @@ test('the public lookup returns five fields and withholds the rest', async () =>
   };
   await withStub({ entities: { Restaurant: [full] } }, async ({ env }) => {
     const { restaurant } = await body(await HANDLERS.getPublicRestaurant({ env, body: { slug: 'joes' } }));
+    // `demo` joined this list with migration 0013: /r/:slug is rendered by the
+    // SPA from this response, so telling a crawler not to index a demo page has
+    // to be something the response says. It discloses nothing — see the comment
+    // on the field itself.
     assert.deepEqual(Object.keys(restaurant).sort(),
-      ['google_review_url', 'id', 'name', 'rating_threshold', 'slug']);
+      ['demo', 'google_review_url', 'id', 'name', 'rating_threshold', 'slug']);
     for (const secret of ['alert_email', 'alert_phone', 'owner_id', 'stripe_customer_id', 'stripe_subscription_id']) {
       assert.equal(restaurant[secret], undefined, `${secret} must not be public`);
     }

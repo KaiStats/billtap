@@ -11,9 +11,9 @@ import { trackDeviceAction } from "@/lib/deviceAnalytics";
 import { isHostOf } from "@/lib/hostKey";
 import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { rememberSplit } from "@/lib/splitHistory";
-import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import RatingCapture from "@/components/RatingCapture";
 import { sessionPath } from '@/lib/sessionLinks';
+import { logClientError } from "@/lib/clientLog";
 
 // Haptic feedback helper
 const haptic = (pattern) => {
@@ -64,6 +64,28 @@ export default function Claim() {
   const [zelleModalOpen, setZelleModalOpen] = useState(false);
   const [nameGateInput, setNameGateInput] = useState("");
   const [showNameGate, setShowNameGate] = useState(false);
+  /**
+   * They closed it, so stop asking.
+   *
+   * The gate is a full-screen opaque panel with no other control on it, so
+   * without this the only way off it is to type a name — on a screen somebody
+   * may well have opened just to see what the bill came to. Kept out of
+   * localStorage on purpose: it is about this glance at this split, not a
+   * standing refusal, and the header field is still there when they decide
+   * they do want in.
+   */
+  const [nameGateDismissed, setNameGateDismissed] = useState(false);
+  /** The item a guest reached for before we knew who they were. */
+  const [pendingClaim, setPendingClaim] = useState(null);
+  /**
+   * The split was full when this guest tried to get in.
+   *
+   * Its own state rather than loadError: the split loaded fine and there is
+   * nothing to retry. Retrying is what the other two error screens offer, and
+   * offering it here would send an eleventh diner round a loop that cannot
+   * succeed until somebody else acts.
+   */
+  const [partyFull, setPartyFull] = useState(null);
   const [itemSearch, setItemSearch] = useState("");
 
   useEffect(() => {
@@ -150,12 +172,91 @@ export default function Claim() {
       // Pin it to this session as well, so renaming here later changes only
       // this split rather than the name they carry everywhere.
       localStorage.setItem(`billtap-guest-name-${sessionId}`, name);
-    } else {
-      setShowNameGate(true);
     }
+    /**
+     * No name gate on arrival, deliberately.
+     *
+     * This used to open the moment the page loaded: a guest scanned the QR
+     * expecting to see the check and got "What's your name?" on an otherwise
+     * empty screen, before they knew what they were joining or what they owed.
+     * A cold ask, at the one moment they had least reason to answer it.
+     *
+     * They see the bill first now, and the ask moves to the moment they claim
+     * something -- by which point they have picked their steak and the
+     * question answers itself. See toggleClaim.
+     */
   }, [sessionId]);
 
   useEffect(() => { if (tokenVerified) fetchSession(); }, [fetchSession, tokenVerified]);
+
+  /**
+   * On an even or custom split there is nothing to tap, so the ask has to come
+   * on arrival after all.
+   *
+   * ── The hole this closes ────────────────────────────────────────────────
+   *
+   * Moving the name question from page load to the moment somebody claims an
+   * item was right for an itemized bill and stranded everyone on the other two
+   * modes: toggleClaim is only reachable from the item list, and that list is
+   * rendered `splitMode === "itemized"` only. A guest on an even split was
+   * therefore never asked, never joined, and never appeared in
+   * session.participants — so they were shown the whole bill as their share
+   * instead of their fraction of it, the host never saw them, and marking
+   * themselves paid answered 404 'Participant not found in session'.
+   *
+   * Waits for the session because split_mode lives on it; before it loads there
+   * is no way to know which kind of bill this is. Itemized keeps the better
+   * behaviour — bill first, name at the moment they reach for their steak.
+   */
+  useEffect(() => {
+    if (!session || myName || showNameGate || nameGateDismissed) return;
+    if ((session.split_mode || 'itemized') === 'itemized') return;
+    setShowNameGate(true);
+  }, [session, myName, showNameGate, nameGateDismissed]);
+
+  /**
+   * Finish the tap that asked the question.
+   *
+   * A guest reaches for their steak, is asked who they are, and answers. Doing
+   * nothing with the item they tapped would make the name feel like a toll
+   * rather than part of claiming it — they would have to find the steak again.
+   *
+   * Waits for the server to confirm the join, not merely for the name to be
+   * set, and that distinction is the whole correctness of this effect.
+   *
+   * ── The race it removes ─────────────────────────────────────────────────
+   *
+   * handleNameGateSubmit calls setMyName and only then awaits ensureJoined.
+   * React flushes the state update first, so gating on `myName` ran this effect
+   * while the very first joinSession was still in flight — and toggleClaim
+   * issues its own join. Two requests for one brand-new participant, neither
+   * holding a participant_key yet, so the server minted a key on both. The
+   * first won the compare-and-swap and its hash was stored; the second lost,
+   * retried, kept the stored hash — but still answered with its own key, and
+   * being the later response it was the one the browser wrote to localStorage.
+   *
+   * From then on the device held a key the server had never seen. Every call as
+   * that diner failed isParticipant: taps rolled back with a toast, and
+   * "I've Sent Payment" 403'd forever with nothing on screen explaining why.
+   *
+   * Membership in session.participants can only appear after ensureJoined's
+   * response has been written into state, so this condition cannot be true
+   * while a join is still open. It also fails closed: if the join was refused —
+   * a full party, a dead connection — the pending tap simply never fires,
+   * rather than firing a claim on behalf of somebody who is not in the split.
+   *
+   * Cleared before claiming so a re-render cannot fire it twice.
+   */
+  useEffect(() => {
+    if (!pendingClaim || !session) return;
+    const joined = (session.participants || []).some(p => p.participant_id === myId);
+    if (!joined) return;
+    const itemId = pendingClaim;
+    setPendingClaim(null);
+    toggleClaim(itemId);
+    // toggleClaim is redefined every render and depending on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingClaim, session, myId]);
 
   /**
    * Live, at last.
@@ -187,12 +288,32 @@ export default function Claim() {
   });
 
   const ensureJoined = async (name) => {
-    const res = await invoke("joinSession", {
-      session_id: sessionId,
-      participant_id: myId,
-      name: name || "Anonymous",
-    });
-    if (res.data?.session) setSession(res.data.session);
+    try {
+      const res = await invoke("joinSession", {
+        session_id: sessionId,
+        participant_id: myId,
+        name: name || "Anonymous",
+      });
+      if (res.data?.session) setSession(res.data.session);
+    } catch (err) {
+      /**
+       * Caught, because this used to throw into nothing.
+       *
+       * ensureJoined is awaited from the name gate with no catch anywhere
+       * above it, so a refusal surfaced as an unhandled rejection: the gate
+       * closed, the guest was never added, and the screen sat there looking
+       * like it had worked. That was true of every failure this call can
+       * produce, and the party limit added a new one that a guest will
+       * actually hit.
+       */
+      const code = /** @type {any} */ (err)?.data?.code;
+      if (code === "party_limit" || code === "session_full") {
+        setPartyFull(/** @type {any} */ (err)?.data?.error || "This split is full.");
+        return;
+      }
+      logClientError("join a split", err, { feature: "claim_join" });
+      setLoadError(/** @type {any} */ (err)?.message || "Could not join this split.");
+    }
   };
 
   const handleNameGateSubmit = async () => {
@@ -261,6 +382,18 @@ export default function Claim() {
 
   const toggleClaim = async (itemId) => {
     if (!session) return;
+    /**
+     * The name, asked here rather than at the door.
+     *
+     * The item they tapped is remembered and claimed for them as soon as they
+     * give it, so answering the question is not a detour -- they land back on
+     * exactly the thing they reached for.
+     */
+    if (!myName) {
+      setPendingClaim(itemId);
+      setShowNameGate(true);
+      return;
+    }
     const item = session.items.find(i => i.id === itemId);
     if (!item) return;
     const currentlyClaimed = item.claimed_by || [];
@@ -434,6 +567,18 @@ export default function Claim() {
         >
           Try again
         </button>
+      </div>
+    </div>
+  );
+
+  if (partyFull) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground text-center px-6">
+      <div>
+        <p className="text-lg font-semibold text-foreground">This split is full</p>
+        <p className="text-sm mt-2 max-w-xs">{partyFull}</p>
+        {/* No retry. Nothing this guest can do makes room -- the person who
+            started the split has to upgrade or start a second one -- and a
+            button that fails every time is worse than no button. */}
       </div>
     </div>
   );
@@ -742,6 +887,12 @@ export default function Claim() {
             >
               Join the Split →
             </button>
+            <button
+              onClick={() => { setShowNameGate(false); setNameGateDismissed(true); setPendingClaim(null); }}
+              className="w-full text-sm text-white/40 underline underline-offset-4 hover:text-white/70"
+            >
+              Just looking at the bill
+            </button>
           </div>
         </div>
       )}
@@ -876,7 +1027,6 @@ export default function Claim() {
           )}
         </div>
       </div>
-      <PWAInstallPrompt />
       {showRating && session?.restaurant_id && (
         <RatingCapture
           restaurantId={session.restaurant_id}

@@ -517,3 +517,32 @@ test('nothing is deleted without an answer about it', async () => {
     restore();
   }
 });
+
+test("the server's name is redacted with the guests', the table number is not", async () => {
+  /**
+   * A named person read off the receipt by the scan — see migration 0015. The
+   * restaurant's own employee rather than a guest, so the published policy does
+   * not name it, but the reason that policy exists applies unchanged: useful
+   * for the twenty minutes after a bad rating, and after that a record of who
+   * was working when something went wrong, kept for years, serving nobody.
+   *
+   * The table and the check number stay. They identify a piece of furniture and
+   * a POS record, not a person, and they are part of the host's own account of
+   * the bill in the same way the line items are.
+   */
+  const withTicket = {
+    ...overdue,
+    id: 'ticketed',
+    ticket_table: '14',
+    ticket_server: 'Marco',
+    ticket_number: '4471',
+  };
+  const s = stub([withTicket]);
+  try {
+    await scheduled(env);
+    const row = s.store.sessions.find((x) => x.id === 'ticketed');
+    assert.equal(row.ticket_server, null, 'a named person goes with the guest names');
+    assert.equal(row.ticket_table, '14', 'a table is furniture, and it is the host\'s own record');
+    assert.equal(row.ticket_number, '4471');
+  } finally { s.restore(); }
+});

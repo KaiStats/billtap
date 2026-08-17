@@ -64,6 +64,18 @@ test('the set of permissive policies is the set somebody decided on', () => {
       'receipt images are insertable by anyone',
       // 0001: an operator reading their own restaurant row, and nothing else.
       'owners read their own restaurant',
+      /**
+       * 0016: a person reading their own plan, and nothing else.
+       *
+       * Select only, and deliberately no insert, update or delete policy to go
+       * with it. A client that could write this column could award itself Pro,
+       * so the grant is revoked from anon and authenticated in the same
+       * migration and the Worker does the writing as service_role.
+       *
+       * The read exists so the app can show somebody which plan they are on
+       * without a round trip through the Worker for a single word.
+       */
+      'people read their own profile',
     ].sort(),
     'a row level security policy was added or removed — if that was intended, update this list ' +
     'and say in the migration why the exception is worth making',

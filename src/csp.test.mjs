@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const html = read('index.html');
@@ -101,6 +101,80 @@ test('the analytics tags are still actually loaded', () => {
   assert.match(analytics, /googletagmanager\.com\/gtag\/js/, 'the Google tag loader is missing');
 });
 
+/**
+ * Runs public/analytics.js against a fake window at a given path and reports
+ * which tags it decided to load. Executing the real file is the point — the
+ * matcher below is the thing being tested, and a regex over the source would
+ * pass while the logic was wrong.
+ */
+function analyticsAt(pathname) {
+  const src = read('public/analytics.js');
+  const loaded = [];
+  const scriptEl = () => ({
+    set src(v) { loaded.push(String(v)); },
+    get src() { return ''; },
+    setAttribute() {}, async: false, defer: false,
+  });
+  const head = { appendChild() {}, insertBefore() {} };
+  const win = {
+    location: { pathname },
+    dataLayer: [],
+    document: {
+      createElement: scriptEl,
+      getElementsByTagName: () => [{ parentNode: head }],
+      head,
+      body: head,
+    },
+  };
+  win.window = win;
+  /**
+   * `with` so bare identifiers resolve against the fake window.
+   *
+   * The Pixel snippet does `f.fbq = ...` with f === window and then calls plain
+   * `fbq(...)`, which only works because assigning to a property of the real
+   * window creates a global. A parameter named `window` gets no such treatment,
+   * so without this the file throws ReferenceError on the one path where it is
+   * supposed to succeed — and the test would be reporting on its own harness.
+   */
+  // eslint-disable-next-line no-new-func
+  new Function('sandbox', `with (sandbox) { ${src} }`)(win);
+  return { loaded, pixel: loaded.some((u) => /facebook/.test(u)), ga: loaded.some((u) => /googletagmanager/.test(u)) };
+}
+
+test('the Meta Pixel loads on the pages that are sold from', () => {
+  // Failing this direction costs money: no Pixel on a marketing page means ad
+  // spend attributed to nothing.
+  for (const path of ['/', '/restaurants', '/about', '/blog', '/blog/podium-alternative', '/changelog', '/security', '/pricing-experiment']) {
+    assert.equal(analyticsAt(path).pixel, true, `the Pixel is missing on ${path}`);
+  }
+});
+
+test('the Meta Pixel does not load on the guest or signed-in surfaces', () => {
+  /**
+   * 140 KB over the wire and better than half a megabyte parsed, on a diner's
+   * phone in a restaurant, for an audience that is by definition never the
+   * buyer — see the header in public/analytics.js.
+   */
+  for (const path of ['/claim', '/claim/', '/r/mariposa', '/f/mariposa', '/session-host', '/new', '/new-receipt', '/dashboard', '/profile', '/login']) {
+    assert.equal(analyticsAt(path).pixel, false, `the Pixel is still loading on ${path}`);
+  }
+});
+
+test('/restaurants is not swallowed by the /r/ guest prefix', () => {
+  // The trap in a prefix match, and the most expensive page in the product to
+  // get wrong: /restaurants is where the $149 plan is sold.
+  assert.equal(analyticsAt('/restaurants').pixel, true);
+  assert.equal(analyticsAt('/r/mariposa').pixel, false);
+});
+
+test('the Google tag loads everywhere, including for guests', () => {
+  // It is the product analytics rather than an ad tag, it costs effectively
+  // nothing measured against production, and Claim.jsx calls window.gtag.
+  for (const path of ['/', '/restaurants', '/claim', '/r/mariposa', '/dashboard']) {
+    assert.equal(analyticsAt(path).ga, true, `the Google tag is missing on ${path}`);
+  }
+});
+
 test('the fonts are still actually applied', () => {
   assert.match(html, /<script defer src="\/fonts\.js">/, 'fonts.js is not loaded');
   assert.match(html, /rel="preload"\s+as="style"\s+data-fonts/, 'the preload lost its data-fonts hook');
@@ -119,4 +193,98 @@ test('every origin script-src allows is one the app actually calls', () => {
       `script-src allows ${origin} but nothing loads from it — remove it`,
     );
   }
+});
+
+// ── No manufactured social proof ────────────────────────────────────────────
+//
+// The pitch page carried "Mariposa | Cocina & Cocktails runs BillTap every
+// service" under a "Live in Las Vegas" heading, beside "30 sec average time to
+// split & pay". Mariposa was not a customer — a prospect who had not said yes —
+// and the thirty seconds was invented. The comment above the section claimed it
+// contained "deliberately no invented numbers".
+//
+// This guards the property rather than the wording, because the wording will
+// change and the property must not: nothing on a public page may name a
+// business as a customer, or state a performance metric, that is not true on
+// the day it is read. The product sells review integrity. It cannot be caught
+// manufacturing its own.
+
+test('the pitch page names no restaurant as a customer', () => {
+  const src = readFileSync(new URL('./pages/Restaurants.jsx', import.meta.url), 'utf8');
+  // Everything outside a comment — the copy a visitor actually reads.
+  const copy = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  assert.ok(!/Mariposa/i.test(copy),
+    'a named restaurant is back in the rendered copy — it must be a customer who agreed to be named');
+  assert.ok(!/runs BillTap every service/i.test(copy));
+  assert.ok(!/taking real tables today/i.test(copy));
+});
+
+test('the pitch page states no performance metric it cannot support', () => {
+  const src = readFileSync(new URL('./pages/Restaurants.jsx', import.meta.url), 'utf8');
+  const copy = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  // "30 sec average time to split & pay" was measured against nothing. A stat
+  // block entry is `{ n: "...", l: "..." }`; the headline half is what a
+  // skimming owner reads as a number, so that is what is checked.
+  const stats = [...copy.matchAll(/\bn:\s*"([^"]+)"/g)].map((m) => m[1]);
+  for (const stat of stats) {
+    assert.ok(
+      !/\b\d+\s*(sec|second|min|minute|hour|%|x)\b/i.test(stat),
+      `"${stat}" is a performance claim on a public page — it needs a real measurement behind it, `
+      + 'or it needs to not be there',
+    );
+  }
+});
+
+// ── Prerendered snapshots carry no third-party tags ─────────────────────────
+//
+// public/analytics.js loads the Meta Pixel and GTM at runtime, so by the time
+// prerender serialises the DOM those have injected their own <script> tags —
+// including a Facebook config URL carrying `domain=localhost`, because that is
+// where the prerender ran. All twelve snapshots were shipping it: each telling
+// Facebook it was a different site than it is, loading fbevents.js a second
+// time, and throwing "fbq is not defined" in every visitor's console.
+//
+// Checked against dist/ when it exists, because that is the artifact that
+// ships. A build has not always been run, so an absent dist is skipped rather
+// than failed — the guard on prerender.mjs itself below always runs.
+
+test('no prerendered snapshot carries a cross-origin script tag', () => {
+  const dist = new URL('../dist/', import.meta.url);
+  let files = [];
+  try {
+    files = readdirSync(dist).filter((f) => f.endsWith('.html'));
+  } catch {
+    return; // no build in this working tree
+  }
+  if (!files.length) return;
+
+  for (const file of files) {
+    const html = readFileSync(new URL(file, dist), 'utf8');
+    const tags = [...html.matchAll(/<script[^>]*\ssrc=["']([^"']+)["']/gi)].map((m) => m[1]);
+    const foreign = tags.filter((src) => /^https?:\/\//i.test(src));
+    assert.deepEqual(
+      foreign, [],
+      `${file} ships a third-party script baked in at build time. analytics.js `
+      + 'adds the real ones on the visitor\'s own browser, scoped to the real domain.',
+    );
+    assert.ok(
+      !/domain=localhost/.test(html),
+      `${file} tells a third party it is localhost — captured from the prerender machine`,
+    );
+  }
+});
+
+test('prerender strips what the build machine injected', () => {
+  // The stripping itself, so the guard survives a dist that was never built.
+  const src = readFileSync(new URL('../scripts/prerender.mjs', import.meta.url), 'utf8');
+  assert.match(src, /querySelectorAll\('script'\)/, 'the snapshot no longer strips injected scripts');
+  assert.match(src, /location\.origin/, 'cross-origin is how an injected tag is recognised');
 });

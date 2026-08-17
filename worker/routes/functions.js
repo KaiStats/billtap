@@ -28,6 +28,9 @@ import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
 import { isEntitled } from '../../shared/entitlement.js';
+// The same clamp the scan applies to the model's output, applied again to the
+// browser's. See ticketColumns below for why it is shared rather than copied.
+import { ticketFrom } from './scan-receipt.js';
 
 /**
  * The audit hook when nobody supplied one.
@@ -155,6 +158,117 @@ export function ratingThreshold(value) {
   }
   if (typeof value !== 'number') return DEFAULT_RATING_THRESHOLD;
   return Number.isFinite(value) ? value : DEFAULT_RATING_THRESHOLD;
+}
+
+/**
+ * The three printed ticket fields as session columns, or nothing at all.
+ *
+ * Shares ticketFrom() with worker/routes/scan-receipt.js on purpose. The scan
+ * clamps what the model returned; this clamps what the browser sent, and they
+ * are the same clamp because two of them would drift — and the direction they
+ * would drift in is predictable, since only one of the two is written while
+ * somebody is thinking about a hostile caller.
+ *
+ * Returns an empty object rather than three nulls when nothing was printed, so
+ * a create that read no ticket writes no columns and the row keeps the database
+ * defaults. See supabase/migrations/0015 for why null is the meaningful value.
+ */
+function ticketColumns(raw) {
+  const ticket = ticketFrom(raw);
+  if (!ticket) return {};
+  return {
+    ...(ticket.table ? { ticket_table: ticket.table } : {}),
+    ...(ticket.server ? { ticket_server: ticket.server } : {}),
+    ...(ticket.number ? { ticket_number: ticket.number } : {}),
+  };
+}
+
+// ── How many people may join one split ──────────────────────────────────────
+
+/**
+ * The consumer free tier's party size. The number the homepage has always
+ * printed, and until now the only place it existed.
+ *
+ * Overridable by binding, and that is not a nicety. There is no consumer
+ * checkout yet — Pro is granted by hand, see supabase/migrations/0016 — so a
+ * free host with eleven friends is stopped by this and cannot pay to get past
+ * it. Raising FREE_PARTY_LIMIT is a `wrangler secret put` rather than a deploy,
+ * which is what makes that recoverable at the moment somebody is standing at a
+ * table rather than after a build.
+ */
+const FREE_PARTY_LIMIT = 10;
+
+/**
+ * The ceiling for everyone else, and the hard stop on the row.
+ *
+ * Pro is sold as "unlimited party size" and this is not unlimited. Fifty is
+ * what joinSession has always enforced, it is far past any real table, and an
+ * actually unbounded participants array is a jsonb column somebody can grow
+ * without limit on an endpoint that takes no credentials. The copy is the thing
+ * that should move here, not the number.
+ */
+const MAX_PARTY = 50;
+
+/**
+ * How many people may join this split.
+ *
+ * ── Restaurant splits are exempt, and that is the important line ────────────
+ *
+ * A session attributed to a restaurant is a table in a dining room. That
+ * restaurant is paying $149 a month, its party of twelve is exactly the
+ * business it bought this for, and metering their guests against a consumer
+ * tier would be charging the diner for the restaurant's subscription. It would
+ * also break the demo this product is sold with.
+ *
+ * ── The host's plan, not the joiner's ──────────────────────────────────────
+ *
+ * joinSession takes no credentials — the joiner is a stranger with a
+ * participant id, which is the premise of the product. So the plan that governs
+ * is the one belonging to whoever created the split, since they are the person
+ * who would be buying Pro. `created_by_id` is null for the account-less host,
+ * which resolves to free, which is right: they have not bought anything.
+ *
+ * A missing profile row is free too. Every account predates this table.
+ */
+export async function resolvePartyLimit(env, svc, session) {
+  const configured = Number(env?.FREE_PARTY_LIMIT);
+  const freeLimit = Number.isInteger(configured) && configured > 0 ? configured : FREE_PARTY_LIMIT;
+
+  if (session?.restaurant_id) return { limit: MAX_PARTY, tier: 'restaurant' };
+
+  const hostId = session?.created_by_id;
+  if (!hostId) return { limit: freeLimit, tier: 'free' };
+
+  try {
+    const rows = await svc.entity('Profile').filter({ id: hostId }, { select: 'id,plan,plan_expires_at' });
+    const profile = rows[0];
+    if (profile?.plan === 'pro') {
+      /**
+       * Paid up, by the clock rather than by an event arriving on time.
+       *
+       * Stripe moves `plan_expires_at` forward on every renewal and stops
+       * moving it when somebody cancels, so a lapse needs no webhook to be
+       * delivered — see migration 0017. A null expiry is a plan granted by
+       * hand, which has no end and is meant not to.
+       */
+      const expires = Number(profile.plan_expires_at) || null;
+      if (!expires || Date.now() < expires) return { limit: MAX_PARTY, tier: 'pro' };
+    }
+  } catch (error) {
+    /**
+     * A profile read that fails serves the split rather than capping it.
+     *
+     * The same direction shared/entitlement.js argues for at length: the cost
+     * of being wrong towards service is a party of twelve on a 99-cent tier,
+     * and the cost of being wrong the other way is a diner at a table being
+     * told they cannot pay for their dinner because of a database hiccup.
+     * Those are not the same size of mistake.
+     */
+    console.error('resolvePartyLimit: profile read failed, serving as pro:', error?.message);
+    return { limit: MAX_PARTY, tier: 'unknown' };
+  }
+
+  return { limit: freeLimit, tier: 'free' };
 }
 
 /** Days of trial a new restaurant starts with. Matches the copy on the form. */
@@ -416,6 +530,188 @@ async function reserveSlug(svc, name) {
   return null;
 }
 
+// ── Demo pages ──────────────────────────────────────────────────────────────
+
+/**
+ * How long a demo page lives.
+ *
+ * Longer than any sales call and shorter than anyone's memory of one. A page
+ * carrying a stranger's business name that outlives the conversation it was
+ * made for is not a demo any more.
+ */
+const DEMO_HOURS = 24;
+
+/** Longest restaurant name a demo will accept. Plenty for any real sign. */
+const DEMO_NAME_MAX = 120;
+
+/**
+ * The addresses allowed to stand up a page in a stranger's name.
+ *
+ * ── The one thing in this file that fails closed ────────────────────────────
+ *
+ * Every other ambiguity in this codebase resolves to "serve" — shared/
+ * entitlement.js says so at length, and it is right, because wrongly refusing a
+ * paying restaurant takes away something they bought while wrongly serving an
+ * unpaid one costs a month of margin and is recoverable by asking.
+ *
+ * This is the same reasoning pointed the other way. What a mistake here costs
+ * is not margin: it is any signed-up user being able to publish a live public
+ * page bearing a real business's name, on our domain, without that business
+ * hearing about it. There is no version of that which is recoverable by
+ * asking. So an absent or empty DEMO_OPERATOR_EMAILS denies everybody,
+ * including whoever is reading this — a misconfigured deploy costs one evening
+ * of demos, and the failure it prevents costs somebody else's name.
+ *
+ * Compared case-insensitively because an email address is, and because the
+ * address in the allowlist is typed into a secret by hand while the one in the
+ * session comes from whatever the operator typed at sign-in.
+ */
+export function demoOperators(env) {
+  return new Set(
+    String(env?.DEMO_OPERATOR_EMAILS || '')
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** Whether this signed-in user may create demos. Absent allowlist means no. */
+export function isDemoOperator(env, user) {
+  const allowed = demoOperators(env);
+  if (!allowed.size) return false;
+  const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+  return Boolean(email) && allowed.has(email);
+}
+
+/**
+ * The alphabet a demo slug is drawn from.
+ *
+ * No vowels, so a random draw cannot land on a word — a slug that accidentally
+ * spells something is printed on a QR card and read aloud across a table, and
+ * the failure mode there is not funny. No `l` either, for the mundane reason
+ * that `l` and `1` are the same sound down a phone and the same shape in most
+ * of the fonts this ends up in; the slug has to survive being dictated when the
+ * QR does not scan.
+ *
+ * Thirty characters, which is not a power of two — see the rejection in
+ * randomTail() for why that is handled rather than ignored.
+ */
+const DEMO_ALPHABET = '0123456789bcdfghjkmnpqrstvwxyz';
+
+/**
+ * `length` characters of real randomness.
+ *
+ * crypto.getRandomValues, which the Workers runtime provides. Rejection
+ * sampling rather than a bare `% 30`: the low six values of a byte would come
+ * up fractionally more often than the rest, which is not an attack on anything
+ * at this size but is free to avoid and would be embarrassing to explain.
+ */
+function randomTail(length) {
+  const out = [];
+  // A generous buffer, so the common case is one call into the CSPRNG rather
+  // than one per character.
+  while (out.length < length) {
+    const bytes = crypto.getRandomValues(new Uint8Array(length * 2));
+    for (const byte of bytes) {
+      if (byte >= 240) continue; // 240 = 8 * 30; anything above biases the draw
+      out.push(DEMO_ALPHABET[byte % DEMO_ALPHABET.length]);
+      if (out.length === length) break;
+    }
+  }
+  return out.join('');
+}
+
+/**
+ * Up to two letters off the front of the name, purely so the slug can be told
+ * apart from the other three on the operator's screen.
+ *
+ * Cosmetic, and the comment on demoSlug() explains why it is allowed to be
+ * derived from the name at all when the rest of the slug must not be.
+ */
+function demoInitials(name) {
+  const letters = String(name)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word[0]);
+  // `d` for demo when the name yields no ascii at all — 北京烤鸭 has no
+  // initials, and a leading hyphen is not a slug.
+  return letters.slice(0, 2).join('') || 'd';
+}
+
+/**
+ * A slug for a demo page: unguessable, and not the restaurant's name.
+ *
+ * ── Why not slugify(name) ───────────────────────────────────────────────────
+ *
+ * `/r/herb-and-rye` is a URL the owner could type on a hunch, and a competitor
+ * could stumble onto, and either would reasonably read it as BillTap having
+ * launched something on that restaurant's behalf. We have not: nobody there
+ * agreed to anything, the page exists because somebody is being shown a
+ * product, and it is gone in a day. A guessable address turns a sales demo into
+ * a claim about a business we do not represent.
+ *
+ * `/r/hr-a7f3kq` makes no such claim. It is not discoverable, it cannot be
+ * arrived at by guessing, and the two letters at the front carry no more
+ * information than the operator's own screen already shows him. All of the
+ * entropy is in the tail, which is where the property lives.
+ *
+ * ── Reserved paths ──────────────────────────────────────────────────────────
+ *
+ * There is no reserved-slug list in this repo, and after looking for one: there
+ * is nothing for a slug to reserve against. Slugs live under `/r/<slug>`, a
+ * namespace of its own — SPA_ROUTES in worker/index.js is a list of top-level
+ * paths and `/r/new` cannot collide with `/new`. The collision that can happen
+ * is with another restaurant's slug, and that is what the loop below checks.
+ *
+ * ── Why the check, given the entropy ────────────────────────────────────────
+ *
+ * Thirty to the sixth is about seven hundred million, so a collision is not a
+ * thing that happens. It is checked anyway because the cost is one indexed read
+ * and the failure it prevents is two restaurants sharing a slug — which is the
+ * failure reserveSlug() above is entirely about, and it is worse here: the
+ * loser would be a real restaurant whose table tents start resolving to a demo.
+ */
+async function demoSlug(svc, name, { attempts = 5 } = {}) {
+  const prefix = demoInitials(name);
+  for (let n = 0; n < attempts; n += 1) {
+    const candidate = `${prefix}-${randomTail(6)}`;
+    const taken = await svc.entity('Restaurant').filter({ slug: candidate });
+    if (!taken.length) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The name, trimmed and checked, or an error to hand back.
+ *
+ * Control characters are refused rather than stripped. This string is rendered
+ * on a public page, put in an audit row, and read back to the operator to
+ * confirm he typed the right thing — a name that silently becomes a different
+ * name on the way in is the one shape of bug he cannot catch by looking at the
+ * screen, because the screen is showing him what we stored.
+ */
+export function demoName(value) {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (!name) return { error: 'Type the restaurant name.' };
+  if (name.length > DEMO_NAME_MAX) return { error: `Keep the name under ${DEMO_NAME_MAX} characters.` };
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(name)) return { error: "That name has characters we can't put on a page." };
+  return { name };
+}
+
+/** What the /new screen is told about a demo it just made, or already had. */
+function demoView(r, origin) {
+  return {
+    slug: r.slug,
+    name: r.name ?? '',
+    url: `${origin}/r/${r.slug}`,
+    expires_at: r.demo_expires_at ?? null,
+  };
+}
+
 /**
  * The caller's restaurant: the one they own, or an unclaimed one that is
  * theirs by email and has been waiting for them.
@@ -459,7 +755,21 @@ async function reserveSlug(svc, name) {
 async function findOrAdoptRestaurant(svc, user, audit = NO_AUDIT) {
   const owned = await svc.entity('Restaurant')
     .filter({ owner_id: user.id }, { order: 'created_date' });
-  if (owned[0]) return owned[0];
+  // Demo rows are owned by the operator who created them and carry his address,
+  // so without this they are indistinguishable here from his own restaurant —
+  // and this function is what three screens use to answer "which restaurant is
+  // yours". The failure is quiet and it belongs to the person selling: he opens
+  // the dashboard between calls and is shown a prospect's name, that prospect's
+  // ratings averaged into his own, and a settings form that edits a page due to
+  // be deleted tonight. Filtered here rather than at each of the three call
+  // sites, because the fourth one added later would be the one that forgets.
+  //
+  // In the Worker rather than in the query: `demo` does not exist on the Base44
+  // backend, and worker/lib/base44.js answers an operator it cannot express by
+  // refusing. A filter shaped that way would work on Supabase and throw on the
+  // rollback path.
+  const real = owned.filter((row) => !row.demo);
+  if (real[0]) return real[0];
 
   const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
   if (!email) return null;
@@ -477,6 +787,12 @@ async function findOrAdoptRestaurant(svc, user, audit = NO_AUDIT) {
   // widen it.
   const sharing = await svc.entity('Restaurant').filter({ alert_email: email });
   const orphan = sharing
+    // A demo row is never adoptable, however its owner_id came to be empty. It
+    // carries the operator's own alert_email by design — see
+    // createDemoRestaurant — so it is the row most likely to match here, and
+    // adopting one would hand somebody a restaurant in a stranger's name and
+    // then delete it out from under them the same night.
+    .filter((row) => !row.demo)
     .filter((row) => row.owner_id === null || row.owner_id === undefined)
     .sort((a, b) => String(a.created_date ?? '').localeCompare(String(b.created_date ?? '')))[0];
   if (!orphan) return null;
@@ -961,6 +1277,21 @@ const HANDLERS = {
         // same function as ownerView, so the number the operator set on the
         // settings screen is the number that decides whether their phone rings.
         rating_threshold: ratingThreshold(r.rating_threshold),
+        /**
+         * Whether this page is a sales demo, so the client can tell a crawler
+         * not to index it.
+         *
+         * A guest-visible flag on purpose. The alternative is deciding
+         * indexability at the edge, and /r/:slug is rendered by the SPA from
+         * this very response — the Worker serves the same shell for every slug
+         * and has no idea which rows are demos without asking the database on
+         * a page request. This is the answer it would have had to fetch.
+         *
+         * It discloses nothing: the person looking at the page is either the
+         * prospect being shown it, standing next to the operator, or a guest
+         * for whom the honest label is the better outcome.
+         */
+        demo: Boolean(r.demo),
       },
     });
   },
@@ -1378,7 +1709,7 @@ const HANDLERS = {
    * and requiring a login there would defeat the entire product.
    */
   async createSession({ env, request, body, audit = NO_AUDIT }) {
-    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug } = body;
+    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug, ticket } = body;
     const user = await currentUser(env, request);
 
     // No sign-in gate. An account-less host is the product's premise — "split a
@@ -1452,8 +1783,18 @@ const HANDLERS = {
         const bySlug = await svc.entity('Restaurant').filter({ slug: restaurant_slug });
         if (bySlug.length) restaurantId = bySlug[0].id;
       } else if (user) {
+        // Never a demo row, however this read happens to be ordered.
+        //
+        // The branch above is a guest arriving from a table tent and is left
+        // alone — a split started from a demo QR *should* belong to the demo,
+        // which is the whole point of it. This branch is different: it is an
+        // operator starting a split from his own phone with no slug, and the
+        // filter carries no `order`, so PostgREST is free to hand back a demo
+        // he created that afternoon. His own meal would then be filed against
+        // a prospect's page and deleted with it tonight.
         const owned = await svc.entity('Restaurant').filter({ owner_id: user.id });
-        if (owned.length) restaurantId = owned[0].id;
+        const real = owned.filter((r) => !r.demo);
+        if (real.length) restaurantId = real[0].id;
       }
     } catch (e) {
       console.error('createSession: restaurant lookup failed', e?.message);
@@ -1565,6 +1906,23 @@ const HANDLERS = {
       // From the verified user, never from the request body.
       created_by_id: user?.id || null,
       ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+      /**
+       * What the POS printed on the ticket, when the scan could read it.
+       *
+       * Re-validated here rather than trusted from the body. The client got
+       * these from /api/scan-receipt, which already clamps them — but this
+       * endpoint is unauthenticated by design and the body is whatever anyone
+       * chose to send, so the scan having been careful is not a reason for
+       * this to be careless. `ticketDetails` is the same function both sides
+       * use, so the two cannot drift into disagreeing about what a table
+       * number may contain.
+       *
+       * Only written when something was actually printed. Columns left null
+       * are what the alert falls back on, and a row of empty strings would
+       * make "we could not read a table number" indistinguishable from "the
+       * table number is blank".
+       */
+      ...ticketColumns(ticket),
     });
 
     // The start of the trail for this bill. Every later row about this split —
@@ -1642,7 +2000,35 @@ const HANDLERS = {
       });
     }
 
-    return etagJson(request, { session: publicSession(session) });
+    /**
+     * How full this split is allowed to get, told to the person who can act on
+     * it.
+     *
+     * The guest who gets turned away already sees why — "this split is full,
+     * ask whoever started it to upgrade" — and that is the wrong person to be
+     * showing an upsell to. They cannot upgrade anything; they are the eleventh
+     * friend at dinner. The host is the one holding the account and the card,
+     * and until now the only thing that ever told them about the limit was
+     * somebody at the table saying "it won't let me in".
+     *
+     * Sent on every host poll rather than only when full, so the screen can
+     * warn as the table fills instead of after somebody has already been
+     * refused. Being told at ten that the next person will not fit is worth
+     * more than being told at eleven that they did not.
+     */
+    const party = await resolvePartyLimit(env, svc, session);
+
+    return etagJson(request, {
+      session: publicSession(session),
+      party: {
+        limit: party.limit,
+        tier: party.tier,
+        joined: (session.participants || []).length,
+        // Computed here so the client cannot disagree with the endpoint that
+        // does the refusing.
+        full: (session.participants || []).length >= party.limit,
+      },
+    });
   },
 
   /**
@@ -1819,8 +2205,29 @@ const HANDLERS = {
 
     const current = session.participants || [];
     const already = current.find((p) => p.participant_id === participant_id);
-    if (!already && current.length >= 50) {
-      return json({ error: 'Session is full (max 50 participants)' }, 400);
+    if (!already) {
+      /**
+       * The party-size gate the homepage has been describing all along.
+       *
+       * Checked only for somebody actually new. A diner reopening the page, or
+       * a phone retrying a request, must not be refused entry to a split they
+       * are already in because the table filled up behind them.
+       *
+       * `code` is what the client branches on. The message is written for a
+       * guest, because a guest is who reads it: they did not choose the plan,
+       * they are just the eleventh person at dinner, and telling them to
+       * upgrade would be addressing the wrong person entirely.
+       */
+      const { limit, tier } = await resolvePartyLimit(env, svc, session);
+      if (current.length >= limit) {
+        return json({
+          error: tier === 'free'
+            ? `This split is limited to ${limit} people. Ask whoever started it to upgrade, or start a second split.`
+            : `Session is full (max ${limit} participants)`,
+          code: tier === 'free' ? 'party_limit' : 'session_full',
+          limit,
+        }, 400);
+      }
     }
 
     /**
@@ -2222,6 +2629,146 @@ const HANDLERS = {
   },
 
   /**
+   * A live page with a prospect's restaurant name on it, in one call.
+   *
+   * ── What this replaces ────────────────────────────────────────────────────
+   *
+   * A row typed into the SQL editor the night before, which caps a day's
+   * selling at the prospects somebody planned for and dies fourteen days later
+   * without saying so — see supabase/migrations/0013 for the whole of that.
+   *
+   * ── Authorization is the part of this to get right ────────────────────────
+   *
+   * Creating one of these publishes a page bearing a real business's name, on
+   * our domain, for a business that has agreed to nothing. A signed-in session
+   * is not enough on its own: anyone can sign up. The allowlist is the actual
+   * control — see demoOperators(), including why it is the one thing here that
+   * fails closed.
+   *
+   * Rate limiting is by path, in worker/lib/rate-limit.js, where every other
+   * metered endpoint in this app is listed. It is registered as a costly path:
+   * ten a minute, which is generous for somebody typing a name at a table and
+   * useless to anybody else.
+   */
+  async createDemoRestaurant({ env, request, body, audit = NO_AUDIT }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+    if (!isDemoOperator(env, user)) {
+      // Deliberately the same answer for "not on the list" and "there is no
+      // list". Distinguishing them tells a caller which of the two he is
+      // looking at, and neither is his business.
+      return json({ error: 'Not allowed' }, 403);
+    }
+
+    const parsed = demoName(body?.name);
+    if (parsed.error) return json({ error: parsed.error }, 400);
+
+    const svc = serviceRole(env);
+    const slug = await demoSlug(svc, parsed.name);
+    if (!slug) {
+      return json({ error: 'Could not reserve an address for that demo. Try again.' }, 409);
+    }
+
+    const now = Date.now();
+    const expiresAt = now + DEMO_HOURS * 60 * 60 * 1000;
+
+    const row = await svc.entity('Restaurant').create({
+      name: parsed.name,
+      slug,
+      owner_id: user.id,
+      /**
+       * The operator's own address, never the prospect's.
+       *
+       * If a real guest ever finds this page — a demo left on a table, a QR
+       * photographed and scanned later — the alert has to land on the person
+       * who created the demo. Sending it to the restaurant means emailing a
+       * business that never signed up, about a rating system it has never
+       * heard of, from a domain it does not recognise. That is the first
+       * contact they would have with us and it is indistinguishable from spam.
+       */
+      //
+      // Lowercased, because every other write to this column is: restaurantPatch
+      // folds it and migration 0010 folded the rows that predate that. The
+      // lookups elsewhere compare it as an exact match on the strength of that
+      // invariant, and one endpoint writing mixed case is how such an invariant
+      // stops being one.
+      alert_email: (user.email || '').trim().toLowerCase() || null,
+      // Nothing to page. A demo is watched, not monitored, and an SMS costs
+      // money against an account with no spend cap.
+      alert_phone: null,
+      /**
+       * Null, always, and this is the line worth arguing about.
+       *
+       * Since migration 0012 the Google handoff is shown to every guest
+       * regardless of rating — that was the entire point of it. On a demo for
+       * a business the operator does not represent, a real passer-by tapping
+       * that button means we have solicited a review on that business's behalf
+       * without their knowledge, on their real listing. The FTC's rule on
+       * consumer reviews is next door to that and Google's own policy is
+       * closer still.
+       *
+       * Null costs the demo nothing. What is being sold is the rating flow and
+       * the alert; the Google button is the half that touches a third party's
+       * property, and it is the half a prospect is not being shown anyway.
+       */
+      google_review_url: null,
+      // Left to the column default, which 0012 put back to three. The demo
+      // wants whatever a real restaurant would get, because that is what is
+      // being demonstrated.
+      plan: 'trial',
+      // Explicitly null, against the default 0011 gave this column. A demo has
+      // its own clock and must not also be on a fourteen-day one — though the
+      // demo arm in shared/entitlement.js answers first regardless, so this is
+      // the row telling the truth rather than the thing that makes it work.
+      trial_ends_at: null,
+      demo: true,
+      demo_expires_at: expiresAt,
+      created_at: now,
+    });
+
+    const origin = env.PUBLIC_BASE_URL || new URL(request.url).origin;
+
+    await audit({
+      action: ACTIONS.DEMO_CREATED,
+      restaurantId: row.id,
+      actorUserId: user.id,
+      detail: { slug, name: parsed.name, expires_at: expiresAt },
+    });
+
+    return json(demoView(row, origin));
+  },
+
+  /**
+   * The demos this operator has up right now.
+   *
+   * So that a second call at the same restaurant, or a prospect who asks to see
+   * it again an hour later, does not mean creating a second page. Filtered to
+   * unexpired here rather than trusting the cleanup job to have run: the job is
+   * nightly, and a demo that expired at lunchtime should stop being offered at
+   * lunchtime rather than at 09:30 tomorrow.
+   */
+  async listMyDemoRestaurants({ env, request }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+    if (!isDemoOperator(env, user)) return json({ error: 'Not allowed' }, 403);
+
+    const svc = serviceRole(env);
+    const rows = await svc.entity('Restaurant').filter({ owner_id: user.id });
+    const origin = env.PUBLIC_BASE_URL || new URL(request.url).origin;
+    const now = Date.now();
+
+    const demos = rows
+      .filter((r) => r.demo)
+      .filter((r) => !r.demo_expires_at || now < Number(r.demo_expires_at))
+      // Soonest to expire first: the one about to disappear is the one worth
+      // seeing at the top of a screen used standing up.
+      .sort((a, b) => Number(a.demo_expires_at ?? 0) - Number(b.demo_expires_at ?? 0))
+      .map((r) => demoView(r, origin));
+
+    return json({ demos });
+  },
+
+  /**
    * Does the caller own a restaurant, and what is it called.
    *
    * ── Why this is not getRestaurantDashboardData ────────────────────────────
@@ -2336,9 +2883,13 @@ const HANDLERS = {
   async listRestaurants({ env }) {
     const svc = serviceRole(env);
     try {
-      const restaurants = await svc.entity('Restaurant').filter({}, { select: 'id,name,slug' });
+      const restaurants = await svc.entity('Restaurant').filter({}, { select: 'id,name,slug,demo' });
       return json({
-        restaurants: restaurants.map((r) => ({
+        // Demo rows never appear here. This is a list of restaurant names,
+        // answered to anyone who asks, and a demo row's name is a business that
+        // has not agreed to be on a list of BillTap's restaurants — publishing
+        // it is the claim the unguessable slug exists to avoid making.
+        restaurants: restaurants.filter((r) => !r.demo).map((r) => ({
           id: r.id,
           name: r.name,
           slug: r.slug,

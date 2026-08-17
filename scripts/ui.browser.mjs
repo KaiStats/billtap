@@ -133,6 +133,8 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   // a diner through getSplitStatus, so a test that counts only one of them is
   // counting nothing on half the screens.
   const pollCalls = [];
+  /** Every join or claim — the same endpoint carries both. */
+  const joinCalls = [];
   // The split the host screen reads back. Mutated by confirmPayment below so
   // the page behaves like the real thing across a confirm.
   let hostState = hostSession ? structuredClone(hostSession) : null;
@@ -236,6 +238,38 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
       };
       return send({ session: hostState });
     }
+    /**
+     * Joining, and claiming — the same endpoint does both.
+     *
+     * There was no stub for this at all, so every claim fell through to the
+     * catch-all `{}` below and `res.data?.session` came back undefined. Nothing
+     * noticed, because until now no test clicked an unclaimed item: the
+     * fixtures arrived with everything already claimed by other people.
+     *
+     * It honours the items and participants it is sent, because that is what
+     * claimMutation posts — a stub answering with the session it already had
+     * would show a claim reverting a beat after the tap, which is precisely the
+     * bug a test would exist to catch.
+     */
+    if (url.includes('/fn/joinSession')) {
+      const payload = route.request().postDataJSON();
+      joinCalls.push(payload);
+      const already = (hostState.participants || [])
+        .some((p) => p.participant_id === payload.participant_id);
+      hostState = {
+        ...hostState,
+        ...(payload.items ? { items: payload.items } : {}),
+        participants: payload.participants || (already
+          ? hostState.participants
+          : [...(hostState.participants || []), {
+            participant_id: payload.participant_id,
+            name: payload.name,
+            amount_owed: 0,
+            payment_status: 'unpaid',
+          }]),
+      };
+      return send({ session: hostState });
+    }
     if (url.includes('/fn/getSplitStatus')) {
       const payload = route.request().postDataJSON();
       statusCalls.push({ ...payload, header: route.request().headers()['x-billtap-participant'] });
@@ -277,7 +311,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
 
   return {
     context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls, scanCalls,
-    ratingCalls, alertCalls,
+    ratingCalls, alertCalls, joinCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -301,6 +335,17 @@ const HOST_SESSION = {
     { participant_id: 'p_1700000000000_aaa', name: 'Alice', amount_owed: 21.4, payment_status: 'pending_verification' },
     { participant_id: 'p_1700000000001_bbb', name: 'Bob', amount_owed: 40, payment_status: 'unpaid' },
   ],
+};
+
+/**
+ * The same bill with nothing claimed and nobody in it — what a guest scanning
+ * the QR first actually meets.
+ */
+const OPEN_SESSION = {
+  ...HOST_SESSION,
+  status: 'claiming',
+  items: HOST_SESSION.items.map((i) => ({ ...i, claimed_by: [] })),
+  participants: [],
 };
 
 /** A restaurant with a review link set and the default alert threshold. */
@@ -1896,8 +1941,22 @@ test('the manager is still paged, which is the half that is paid for', async () 
     await page.getByRole('button', { name: /Send to the manager/i }).click();
     await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
 
-    assert.equal(alertCalls.length, 1, 'the low rating paged the operator');
-    assert.equal(alertCalls[0].rating_id, 'rat_test_1', 'and named the rating, not the restaurant');
+    /**
+     * Twice, and that is the fix rather than a bug.
+     *
+     * The first call goes out on the star tap, before this guest had typed
+     * anything — which is the whole point: somebody who taps one star and
+     * walks out used to page nobody, and they are the guest this product
+     * exists to catch. The second carries what they went on to say.
+     *
+     * How many emails that becomes is the server's decision, not this
+     * screen's: rating-alert.js sends the second only when the row has
+     * acquired a comment it did not have before, so the spend cap survives.
+     */
+    assert.equal(alertCalls.length, 2, 'paged on the tap, then again with the detail');
+    for (const call of alertCalls) {
+      assert.equal(call.rating_id, 'rat_test_1', 'named the rating, not the restaurant');
+    }
 
     const comment = ratingCalls.find((c) => c.action === 'contact');
     assert.ok(comment, 'the comment reached the server');
@@ -2040,7 +2099,9 @@ test('an alert that could not be delivered does not strand the guest either', as
     await page.getByRole('button', { name: /Send to the manager/i }).click();
 
     await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
-    assert.equal(alertCalls.length, 1, 'it was attempted');
+    // Both attempts made and both failed, and the guest still reached the
+    // review screen. The paid half breaking is not theirs to notice.
+    assert.equal(alertCalls.length, 2, 'both attempts were made');
   } finally { await context.close(); }
 });
 
@@ -2064,5 +2125,384 @@ test('the Google button cannot be double-tapped into two tabs', async () => {
       'a guest gets one tab, not one per tap');
     assert.equal(ratingCalls.filter((c) => c.action === 'routed').length, 1,
       'and the tap is counted once');
+  } finally { await context.close(); }
+});
+
+// ── Demo provisioning ───────────────────────────────────────────────────────
+//
+// /new is the screen the product is sold from: a name typed at a table, a live
+// page, and a QR the prospect scans off the operator's phone. Nothing below
+// asserts business rules — those are worker/demo-restaurant.test.mjs — these
+// are here because a screen that renders nothing is a React error, a bad
+// import or a null dereference, and none of those show up in a node:test.
+
+/** The project ref in scripts/build-for-tests.mjs, which decides the auth key. */
+const AUTH_KEY = 'sb-uitest-auth-token';
+
+const OPERATOR = {
+  id: 'user_kai',
+  email: 'kai@billtap.app',
+  aud: 'authenticated',
+  role: 'authenticated',
+  app_metadata: {},
+  user_metadata: {},
+};
+
+/**
+ * A signed-in operator, on a phone, with the demo endpoints stubbed.
+ *
+ * The session is planted in localStorage under the key supabase-js derives from
+ * the project URL — see storageKey() in src/lib/supabase.js — because that is
+ * the only thing authPending() checks before deciding whether to fetch an auth
+ * client at all. A far-future expiry so nothing tries to refresh mid-test.
+ */
+async function operatorPage(path, { demos = [], onCreate = null, createFails = null } = {}) {
+  const context = await browser.newContext({
+    viewport: PHONE, deviceScaleFactor: 2, userAgent: IPHONE_UA, isMobile: true, hasTouch: true,
+  });
+  const errors = [];
+  const page = await context.newPage();
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const createCalls = [];
+  let made = 0;
+
+  await page.route('**/auth/v1/**', async (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(OPERATOR),
+  }));
+
+  await page.route('**/api/**', async (route) => {
+    const url = route.request().url();
+    const send = (data) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+
+    if (url.includes('/fn/listMyDemoRestaurants')) return send({ demos });
+    if (url.includes('/fn/createDemoRestaurant')) {
+      const payload = route.request().postDataJSON();
+      createCalls.push(payload);
+      if (createFails) {
+        return route.fulfill({
+          status: createFails.status, contentType: 'application/json',
+          body: JSON.stringify({ error: createFails.error }),
+        });
+      }
+      made += 1;
+      const slug = `hr-a7f3k${made}`;
+      const demo = {
+        slug,
+        name: payload.name.trim(),
+        url: `https://billtap.app/r/${slug}`,
+        expires_at: Date.now() + 24 * 3600000,
+      };
+      demos.push(demo);
+      if (onCreate) onCreate(payload);
+      return send(demo);
+    }
+    return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
+  });
+
+  // The session has to exist before the app boots, or authPending() answers no
+  // on the very load being tested and ProtectedRoute bounces to /login.
+  await page.addInitScript(([key, user]) => {
+    localStorage.setItem(key, JSON.stringify({
+      access_token: 'stub-access-token',
+      token_type: 'bearer',
+      expires_in: 86400,
+      expires_at: Math.floor(Date.now() / 1000) + 86400,
+      refresh_token: 'stub-refresh-token',
+      user,
+    }));
+  }, [AUTH_KEY, OPERATOR]);
+
+  await page.goto(`${base}${path}`, { waitUntil: 'domcontentloaded' });
+  return { context, page, errors, createCalls, demos };
+}
+
+test('/new comes up for a signed-in operator rather than bouncing to login', async () => {
+  const { context, page, errors } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Create demo page/i }).waitFor();
+    assert.ok(!page.url().includes('/login'), `bounced to ${page.url()}`);
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('typing a name produces a page, a QR and a readable URL', async () => {
+  // The whole screen, and the reason it exists. The QR is not decoration: the
+  // prospect scans it off the operator's phone, which is what makes the next
+  // thirty seconds his rather than a demonstration he is watching.
+  const { context, page, createCalls, errors } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    assert.deepEqual(createCalls, [{ name: 'Herb and Rye' }], 'the name, and nothing else');
+
+    // A QR that renders as an empty <svg> would look right in a screenshot and
+    // scan as nothing, so this asserts it has actual modules in it.
+    const modules = await page.locator('svg').first().locator('path, rect').count();
+    assert.ok(modules > 0, 'the QR rendered no modules — it would scan as nothing');
+
+    await page.getByText('billtap.app/r/hr-a7f3k1').waitFor({ timeout: 10000 });
+    await page.getByText(/left$/).first().waitFor({ timeout: 10000 });
+    assert.deepEqual(errors.filter((e) => !IGNORED_CONSOLE.test(e)), []);
+  } finally { await context.close(); }
+});
+
+test('the field is cleared and refocused, so the next stop is one tap away', async () => {
+  const { context, page } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+
+    assert.equal(await page.getByLabel(/Restaurant name/i).inputValue(), '');
+  } finally { await context.close(); }
+});
+
+test('demos from earlier stops are listed, so one can be re-opened', async () => {
+  const earlier = [{
+    slug: 'ab-99xyz2', name: 'Atomic Liquors',
+    url: 'https://billtap.app/r/ab-99xyz2', expires_at: Date.now() + 5 * 3600000,
+  }];
+  const { context, page } = await operatorPage('/new', { demos: earlier });
+  try {
+    await page.getByRole('heading', { name: 'Atomic Liquors' }).waitFor({ timeout: 15000 });
+    await page.getByText('billtap.app/r/ab-99xyz2').waitFor();
+  } finally { await context.close(); }
+});
+
+test('a refusal from the server is shown rather than swallowed', async () => {
+  // The message that matters is the 403: an operator whose address is not on
+  // DEMO_OPERATOR_EMAILS needs to see why, not a button that does nothing.
+  const { context, page } = await operatorPage('/new', {
+    createFails: { status: 403, error: 'Not allowed' },
+  });
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    await page.getByRole('button', { name: /Create demo page/i }).click();
+    await page.getByText('Not allowed').waitFor({ timeout: 15000 });
+    assert.equal(await page.getByRole('heading', { name: 'Herb and Rye' }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('the button cannot be double-tapped into two demo pages', async () => {
+  // He is standing up, one-handed, in a hurry. Two taps must not be two live
+  // pages in a stranger's name.
+  const { context, page, createCalls } = await operatorPage('/new');
+  try {
+    await page.getByLabel(/Restaurant name/i).fill('Herb and Rye');
+    const button = page.getByRole('button', { name: /Create demo page/i });
+    await button.dispatchEvent('click');
+    await button.dispatchEvent('click').catch(() => {});
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    assert.equal(createCalls.length, 1, `${createCalls.length} pages published from one intent`);
+  } finally { await context.close(); }
+});
+
+// ── The table page a demo QR lands on ───────────────────────────────────────
+
+test('a demo table page tells crawlers to stay away', async () => {
+  // A search result for a real business's name pointing at billtap.app is the
+  // claim the unguessable slug exists to avoid making, and it would outlive the
+  // row by however long the index takes to catch up.
+  const { context, page } = await phone({
+    restaurant: { id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq', google_review_url: null, rating_threshold: 3, demo: true },
+  });
+  try {
+    await page.goto(`${base}/r/hr-a7f3kq`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Herb and Rye' }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('meta[name="robots"]')?.content?.includes('noindex'), null, { timeout: 10000 });
+  } finally { await context.close(); }
+});
+
+test("a real restaurant's table page stays indexable", async () => {
+  // Theirs, and there is no reason to hide it.
+  const { context, page } = await phone({
+    restaurant: { id: 'r_real', name: 'Mariposa', slug: 'mariposa', google_review_url: null, rating_threshold: 3, demo: false },
+  });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Mariposa' }).waitFor({ timeout: 15000 });
+    const robots = await page.locator('meta[name="robots"]').count();
+    assert.ok(
+      robots === 0 || !(await page.locator('meta[name="robots"]').first().getAttribute('content')).includes('noindex'),
+      "a paying restaurant's own table page must not be deindexed",
+    );
+  } finally { await context.close(); }
+});
+
+// ── Waving away the restaurant question ─────────────────────────────────────
+
+test('dismissing "is this <restaurant>?" does not strand the split', async () => {
+  /**
+   * The ✕ used to be implemented as setTitle("") — it hid the prompt, which
+   * renders only while there is a title, and broke the split doing it: `title`
+   * is also the name of the bill and createSession refuses without one. A diner
+   * who tapped it was left holding a fully parsed receipt and a button that
+   * answered "title is required" every time they pressed it, with no way back
+   * except starting the whole scan again.
+   *
+   * Found by walking the guest path against production with a real photograph,
+   * which is the only way it could be found: every test here had answered the
+   * question rather than waved it away.
+   */
+  const { context, page, created } = await phone();
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: 'Not a restaurant' }).click();
+
+    // The question is gone...
+    await page.waitForFunction(() => !/Is this /.test(document.body.innerText), null, { timeout: 5000 });
+    // ...and the bill still has its name.
+    await page.getByRole('button', { name: /Show the QR code/i }).click();
+    await page.waitForFunction(() => !/title is required/i.test(document.body.innerText), null, { timeout: 10000 });
+
+    assert.equal(created.length, 1, 'the split was created');
+    assert.equal(created[0].title, 'Olive Garden', 'and it kept the name off the receipt');
+  } finally { await context.close(); }
+});
+
+test('a second receipt asks the question again', async () => {
+  // Waving it away once must not suppress it for the rest of the visit — the
+  // next photograph may be from a different restaurant entirely.
+  const { context, page } = await phone();
+  try {
+    await toReview(page);
+    await page.getByRole('button', { name: 'Not a restaurant' }).click();
+    await page.waitForFunction(() => !/Is this /.test(document.body.innerText), null, { timeout: 5000 });
+
+    await toReview(page);
+    await page.waitForFunction(() => /Is this /.test(document.body.innerText), null, { timeout: 15000 });
+  } finally { await context.close(); }
+});
+
+// ── The guest sees the bill before being asked who they are ─────────────────
+
+test('a guest lands on the items, not on a name wall', async () => {
+  /**
+   * The gate used to open the moment the page loaded: somebody scanned a QR
+   * expecting to see the check and got "What's your name?" on an otherwise
+   * empty screen, before they knew what they were joining or what they owed.
+   * A cold ask at the one moment they had least reason to answer it.
+   */
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0,
+      'the bill is visible first');
+  } finally { await context.close(); }
+});
+
+test('an even split still asks, because there is nothing to tap', async () => {
+  /**
+   * The regression that moving the gate introduced, and the reason it is worth
+   * a browser test rather than a reading of the code.
+   *
+   * The replacement trigger lives in toggleClaim, and toggleClaim is only
+   * reachable from the item list — which renders on itemized bills only. On an
+   * even split a first-time guest was therefore never asked, never joined, and
+   * never appeared in participants: they were shown the *whole* bill as their
+   * share instead of their fraction of it, the host's screen never showed them
+   * arriving, and "I've Sent Payment" answered 404 for as long as they kept
+   * pressing it.
+   */
+  const even = {
+    ...OPEN_SESSION,
+    split_mode: 'even',
+    participants: [{ participant_id: 'p_host', name: 'Alice', amount_owed: 61.4, payment_status: 'unpaid' }],
+  };
+  const { context, page } = await phone({ hostSession: even });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 15000 });
+  } finally { await context.close(); }
+});
+
+test('an even split lets somebody look at the bill without joining it', async () => {
+  // The gate is a full-screen opaque panel. Without a way off it, a guest who
+  // opened the split only to see what it came to is trapped on a text field.
+  const even = {
+    ...OPEN_SESSION,
+    split_mode: 'even',
+    participants: [{ participant_id: 'p_host', name: 'Alice', amount_owed: 61.4, payment_status: 'unpaid' }],
+  };
+  const { context, page } = await phone({ hostSession: even });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: /Just looking at the bill/i }).click();
+    await page.getByText(/Even Split/i).waitFor({ timeout: 8000 });
+    // And it stays gone — the effect that opened it must not immediately re-fire.
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('an itemized bill is still shown before the name is asked', async () => {
+  // The other half of the same rule: the improvement must survive the fix.
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByRole('heading', { name: /What's your name/i }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('claiming asks the name, then finishes the tap that asked', async () => {
+  // Answering must not be a detour: the item they reached for is remembered and
+  // claimed for them, so they land back on exactly the thing they tapped.
+  const { context, page } = await phone({ hostSession: OPEN_SESSION });
+  try {
+    await page.goto(`${base}/claim?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Chicken Alfredo/i).waitFor({ timeout: 15000 });
+
+    await page.getByText(/Chicken Alfredo/i).first().click();
+    await page.getByRole('heading', { name: /What's your name/i }).waitFor({ timeout: 8000 });
+
+    await page.getByPlaceholder(/First name is fine/i).fill('Priya');
+    await page.getByRole('button', { name: /Join the Split/i }).click();
+
+    // The gate closes and the tap completes.
+    await page.waitForFunction(
+      () => !/What's your name/.test(document.body.innerText),
+      null, { timeout: 10000 },
+    );
+    await page.waitForFunction(
+      () => /1\/\d+ claimed|👤 You/.test(document.body.innerText),
+      null, { timeout: 12000 },
+    );
+  } finally { await context.close(); }
+});
+
+// ── The host is asked where the money goes ─────────────────────────────────
+
+test('the host screen says guests cannot pay them yet', async () => {
+  /**
+   * The payment handle was only ever requested behind "Claim My Items". A host
+   * who did the obvious thing — show the QR, let the table scan — never saw it,
+   * so guests tapped "Pay" and were told to ask the host, and the split marked
+   * them settled anyway. The one thing the product exists to finish was the one
+   * thing it did not.
+   */
+  const { context, page } = await phone({ hostSession: { ...OPEN_SESSION, host_payment_info: null } });
+  try {
+    await page.goto(`${base}/session-host?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Guests can't pay you yet/i).waitFor({ timeout: 15000 });
+    await page.getByText(/Venmo, Cash App or Zelle/i).waitFor({ timeout: 5000 });
+  } finally { await context.close(); }
+});
+
+test('a host who already set a handle is not nagged', async () => {
+  const paid = { ...OPEN_SESSION, host_payment_info: { method: 'venmo', handle: '@kai' } };
+  const { context, page } = await phone({ hostSession: paid });
+  try {
+    await page.goto(`${base}/session-host?id=sess_test_1`, { waitUntil: 'domcontentloaded' });
+    await page.getByText(/Have everyone scan this/i).waitFor({ timeout: 15000 });
+    assert.equal(await page.getByText(/Guests can't pay you yet/i).count(), 0);
   } finally { await context.close(); }
 });

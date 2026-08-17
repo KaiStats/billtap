@@ -58,7 +58,10 @@ const PILLARS = [
 
 const BULLETS = [
   { icon: Smartphone, img: "strip-scan", title: "No app to download", desc: "Just scan and go.", alt: "A phone scanning a QR table tent on a restaurant table." },
-  { icon: Zap, img: "strip-split", title: "Split & pay in 30 seconds", desc: "Fast, simple, frictionless.", alt: "Two friends splitting a paper check with their phones." },
+  // "about", because the step below already says about and a bare "in 30
+  // seconds" reads as a measurement rather than a description. Nothing has
+  // timed a real table yet.
+  { icon: Zap, img: "strip-split", title: "Split & pay in about 30 seconds", desc: "Fast, simple, frictionless.", alt: "Two friends splitting a paper check with their phones." },
   { icon: ThumbsUp, img: "strip-rate", title: "Rate you on Google instantly", desc: "Good experiences get shared.", alt: "A thumb pressing a glowing phone screen." },
   { icon: Mail, img: "strip-data", title: "You get the data & reviews", desc: "More customers. More revenue.", alt: "A phone lighting up with a notification on a bar counter." },
   { icon: Cpu, img: "strip-pos", title: "Works with your POS", desc: "No new hardware. No disruption.", alt: "A card payment terminal on a polished bar counter." },
@@ -266,10 +269,26 @@ export default function Restaurants() {
         .font-body    { font-family: 'Inter Tight', system-ui, sans-serif; }
         .font-mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
-        /* Eyebrow / micro-label: the one place we use caps + wide tracking. */
+        /*
+          Eyebrow / micro-label: the one place we use caps + wide tracking.
+
+          12px on a phone, 10px from the sm breakpoint up. Ten was chosen for a desktop
+          canvas and carried straight down: on a 390px screen the hero's label
+          — "Guests split the bill free — you get the reviews", the first line
+          of copy an owner reads — wrapped onto two lines at a size that is
+          hard work in a dim restaurant. Caps and .2em tracking cost legibility
+          on top of the size, which is why this is the one label that needs the
+          bump rather than a site-wide change.
+
+          Tracking eases slightly with it. At 12px, .2em is enough to break a
+          short phrase into something you read letter by letter.
+        */
         .rst-eyebrow {
           font-family: 'JetBrains Mono', ui-monospace, monospace;
-          font-size: 10px; text-transform: uppercase; letter-spacing: .2em;
+          font-size: 12px; text-transform: uppercase; letter-spacing: .14em;
+        }
+        @media (min-width: 640px) {
+          .rst-eyebrow { font-size: 10px; letter-spacing: .2em; }
         }
 
         .rst-grain::after {
@@ -411,7 +430,7 @@ export default function Restaurants() {
       </header>
 
       {/* ── Four pillars ────────────────────────────────────── */}
-      <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-20 sm:py-28">
+      <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PILLARS.map((p, i) => (
             <Reveal key={p.title} delay={i * 0.07} className="h-full">
@@ -519,7 +538,7 @@ export default function Restaurants() {
       </section>
 
       {/* ── How it works ────────────────────────────────────── */}
-      <section className="relative py-20 sm:py-28" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
+      <section className="relative py-14 sm:py-28" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <Reveal>
             <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Three steps</p>
@@ -571,7 +590,7 @@ export default function Restaurants() {
       </section>
 
       {/* ── Pricing + form ──────────────────────────────────── */}
-      <section ref={formRef} className="relative max-w-6xl mx-auto px-5 sm:px-8 py-20 sm:py-28">
+      <section ref={formRef} className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
           <Reveal>
             <div>
@@ -706,25 +725,61 @@ export default function Restaurants() {
 
       {/* ── Footer ──────────────────────────────────────────── */}
       {/* ── Proof ──────────────────────────────────────
-          Deliberately no invented numbers. Real Mariposa stats (reviews
-          captured, contacts collected, low ratings caught) go here once
-          pulled from the dashboard — tracked as a Week 2 task, not a someday
-          one. Until then this states only what's true today: the product is
-          live at a real restaurant, not a mockup. */}
+          ── What was here, and why it had to go ─────────────────────────────
+
+          This section named a real restaurant — "Mariposa | Cocina & Cocktails
+          runs BillTap every service" — under the heading "Live in Las Vegas",
+          beside "taking real tables today" and "30 sec average time to split &
+          pay". Mariposa is not a customer. They are a prospect who has not said
+          yes, and the comment that used to sit here claimed the section carried
+          "deliberately no invented numbers" while the thirty seconds was
+          invented and the customer was too.
+
+          Three separate reasons it could not stay, in the order they bite:
+
+          The owner can read this page. He is being pitched. Finding his
+          restaurant already listed as a paying customer is the end of that
+          conversation and probably of the relationship, and he would be right.
+
+          Naming a business as a customer when it is not is a false endorsement.
+          The FTC's rule on endorsements is about exactly this, and it does not
+          care that the intent was optimism about a deal expected to close.
+
+          And it is the one thing this product cannot be caught doing. BillTap's
+          pitch is that it gets a restaurant honest reviews from real guests. A
+          page that manufactures its own social proof is selling review
+          integrity while faking its own.
+
+          ── What replaced it ────────────────────────────────────────────────
+
+          Only claims that are true on the day they are read. The price is the
+          real price. The trial length is TRIAL_DAYS in worker/routes/
+          functions.js. "Founder-led" is a fact about a company of one.
+
+          There is no customer count here, and there should not be one until
+          there is a customer who agreed to be named. When that happens the
+          numbers to put here are the ones the dashboard already computes —
+          reviews captured, contacts collected, low ratings caught — pulled from
+          a real account, with permission. Not before. */}
       <section id="proof" className="py-16 sm:py-20" style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <div className="max-w-4xl mx-auto px-5 sm:px-8 text-center">
           <span className="rst-eyebrow inline-block px-3 py-1.5 rounded-full mb-6"
             style={{ background: "rgba(240,180,41,.1)", color: GOLD, border: "1px solid rgba(240,180,41,.25)" }}>
-            Live in Las Vegas
+            Built in Las Vegas
           </span>
           <p className="font-display text-2xl sm:text-3xl leading-snug" style={{ color: "#f5f5f4" }}>
-            Mariposa | Cocina &amp; Cocktails runs BillTap every service.
+            No customer logos yet — you&apos;d be the first.
+          </p>
+          <p className="mt-4 text-base leading-relaxed max-w-xl mx-auto" style={{ color: "rgba(245,245,244,.62)" }}>
+            BillTap is built and running today. It is not yet in a dining room, and
+            this page is not going to pretend otherwise. Being first means the
+            founder answers the phone.
           </p>
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6">
             {[
-              { n: "Live", l: "and taking real tables today" },
-              { n: "30 sec", l: "average time to split & pay" },
               { n: "$149", l: "flat monthly, no contract" },
+              { n: "14 days", l: "free trial, no card up front" },
+              { n: "Founder-led", l: "you deal with the person who built it" },
             ].map((s) => (
               <div key={s.l}>
                 <div className="font-display text-3xl sm:text-4xl" style={{ color: GOLD }}>{s.n}</div>

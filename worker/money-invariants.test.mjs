@@ -46,7 +46,10 @@ const SRC = readFileSync(join(HERE, 'routes', 'functions.js'), 'utf8');
 /** Handler bodies keyed by name: each spans one `  async name(` to the next. */
 function handlerBodies() {
   const marks = [];
-  const re = /\n  async (\w+)\(/g;
+  // `{2}` rather than two literal spaces: identical to match, and the literal
+  // form is what no-regex-spaces refuses — two spaces in a regex are invisible
+  // to a reviewer, and this one decides where every handler body begins.
+  const re = /\n {2}async (\w+)\(/g;
   let m;
   while ((m = re.exec(SRC)) !== null) marks.push({ name: m[1], start: m.index });
 
@@ -113,6 +116,24 @@ test('Stripe stays confined to subscription billing', () => {
     'routes/create-checkout.js',
     'routes/reconcile-billing.js',
     'routes/verify-checkout.js',
+    /**
+     * Consumer Pro, added on purpose.
+     *
+     * The $0.99 tier is a subscription like the $149 one, so it belongs in the
+     * same list rather than in a new category. Unlike create-checkout it
+     * authenticates: the plan attaches to a person, so who it is for comes from
+     * a verified session and never from the request body.
+     */
+    'routes/create-pro-checkout.js',
+    /**
+     * Stripe telling us what happened, for both products.
+     *
+     * It reads the key to fetch the subscription back rather than trusting what
+     * arrived in the payload. Worth this list knowing about, because it is the
+     * only route here that grants a paid plan without a browser involved — the
+     * HMAC on every delivery is what stands in for a credential.
+     */
+    'routes/stripe-webhook.js',
   ];
 
   const found = [];

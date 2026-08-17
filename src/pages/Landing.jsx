@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
 import { Check, QrCode, Camera, Users, Shield, Smartphone, CreditCard, Zap, FileText, Lock, ArrowRight, ScanLine } from "lucide-react";
 import Seo from "@/components/Seo";
+import { accessToken } from "@/lib/supabase";
 import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/lib/landing-assets";
 
 /*
@@ -406,21 +407,93 @@ export default function Landing() {
     "Guest access (no account)",
   ];
 
+  /**
+   * Two lines, and both are true as of migration 0016.
+   *
+   * It listed expense categories, recurring bills and bank payouts as well.
+   * None of the three exist anywhere in this codebase — not a component, not a
+   * column, not a route — and the party-size line was false too: joinSession
+   * capped everyone at fifty and had no concept of a plan, so Pro charged for
+   * something every free user already had.
+   *
+   * The cap is real now. Free stops at ten, Pro goes to fifty, and a split
+   * attributed to a restaurant is exempt because that restaurant pays $149.
+   */
   const proFeatures = [
     "Everything in Free",
     "Unlimited party size",
-    "Expense categories",
-    "Recurring bills (rent, utilities, subscriptions)",
-    "Payout directly to bank account",
   ];
+
+  const [proBusy, setProBusy] = useState(false);
+  const [proError, setProError] = useState(null);
+
+  /**
+   * Ask the Worker for a Stripe Checkout URL and go there.
+   *
+   * The redirect is a full navigation rather than a new tab: Safari blocks a
+   * window.open that happens after an await, and this one has to await the
+   * round trip to Stripe. Losing the popup would look exactly like the button
+   * doing nothing, which is what it used to do for a different reason.
+   */
+  const startProCheckout = async () => {
+    if (proBusy) return;
+    setProError(null);
+    setProBusy(true);
+    try {
+      /**
+       * A plain fetch, not invoke().
+       *
+       * invoke() posts to /api/fn/<name>, which is the business-function map in
+       * worker/routes/functions.js. This is a top-level route beside
+       * /api/create-checkout, so it is called the same way that one is — with
+       * the bearer attached by hand, because unlike the fn map nothing does it
+       * for us here, and without it the Worker sees an anonymous caller and
+       * refuses.
+       */
+      const token = await accessToken();
+      const res = await fetch("/api/create-pro-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: "{}",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.url) { window.location.href = data.url; return; }
+      if (data.code === "unauthorized") {
+        // Pro attaches to a person, so there has to be one. Come back to the
+        // pricing block afterwards rather than dumping them on the home page.
+        navigate("/login?redirect=" + encodeURIComponent("/#pricing"));
+        return;
+      }
+      if (data.code === "already_pro") {
+        // Not an error they did anything wrong — they are already paying. The
+        // route refuses because selling a second subscription on the same card
+        // is precisely the bug it exists to prevent.
+        setProError("You're already on Pro — nothing more to do.");
+        return;
+      }
+      setProError(
+        data.code === "not_configured"
+          ? "Pro isn't open for sign-ups yet — check back shortly."
+          : (data.error || "Could not open checkout. Try again in a moment."),
+      );
+    } catch {
+      setProError("Could not reach checkout. Check your connection and try again.");
+    } finally {
+      setProBusy(false);
+    }
+  };
 
   const faqs = [
     { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
-    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($4.99/mo) unlocks unlimited party size, expense categories, recurring bills, and bank payouts." },
+    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($0.99/mo) raises the party size." },
     { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
     { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
     { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
-    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. When you try to add an 11th person, BillTap shows the Pro upgrade prompt. Pro ($4.99/mo) unlocks unlimited party size." },
+    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. An 11th person is told the split is full, and you're told on your own screen once the table hits 10. Pro ($0.99/mo) raises it." },
     { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
   ];
 
@@ -656,9 +729,9 @@ export default function Landing() {
             <div className="relative rounded-2xl bg-card p-8 flex flex-col border-glow shadow-float">
               <div className="absolute -top-3 left-8"><span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-3 py-1 shadow-glow">Most popular</span></div>
               <p className="mono text-xs uppercase tracking-[0.2em] text-primary">Pro</p>
-              <p className="text-sm text-muted-foreground mt-2">For bigger groups and recurring expenses.</p>
+              <p className="text-sm text-muted-foreground mt-2">For bigger groups.</p>
               <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="mono text-5xl font-semibold tabular-nums">$4.99</span>
+                <span className="mono text-5xl font-semibold tabular-nums">$0.99</span>
                 <span className="text-muted-foreground">/ month</span>
               </div>
               <ul className="space-y-3 mt-7 mb-8 flex-1">
@@ -669,10 +742,33 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link to="/register" className="press inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110">
-                Start Pro free trial <ArrowRight className="w-4 h-4" />
-              </Link>
-              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $4.99/mo</p>
+              {/*
+                A real checkout, not a signup link.
+
+                This pointed at /register, so the button that said "Start Pro
+                free trial" started nothing: it made an account on the free
+                plan and left the person who had just decided to pay with
+                nowhere to do it. Now it asks the Worker for a Stripe Checkout
+                URL and sends them there.
+
+                Signing in first is a requirement rather than a nicety. Pro
+                attaches to a person, and create-pro-checkout takes the user id
+                from a verified session and never from the request -- otherwise
+                anyone could start a checkout in anyone else's name. An
+                unauthenticated caller is bounced to /login and comes back.
+              */}
+              <button
+                type="button"
+                onClick={startProCheckout}
+                disabled={proBusy}
+                className="press inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110 disabled:opacity-60"
+              >
+                {proBusy ? "Opening checkout…" : "Start Pro free trial"} <ArrowRight className="w-4 h-4" />
+              </button>
+              {proError && (
+                <p className="text-center text-xs mt-3" style={{ color: "#e5484d" }}>{proError}</p>
+              )}
+              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $0.99/mo</p>
             </div>
           </div>
 
@@ -680,7 +776,7 @@ export default function Landing() {
           <div className="max-w-3xl mt-5 p-5 rounded-xl bg-surface/60 border border-border/70 flex gap-4 items-start">
             <Zap className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">When does Pro kick in?</span> When you try to add an 11th person to a session, or set up a recurring bill, BillTap shows the upgrade prompt — right at the moment it's actually useful. No nag screens before then.
+              <span className="font-semibold text-foreground">When does Pro kick in?</span> When your table reaches 10 people, BillTap tells you on the split screen that it's full — right at the moment it's actually useful. No nag screens before then.
             </p>
           </div>
 

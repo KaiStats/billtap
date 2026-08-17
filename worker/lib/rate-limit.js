@@ -85,6 +85,19 @@ const LIMITED = new Set([
   // but a table is one NAT, so it is keyed per participant below rather than
   // per address.
   '/api/scan-receipt',
+  /**
+   * Publishes a page bearing a real business's name. The allowlist in
+   * worker/routes/functions.js is the control; this is the bound on what a
+   * mistake in it, or a stolen operator session, can produce in a minute.
+   *
+   * Listed as costly below rather than here-only, and the number is not the
+   * "20 an hour" this was specified as: Cloudflare's rate-limit binding takes a
+   * period of 10 or 60 seconds and nothing else, so an hourly bucket is not
+   * expressible without a Durable Object. Ten a minute is the costly budget and
+   * it is the right shape anyway — it is far above a human typing names at a
+   * table, and it is a hard ceiling on a loop.
+   */
+  '/api/fn/createDemoRestaurant',
 ]);
 
 /**
@@ -274,6 +287,9 @@ const COSTLY = new Set([
   '/api/scan-receipt',
   // Signs an upload, which is what permits an object to be created.
   '/api/fn/createReceiptUpload',
+  // Writes a row and publishes a public page in a third party's name. Nothing
+  // else in this app creates something addressed to the outside world.
+  '/api/fn/createDemoRestaurant',
 ]);
 
 /** Which binding a path draws from. */

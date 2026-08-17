@@ -1,0 +1,63 @@
+-- What the POS printed at the top of the receipt: table, server, check number.
+--
+-- ── The question the alert could not answer ─────────────────────────────────
+--
+-- "Unhappy guest — still on site" tells a manager somebody in the room is
+-- upset and nothing about which of forty tables. The whole thing a restaurant
+-- pays $149 a month for is reaching that guest before they leave, and a walk
+-- around the room squinting at people is not reaching them.
+--
+-- The previous step put the check total in the alert, which is enough to find
+-- the ticket in the POS and read the table off it. This removes the POS from
+-- the loop: the receipt itself almost always prints "TABLE 14 / SERVER: MARCO
+-- / CHK 4471" across the top, and the scan already has the image in front of a
+-- model that is reading everything below it.
+--
+-- ── Why this beats per-table QR codes ──────────────────────────────────────
+--
+-- The obvious alternative is a different QR per table — /r/<slug>?t=12 — which
+-- is exact and needs no model. It also makes every table tent unique, so a
+-- restaurant can no longer be handed a stack of identical cards, a tent moved
+-- between tables starts lying, and every tent already printed has to be
+-- reprinted. This works with the tents that are already on the tables.
+--
+-- The cost is that it is only as good as what is printed and what is read. A
+-- receipt with no table on it leaves these null and the alert falls back to
+-- the check total, which is where it was a commit ago. Strictly additive: no
+-- alert gets worse, some get much better.
+--
+-- ── Text, not integers ─────────────────────────────────────────────────────
+--
+-- "14" is a table number. So are "A7", "P12", "BAR 3" and "PATIO-2". Every
+-- restaurant numbers its floor differently and none of them asked us. Storing
+-- what is printed and showing what is printed cannot be wrong in a way that
+-- matters; parsing it to an integer can, and it would fail on exactly the
+-- rooms that need it most.
+--
+-- `table` and `server` are reserved-ish words in SQL and ambiguous in a schema
+-- that already has sessions and restaurants, hence the prefix.
+
+alter table sessions add column if not exists ticket_table  text;
+alter table sessions add column if not exists ticket_server text;
+alter table sessions add column if not exists ticket_number text;
+
+-- ── No index, on purpose ───────────────────────────────────────────────────
+--
+-- Nothing queries by these. They are read once, by id, when an alert is being
+-- built for a session that is already in hand. An index would be three more
+-- things to keep current on the hottest write in the product for a lookup that
+-- never happens.
+
+-- ── ticket_server is redacted with the guest names, ticket_table is not ────
+--
+-- worker/routes/retention.js blanks guest display names thirty days after a
+-- split stops moving, because src/pages/Privacy.jsx promises it. A server's
+-- name is a named person too — the restaurant's own employee rather than a
+-- guest, but a person — and it is only useful in the minutes after a bad
+-- rating, when a manager is deciding who to talk to. Keeping it for years
+-- serves nobody and quietly turns the sessions table into a staffing record of
+-- who was working when something went wrong.
+--
+-- The table and the check number stay. They identify a piece of furniture and
+-- a POS record, not a person, and they are part of the host's own account of
+-- the bill in the same way the line items are.

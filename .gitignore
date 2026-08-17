@@ -38,4 +38,14 @@ base44/.app.jsonc
 # wrangler dev local state
 .wrangler
 billtap/
+
+# Agent tooling scratch. Both are session state that changes on every run, and
+# neither is anything a checkout needs.
+#
+# .claude-flow was already listed here and still turned up modified in every
+# `git status`, because gitignore does not apply to a file git is already
+# tracking — ranked-context.json had been committed once and every session
+# rewrote its `computedAt` timestamp thereafter. `git rm --cached` is what
+# actually took effect.
 .claude-flow/
+.omc/

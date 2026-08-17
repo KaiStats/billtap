@@ -28,6 +28,14 @@ function SessionHostComponent() {
    * without it. See src/lib/hostKey.js.
    */
   const [session, setSession] = useState(null);
+  /**
+   * How full this split may get, from the endpoint that does the refusing.
+   *
+   * The eleventh guest already sees why they were turned away, and they are the
+   * wrong person to show an upsell to — they cannot upgrade anything, they are
+   * somebody's friend at dinner. This screen belongs to the person who can.
+   */
+  const [party, setParty] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -80,7 +88,13 @@ function SessionHostComponent() {
         session_id: sessionId,
         host_key: getHostKey(sessionId),
       });
-      if (res.data?.session) { setSession(res.data.session); return; }
+      if (res.data?.session) {
+        setSession(res.data.session);
+        // Only the host view carries this. The scoped read below is what a
+        // guest holding the link gets, and it says nothing about plans.
+        setParty(res.data.party || null);
+        return;
+      }
     } catch {
       // Not the host, or the key is gone. Fall through to the scoped read that
       // anyone holding the link may make.
@@ -332,6 +346,51 @@ function SessionHostComponent() {
             </div>
           )}
 
+          {/*
+            Where the money actually goes — asked before the QR, not after.
+
+            ── What this fixes ────────────────────────────────────────────────
+
+            The payment handle was only ever requested from
+            handleStartClaimingClick, behind the "Claim My Items" button. A host
+            who does the obvious thing -- show the QR, let the table scan --
+            never saw it.
+
+            So guests claimed their items, tapped "Pay $52.44", and were told
+            "ask the host how they want to be paid". Then the split marked them
+            as sent anyway, and the host got a confirmed list describing money
+            that had never moved. The one thing the product exists to finish was
+            the one thing it did not.
+
+            Above the QR because that is the order the host works in: this
+            screen exists to be held up to a table, and anything below the code
+            is read after everyone has already scanned.
+
+            A nudge and not a wall. A host who wants to share the code first, or
+            who is collecting cash, must not be blocked by us -- the split still
+            works without a handle, it just cannot tell anyone where to send
+            money. See how the guest handles its absence in src/pages/Claim.jsx.
+          */}
+          {!session.host_payment_info && (
+            <button
+              type="button"
+              onClick={() => setShowPaymentSetup(true)}
+              className="w-full text-left rounded-2xl p-4 flex items-start gap-3 transition active:scale-[0.99]"
+              style={{ background: "rgba(240,180,41,.10)", border: "1px solid rgba(240,180,41,.35)" }}
+            >
+              <DollarSign className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#f0b429" }} aria-hidden="true" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-sm text-white">
+                  Guests can&apos;t pay you yet
+                </span>
+                <span className="block text-xs mt-1 text-white/60">
+                  Add your Venmo, Cash App or Zelle so everyone knows where to send it.
+                </span>
+              </span>
+              <span className="text-xs font-semibold shrink-0 mt-0.5" style={{ color: "#f0b429" }}>Add →</span>
+            </button>
+          )}
+
           {/* QR Code */}
           <div className="flex flex-col items-center gap-3">
             <div className="bg-white p-4 rounded-2xl shadow-xl" role="img" aria-label={`QR code to join: ${session.title}`}>
@@ -373,6 +432,42 @@ function SessionHostComponent() {
               )}
             </div>
           </div>
+
+          {/*
+            The table is as big as this plan allows.
+
+            Shown at the limit rather than after somebody has been refused:
+            being told at ten that the next person will not fit is worth more
+            than being told at eleven that they did not. It is also the only
+            warning that reaches the host at all — the refusal happens on a
+            stranger's phone.
+
+            Restaurant tables never see this. Their limit is the row ceiling,
+            not a consumer tier, because the restaurant already pays $149.
+          */}
+          {party?.full && party.tier === "free" && (
+            <div
+              className="rounded-2xl p-4 flex items-start gap-3"
+              style={{ background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.25)" }}
+            >
+              <Users className="w-5 h-5 shrink-0 mt-0.5 text-primary" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-white">
+                  That&apos;s {party.limit} people — the table is full
+                </p>
+                <p className="text-xs mt-1 text-white/55">
+                  Anyone else who scans will be turned away. Pro lifts the limit for $0.99/month.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/#pricing")}
+                  className="mt-3 px-4 py-2 rounded-xl font-semibold text-xs bg-primary text-primary-foreground"
+                >
+                  See Pro
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Configure Split Button (for custom mode or to switch to custom) */}
           {participants.length > 0 && (

@@ -2,7 +2,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
-import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router';
+import { BrowserRouter as Router, Route, Routes, useLocation, Navigate, useParams } from 'react-router';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -43,6 +43,21 @@ const BlogPost03QRWithoutPOS = lazy(() => import('@/pages/BlogPost03QRWithoutPOS
 const BlogPost04CostOfOneLostRegular = lazy(() => import('@/pages/BlogPost04CostOfOneLostRegular'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
+const NewDemo     = lazy(() => import('@/pages/NewDemo'));
+
+/**
+ * `/f/<slug>` → `/r/<slug>`, keeping whatever was on the query string.
+ *
+ * The cards carry the right slug and the wrong letter in front of it. Rendered
+ * rather than redirected in a router config because the slug has to be read
+ * from the path and handed to the destination, and `useParams` is the thing
+ * that knows it.
+ */
+const PrintedTentRedirect = () => {
+  const { slug } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={`/r/${slug}${search}`} replace />;
+};
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" style={{ background: '#070b16' }}>
@@ -117,6 +132,11 @@ const AUTH_GATED_ROUTES = new Set([
   // why opening it is safe.
   '/profile',
   '/restaurant-dashboard',
+  // The demo tool. Gated because it is only ever opened by a signed-in
+  // operator, and a flash of the create form at a signed-out visitor is a
+  // flash of a screen that publishes pages in the name of a business that has
+  // not agreed to one.
+  '/new',
 ]);
 
 const AuthenticatedApp = () => {
@@ -253,6 +273,20 @@ const AuthenticatedApp = () => {
             <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
+            {/*
+              The prefix a batch of printed cards used by mistake.
+
+              The edge handles this with a 301 — see PRINT_PREFIX_REDIRECT in
+              worker/index.js, which is the one that matters, because a phone
+              scanning a QR code never reaches React until the Worker has
+              already answered. This covers the two places nothing sits in
+              front of the SPA: the dev server, and navigation inside the app
+              once it has booted.
+
+              `replace` so the broken URL does not sit in history behind the
+              working one, waiting for a back button.
+            */}
+            <Route path="/f/:slug" element={<PrintedTentRedirect />} />
 
             {/* Auth routes */}
             <Route path="/login" element={<Login />} />
@@ -292,6 +326,15 @@ const AuthenticatedApp = () => {
               <Route path="/home" element={<AnimatedPage direction={direction}><Home /></AnimatedPage>} />
               <Route path="/profile" element={<AnimatedPage direction={direction}><Profile /></AnimatedPage>} />
               <Route path="/restaurant-dashboard" element={<RestaurantDashboard />} />
+              {/*
+                The demo tool. Deliberately not linked from any page — see
+                src/pages/NewDemo.jsx. Sitting under ProtectedRoute is a
+                convenience so an unauthenticated visitor lands on /login
+                instead of a form that cannot work; the control that matters is
+                the operator allowlist in worker/routes/functions.js, which
+                answers 403 to every signed-in user who is not on it.
+              */}
+              <Route path="/new" element={<NewDemo />} />
             </Route>
 
             <Route path="*" element={<PageNotFound />} />

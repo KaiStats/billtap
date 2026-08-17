@@ -21,6 +21,21 @@ const ENV = {
   DATA_BACKEND: 'supabase',
   SUPABASE_URL: 'https://stub.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-key',
+  /**
+   * Present because the endpoint under test needs an identity, and identity
+   * needs this.
+   *
+   * It was absent, and the fetch stub below answers every URL — including
+   * /auth/v1/user — so the dashboard resolved an owner anyway and these four
+   * tests passed against a configuration that answers 401 in production.
+   * currentUser() now refuses early and says which binding is missing rather
+   * than spending a round trip it knows will fail, which is what surfaced it.
+   *
+   * The value is nonsense on purpose, like the service key above: the stub
+   * never checks it. What matters is that the shape of the environment these
+   * tests run in is a shape the app actually works in.
+   */
+  SUPABASE_ANON_KEY: 'anon-key',
 };
 
 function stub({ ratings = [], contacts = [] }) {

@@ -567,3 +567,83 @@ test('the reconcile pass gets its own invocation, like the other two', async () 
   assert.equal(ran.length, 1, 'the reconcile firing starts exactly one job');
   await Promise.allSettled(ran);
 });
+
+// ── Cards printed with the wrong prefix ─────────────────────────────────────
+//
+// Table tents and flyers went to print carrying billtap.app/f/<slug>. This app
+// has only ever served /r/<slug>: one route in src/App.jsx, one pattern in
+// DYNAMIC_ROUTES, and nothing in the repo has ever emitted an /f/ URL. So every
+// printed code fell through to the SPA shell, missed the known-route check and
+// came back 404 — dead since the first piece came off the press, verified
+// against production before this was written.
+//
+// The slug on the cards is right. Only the letter in front of it is wrong,
+// which is why a redirect fixes it and nothing needs reprinting.
+
+test('a card printed with /f/ reaches the guest page', async () => {
+  const res = await get('/f/mariposa');
+  assert.equal(res.status, 301, 'permanent: the cards are not being reprinted');
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa');
+});
+
+test('the redirect carries the query string across', async () => {
+  // A table number or a campaign tag on the end belongs to the page being
+  // redirected to, and dropping it silently loses whatever it was for.
+  const res = await get('/f/mariposa?table=12&utm_source=tent');
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa?table=12&utm_source=tent');
+});
+
+test('a trailing slash on a printed card is not a dead end', async () => {
+  // Nobody types these, but a QR encoder or a link unfurler may add one.
+  const res = await get('/f/mariposa/');
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa');
+});
+
+test('a slug with the punctuation slugs actually contain still redirects', async () => {
+  // reserveSlug produces hyphens and digits, and demo slugs look like hr-a7f3kq.
+  for (const slug of ['herb-and-rye-2', 'hr-a7f3kq', 'restaurant-9c2f']) {
+    const res = await get(`/f/${slug}`);
+    assert.equal(res.headers.get('location'), `https://billtap.app/r/${slug}`, slug);
+  }
+});
+
+test('bare /f is still a 404, because no card says just that', async () => {
+  // Redirecting it would invent a destination nobody printed. A request for it
+  // is a crawler walking the path or somebody truncating a URL, and the honest
+  // answer to both is that there is nothing there.
+  for (const path of ['/f', '/f/']) {
+    assert.equal((await get(path)).status, 404, path);
+  }
+});
+
+test('the printed prefix does not swallow a deeper path', async () => {
+  // /f/<slug>/anything is not a card. Matching it would turn every nested typo
+  // into a redirect to a slug that was never printed.
+  assert.equal((await get('/f/mariposa/extra')).status, 404);
+});
+
+test('robots.txt disallows the printed prefix as well as /r/', () => {
+  const robots = readFileSync(join(ROOT, 'public', 'robots.txt'), 'utf8');
+  assert.match(robots, /^Disallow: \/f\/$/m, 'the 301 target is disallowed; the source should be too');
+  assert.match(robots, /^Disallow: \/r\/$/m);
+});
+
+test('a card read with the wrong case still reaches the right page', async () => {
+  /**
+   * LEGACY_REDIRECTS exists because capitalised paths reach this app in the
+   * wild, and a printed card is read by more things than a browser: a QR
+   * decoder, an OCR, a person typing it off a flyer, an SMS client that
+   * title-cases what it takes for a sentence. `/F/mariposa` used to 404.
+   *
+   * The slug is lowercased on the way out too. Getting past the 404 only to
+   * hand `/r/Mariposa` to a byte-exact slug lookup would move the dead end
+   * rather than remove it — slugify() guarantees every stored slug is
+   * lowercase, so anything else matches no row.
+   */
+  for (const path of ['/F/mariposa', '/f/Mariposa', '/F/MARIPOSA']) {
+    const res = await get(path);
+    assert.equal(res.status, 301, path);
+    assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa', path);
+  }
+});

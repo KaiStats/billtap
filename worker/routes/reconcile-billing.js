@@ -48,7 +48,7 @@ import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
  * should keep whatever it had rather than be knocked off a trial it is still
  * legitimately on.
  */
-const PLAN_FOR = {
+export const PLAN_FOR = {
   active: 'active',
   trialing: 'active',
   past_due: 'past_due',
@@ -81,7 +81,14 @@ export async function scheduled(env) {
   }
 
   const restaurants = await svc.entity('Restaurant').list('created_date', MAX_PER_RUN);
-  const subscribed = restaurants.filter((r) => r.stripe_subscription_id);
+  // `!r.demo` is redundant today and stated anyway. A demo row has no
+  // stripe_subscription_id, so the existing filter already skips it — but that
+  // is an accident of how demos are created, not a rule anyone wrote down, and
+  // the day somebody copies a real row to make a demo it stops holding. Asking
+  // Stripe about a page we stood up for a stranger is one wasted call at best
+  // and, if the id came from a real restaurant, this job writing that
+  // restaurant's plan onto a row that is deleted tonight.
+  const subscribed = restaurants.filter((r) => r.stripe_subscription_id && !r.demo);
 
   let checked = 0;
   let changed = 0;

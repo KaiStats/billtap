@@ -14,6 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { onRequestPost } from './routes/verify-checkout.js';
 
@@ -157,4 +158,27 @@ test('an address with no state does not blank one already on file', async () => 
   } finally {
     net.restore();
   }
+});
+
+test('checkout does not send customer_update without a customer', async () => {
+  /**
+   * Stripe answers this combination with a 400:
+   *
+   *   `customer_update` can only be used with `customer`.
+   *
+   * customer_update describes how to update an *existing* customer, and this
+   * route never passes one — it hands over customer_email and lets Checkout
+   * create the customer. So every restaurant checkout 400'd from the moment
+   * that line was added, and the route answered "Could not start checkout"
+   * without anyone reading the body that said why.
+   *
+   * Nothing was lost by removing it: in subscription mode Stripe saves the
+   * collected address onto the customer it creates.
+   */
+  const src = readFileSync(new URL('./routes/create-checkout.js', import.meta.url), 'utf8');
+  const sent = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/customer_update/.test(sent),
+    'customer_update is back, and Stripe will 400 every checkout while it is');
+  assert.match(sent, /billing_address_collection/,
+    'the address is still collected — nexus depends on it');
 });

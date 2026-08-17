@@ -197,6 +197,56 @@ for (const { route, file } of ROUTES) {
       for (const img of document.querySelectorAll('img')) {
         if (img.style.display === 'none') img.style.removeProperty('display');
       }
+
+      /**
+       * Third-party tags this run happened to inject, for the same reason.
+       *
+       * public/analytics.js loads the Meta Pixel and GTM at runtime, and by the
+       * time the DOM is serialised those have added their own <script> tags —
+       * including a Facebook config URL carrying `domain=localhost`, because
+       * localhost is where the prerender ran. Every snapshot was shipping it:
+       * twelve routes each telling Facebook they were a different site than
+       * they are, loading fbevents.js a second time, and throwing "fbq is not
+       * defined" in the console of every visitor before analytics.js had
+       * defined it.
+       *
+       * index.html declares only same-origin scripts — /fonts.js,
+       * /analytics.js and the bundle — and src/csp.test.mjs enforces that it
+       * carries no inline ones. So anything else in here arrived at runtime and
+       * belongs to this machine rather than to the page. analytics.js puts the
+       * real tags back on the visitor's own browser, scoped to the real domain.
+       */
+      for (const script of document.querySelectorAll('script')) {
+        const src = script.getAttribute('src') || '';
+
+        /**
+         * JSON-LD is the one inline script that belongs to the page.
+         *
+         * Seo.jsx injects the Organization schema at runtime, and on
+         * /restaurants the SoftwareApplication offer carrying 149/USD and the
+         * whole FAQPage with it. Runtime injection is the only way a prerendered
+         * route gets its schema at all — which made it indistinguishable, to the
+         * rule below, from the Facebook tag this loop was written to remove.
+         *
+         * So for one deploy every snapshot shipped with zero structured data:
+         * the FAQ rich result and the price markup on the page the $149 plan is
+         * sold from, deleted by a fix aimed at something else entirely.
+         *
+         * Matched on type rather than on the data-seo-schema attribute, because
+         * the type is what makes a crawler read it — anything claiming to be
+         * ld+json is the page describing itself, and the third-party tags this
+         * loop removes are all plain JavaScript with an absolute src.
+         */
+        if (script.type === 'application/ld+json') continue;
+
+        if (!src) { script.remove(); continue; }            // injected inline
+        if (/^https?:\/\//i.test(src)) {
+          try {
+            if (new URL(src).origin !== location.origin) script.remove();
+          } catch { script.remove(); }
+        }
+      }
+
       return '<!doctype html>\n' + document.documentElement.outerHTML;
     });
 
@@ -205,6 +255,19 @@ for (const { route, file } of ROUTES) {
     }
     if (html.length < 4000) {
       throw new Error(`only ${html.length} bytes captured`);
+    }
+    /**
+     * Fails the build rather than the rankings.
+     *
+     * The stripping loop above deleted every JSON-LD block for one deploy and
+     * nothing noticed, because a snapshot with no structured data is a valid
+     * page that renders correctly and weighs about the same. The only symptom
+     * would have been rich results quietly disappearing from Google weeks
+     * later. Seo.jsx puts schema on all twelve routes, so an empty one here is
+     * always a regression and never a route that legitimately has none.
+     */
+    if (!html.includes('application/ld+json')) {
+      throw new Error(`${route} lost its JSON-LD — check the script filter in this file`);
     }
 
     await writeFile(join(DIST, file), html);
