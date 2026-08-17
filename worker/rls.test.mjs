@@ -53,7 +53,19 @@ test('the set of permissive policies is the set somebody decided on', () => {
   // Not a style rule. Every policy here is a hole punched in a default-deny
   // wall, deliberately, with a paragraph next to it explaining why. A new one
   // arriving without that conversation is the thing this catches.
-  const policies = [...code.matchAll(/create policy\s+"([^"]+)"/gi)].map((m) => m[1]).sort();
+  /**
+   * By name, deduplicated.
+   *
+   * A policy redefined in a later migration — 0021 rewrites two of them to call
+   * `(select auth.uid())` so Postgres evaluates it once per query instead of
+   * once per row — is the same hole in the same wall, not a second one. What
+   * this test is for is a *new* name appearing without the conversation that
+   * should precede it, and counting the same name twice would only teach
+   * whoever hits it to edit the list until the red goes away.
+   */
+  const policies = [...new Set(
+    [...code.matchAll(/create policy\s+"([^"]+)"/gi)].map((m) => m[1]),
+  )].sort();
 
   assert.deepEqual(
     policies,
