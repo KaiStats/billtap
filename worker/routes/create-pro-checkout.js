@@ -33,13 +33,33 @@ export async function onRequestPost({ request, env }) {
   const user = await currentUser(env, request);
   if (!user) return json({ error: 'Sign in first.', code: 'unauthorized' }, 401);
 
+  let reqBody = {};
+  try { reqBody = await request.json(); } catch { reqBody = {}; }
+
+  /**
+   * Monthly or annual, and which price each is.
+   *
+   * The interval is a closed choice, not free text — 'annual' or anything else
+   * means monthly — so the body can never name a price the client did not.
+   * Annual has its own binding because it is a distinct Stripe price with a
+   * distinct id; the webhook and the plan logic do not care which one paid,
+   * only that the subscription is live, so nothing downstream changes.
+   *
+   * Annual is unconfigured until STRIPE_PRO_ANNUAL_PRICE_ID is set, and asking
+   * for it then is a clean 'not_configured' rather than a silent fall back to
+   * monthly — charging someone $3.99/mo when they clicked $29/yr is the kind of
+   * quiet substitution worth refusing outright.
+   */
+  const interval = reqBody?.plan === 'annual' ? 'annual' : 'monthly';
+
   const key = env.STRIPE_SECRET_KEY;
-  const price = env.STRIPE_PRO_PRICE_ID;
+  const price = interval === 'annual' ? env.STRIPE_PRO_ANNUAL_PRICE_ID : env.STRIPE_PRO_PRICE_ID;
   if (!key || !price) {
     // Named individually, for the reason create-checkout.js gives: a secret
     // can exist with an empty value, so "or" sends somebody to check two
     // bindings that both look present.
-    const missing = [!key && 'STRIPE_SECRET_KEY', !price && 'STRIPE_PRO_PRICE_ID'].filter(Boolean);
+    const priceVar = interval === 'annual' ? 'STRIPE_PRO_ANNUAL_PRICE_ID' : 'STRIPE_PRO_PRICE_ID';
+    const missing = [!key && 'STRIPE_SECRET_KEY', !price && priceVar].filter(Boolean);
     console.error(`create-pro-checkout: not configured — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} empty or unset`);
     return json({ error: 'Billing is not configured yet.', code: 'not_configured' }, 503);
   }
@@ -163,7 +183,7 @@ export async function onRequestPost({ request, env }) {
          * The hour bucket is what lets them legitimately try again later —
          * after abandoning a checkout, or after a card was declined.
          */
-        'Idempotency-Key': `pro-${user.id}-${Math.floor(Date.now() / 3600000)}`,
+        'Idempotency-Key': `pro-${interval}-${user.id}-${Math.floor(Date.now() / 3600000)}`,
       },
       body: params,
     }, TIMEOUTS.payment);

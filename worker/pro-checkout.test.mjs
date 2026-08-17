@@ -54,12 +54,12 @@ function stub({ profile = null, stripeStatus = 200 } = {}) {
   return { sent, restore: () => { globalThis.fetch = original; } };
 }
 
-const post = () => onRequestPost({
-  env: ENV,
+const post = (body = {}, env = ENV) => onRequestPost({
+  env,
   request: new Request('https://billtap.app/api/create-pro-checkout', {
     method: 'POST',
-    headers: { Authorization: 'Bearer token' },
-    body: '{}',
+    headers: { Authorization: 'Bearer token', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   }),
 });
 
@@ -177,4 +177,57 @@ test('an anonymous caller is refused before anything is read', async () => {
     });
     assert.equal(res.status, 401);
   } finally { globalThis.fetch = original; }
+});
+
+// ── Annual, a distinct Stripe price gated on its own binding ─────────────────
+
+const ANNUAL_ENV = { ...ENV, STRIPE_PRO_ANNUAL_PRICE_ID: 'price_pro_annual' };
+
+test('a monthly checkout uses the monthly price', async () => {
+  await withStub({ profile: null }, async ({ sent }) => {
+    await post({ plan: 'monthly' });
+    assert.equal(sent[0].get('line_items[0][price]'), 'price_pro');
+  });
+});
+
+test('an annual checkout uses the annual price when it is configured', async () => {
+  await withStub({ profile: null }, async ({ sent }) => {
+    const res = await post({ plan: 'annual' }, ANNUAL_ENV);
+    assert.equal(res.status, 200);
+    assert.equal(sent[0].get('line_items[0][price]'), 'price_pro_annual');
+    // Still once-per-person trial and the same user metadata — nothing about
+    // the interval changes who it is for or the webhook that provisions it.
+    assert.equal(sent[0].get('subscription_data[metadata][user_id]'), 'user_kai');
+    assert.equal(sent[0].get('subscription_data[trial_period_days]'), '14');
+  });
+});
+
+test('asking for annual before its price exists is a clean refusal, not a silent monthly charge', async () => {
+  // The substitution worth refusing: someone clicks $29/yr and is quietly put
+  // on $3.99/mo instead. ENV has no annual price, so this must not fall back.
+  await withStub({ profile: null }, async ({ sent }) => {
+    const res = await post({ plan: 'annual' }, ENV);
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).code, 'not_configured');
+    assert.equal(sent.length, 0, 'no monthly session may be minted for an annual request');
+  });
+});
+
+test('an unknown interval is treated as monthly, never as an error', async () => {
+  // 'annual' or nothing else. A garbage value can only undersell.
+  await withStub({ profile: null }, async ({ sent }) => {
+    await post({ plan: 'quarterly' });
+    assert.equal(sent[0].get('line_items[0][price]'), 'price_pro');
+  });
+});
+
+test('switching monthly to annual is not blocked as a duplicate', async () => {
+  // The idempotency key includes the interval, so a person who tried monthly
+  // and then chose yearly in the same hour is two distinct intents, not a
+  // double-tap to be swallowed.
+  await withStub({ profile: null }, async ({ sent }) => {
+    await post({ plan: 'monthly' });
+    await post({ plan: 'annual' }, ANNUAL_ENV);
+    assert.equal(sent.length, 2);
+  });
 });

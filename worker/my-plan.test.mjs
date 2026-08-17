@@ -111,3 +111,25 @@ test('a profile read that fails falls to free, and does not throw', async () => 
     assert.equal((await res.json()).pro, false);
   });
 });
+
+// ── getBillingConfig: what the pricing card is allowed to offer ─────────────
+
+const billingConfig = (env) => HANDLERS.getBillingConfig({
+  env,
+  request: new Request('https://billtap.app/api/fn/getBillingConfig', { method: 'POST' }),
+});
+
+test('annual is offered only when its Stripe price is bound', async () => {
+  const off = await (await billingConfig({ ...ENV })).json();
+  assert.equal(off.annual_available, false, 'no price, no yearly toggle');
+
+  const on = await (await billingConfig({ ...ENV, STRIPE_PRO_ANNUAL_PRICE_ID: 'price_year' })).json();
+  assert.equal(on.annual_available, true);
+});
+
+test('the config never leaks the price id itself', async () => {
+  // A boolean about our pricing is public; the id is not, and the client has no
+  // use for it.
+  const body = await (await billingConfig({ ...ENV, STRIPE_PRO_ANNUAL_PRICE_ID: 'price_secret' })).json();
+  assert.equal(JSON.stringify(body).includes('price_secret'), false);
+});
