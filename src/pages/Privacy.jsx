@@ -115,12 +115,27 @@ const Privacy = () => (
         </Section>
 
         <Section title="5. Account & Data Deletion">
-          <p>Registered hosts can delete their account and all associated data at any time from the app&apos;s profile settings. Upon deletion:</p>
+          <p>Registered hosts can delete their account at any time from the app&apos;s profile settings. Upon deletion:</p>
           <ul className="list-disc pl-5 space-y-1 mt-2">
-            <li>Your account and email are permanently removed.</li>
-            <li>All sessions you created are deleted.</li>
+            <li>Your account, email and plan are permanently removed, and any paid subscription is cancelled.</li>
+            <li>Any demo pages you created are deleted outright, along with the ratings and contacts collected on them.</li>
+            <li>
+              Bills you hosted are <strong>unlinked from you</strong> rather than deleted. A split is a shared
+              record of what several people each paid, so erasing one would erase other diners&apos; records too.
+              Guest names and item claims are removed from every split after 30 days regardless.
+            </li>
+            <li>
+              We keep our payment audit records, with your identity removed from them. They are how a disputed
+              payment is resolved, and we are required to be able to answer that question.
+            </li>
             <li>Deletion is irreversible.</li>
           </ul>
+          <p className="mt-2">
+            Two honest caveats. If your account still owns a restaurant, we will ask you to cancel or transfer it
+            first — deleting it would take its QR codes down mid-service for a business that has not asked for
+            that. And encrypted backups written before your request expire on their own schedule rather than
+            being rewritten; nothing is restored from them except to recover from an outage.
+          </p>
           <p className="mt-2">
             You may also email{" "}
             <a href="mailto:privacy@billtap.app" className="text-primary hover:underline">privacy@billtap.app</a>

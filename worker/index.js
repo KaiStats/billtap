@@ -21,6 +21,7 @@ import { onRequestPost as createCheckout } from './routes/create-checkout.js';
 import { onRequestPost as verifyCheckout } from './routes/verify-checkout.js';
 import { onRequestPost as createProCheckout } from './routes/create-pro-checkout.js';
 import { onRequestPost as stripeWebhook } from './routes/stripe-webhook.js';
+import { onRequestPost as deleteAccount } from './routes/delete-account.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
@@ -74,6 +75,7 @@ const POST_ROUTES = {
    * The HMAC on every delivery is the control -- see the route.
    */
   '/api/stripe-webhook': stripeWebhook,
+  '/api/delete-account': deleteAccount,
   '/api/monthly-report': monthlyReport,
   // The receipt parse, straight to the model. See routes/scan-receipt.js for
   // why it no longer goes through Base44.

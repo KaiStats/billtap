@@ -87,6 +87,14 @@ export const ACTIONS = {
   // empty profiles table. The $149 links have the same shape, where the silence
   // costs a restaurant its service and us the customer.
   BILLING_UNMATCHED: 'billing.unmatched',
+  // Somebody exercised the right the privacy policy grants them.
+  //
+  // The one action whose absence from this log is indistinguishable from it
+  // never having been asked for, which is exactly what a regulator or a support
+  // conversation needs to establish. Recorded against a one-way fingerprint
+  // rather than the user id, because writing the id would put back the
+  // identifier every other row belonging to that person just had removed.
+  ACCOUNT_DELETED: 'account.deleted',
   // A public page put up bearing a real business's name, by us, for a business
   // that has not agreed to anything. It is the one action in this app that
   // creates something in somebody else's name, so "who stood that page up, and

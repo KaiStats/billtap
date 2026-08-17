@@ -25,6 +25,16 @@ import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
+/**
+ * Comments are prose about code, not code.
+ *
+ * Without this, a comment explaining that something *used to* call
+ * /api/fn/deleteAccount reads as a live call to it — which is exactly what
+ * happened, and a test that cannot tell an explanation from an instruction
+ * would push people to stop writing the explanations.
+ */
+const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
@@ -61,7 +71,7 @@ test('every function the app calls exists on the Worker', () => {
   const missing = [];
 
   for (const file of walk(join(ROOT, 'src'))) {
-    const src = readFileSync(file, 'utf8');
+    const src = codeOnly(readFileSync(file, 'utf8'));
     for (const m of src.matchAll(/\/api\/fn\/([A-Za-z][A-Za-z0-9_-]*)/g)) {
       if (!handlers.has(m[1])) {
         missing.push(`${file.replace(ROOT, '')} calls /api/fn/${m[1]}`);
@@ -70,4 +80,41 @@ test('every function the app calls exists on the Worker', () => {
   }
 
   assert.deepEqual(missing, [], `these 404 at runtime:\n  ${missing.join('\n  ')}\n\nhandlers: ${[...handlers].sort().join(', ')}`);
+});
+
+test('invoke() names resolve too, since most calls go through it', () => {
+  /**
+   * invoke("getSplitStatus", …) posts to /api/fn/getSplitStatus, so the same
+   * mismatch is possible there and fails the same way.
+   *
+   * This assertion is why /api/delete-account exists. Profile.jsx called
+   * invoke('deleteAccount') and no such handler had ever been written, so the
+   * one button src/pages/Privacy.jsx points people at — "delete their account
+   * and all associated data at any time" — answered 404 for the life of the
+   * feature. The test was written first and held back rather than shipped
+   * green, because a suite that passes while the policy is unenforceable is
+   * worse than one that fails.
+   */
+  const handlers = handlerNames();
+  const missing = [];
+  for (const file of walk(join(ROOT, 'src'))) {
+    const src = codeOnly(readFileSync(file, 'utf8'));
+    for (const m of src.matchAll(/\binvoke\(\s*["'`]([A-Za-z][A-Za-z0-9_-]*)["'`]/g)) {
+      if (!handlers.has(m[1])) missing.push(`${file.replace(ROOT, '')} invokes ${m[1]}`);
+    }
+  }
+  assert.deepEqual(missing, [], `these 404 at runtime:\n  ${missing.join('\n  ')}`);
+});
+
+test('the account-deletion route the privacy policy promises is wired up', () => {
+  // The policy is a published commitment, so the route it depends on is worth
+  // pinning by name rather than trusting to a grep of the client.
+  const index = readFileSync(join(ROOT, 'worker/index.js'), 'utf8');
+  assert.match(index, /'\/api\/delete-account':/, 'the route is not registered in the Worker');
+
+  const profile = readFileSync(join(ROOT, 'src/pages/Profile.jsx'), 'utf8');
+  assert.match(profile, /\/api\/delete-account/, 'the Profile screen does not call it');
+
+  const privacy = readFileSync(join(ROOT, 'src/pages/Privacy.jsx'), 'utf8');
+  assert.match(privacy, /delete their account/i, 'the promise moved — check this still matches the route');
 });
