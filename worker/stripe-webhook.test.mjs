@@ -484,3 +484,32 @@ test('a subscription that really is not ours is still acknowledged', async () =>
     assert.equal((await res.json()).reason, 'no_subject');
   });
 });
+
+// ── Out-of-order delivery: Stripe's current truth wins over a stale payload ──
+
+test('a stale subscription.updated does not downgrade a currently-active plan', async () => {
+  /**
+   * Completeness finding #2. Stripe delivers at-least-once and out-of-order, so
+   * a past_due/canceled `subscription.updated` can arrive after a newer active
+   * one. Applying the event payload verbatim would write the old status and drag
+   * plan_expires_at backwards. The route now re-reads the live subscription, so
+   * the stub's fresh 'active' subscription is what lands — not the stale payload.
+   */
+  const fresh = PRO_SUB({ status: 'active' });
+  const stalePayload = PRO_SUB({ status: 'canceled', current_period_end: Math.floor(Date.now() / 1000) - 86400 });
+  await withStub({ profiles: [{ id: 'user_kai', plan: 'free' }], subscription: fresh }, async ({ tables }) => {
+    await deliver({ type: 'customer.subscription.updated', data: { object: stalePayload } });
+    assert.equal(tables.profiles[0].plan, 'pro', 'the current active status must win over the stale event');
+    assert.ok(tables.profiles[0].plan_expires_at > Date.now(), 'and the expiry is the fresh one, not dragged back');
+  });
+});
+
+test('a subscription event still applies when the re-read fails', async () => {
+  // Fall back to the payload rather than dropping the event: readSubscription
+  // returning 404 (no such subscription to re-read) must not lose a real event.
+  const payload = PRO_SUB({ status: 'active' });
+  await withStub({ profiles: [{ id: 'user_kai', plan: 'free' }], subscription: null }, async ({ tables }) => {
+    await deliver({ type: 'customer.subscription.updated', data: { object: payload } });
+    assert.equal(tables.profiles[0].plan, 'pro', 'a 404 re-read falls back to the payload, not a dropped event');
+  });
+});

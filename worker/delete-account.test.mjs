@@ -38,10 +38,12 @@ const post = (body = { confirm: 'DELETE' }, env = ENV) => onRequestPost({
  * `calls` is the point: every assertion below is about which row was removed,
  * which was merely detached, and which was left exactly where it was.
  */
-function stub({ restaurants = [], profiles = [], authStatus = 200, signedIn = true } = {}) {
+function stub({ restaurants = [], profiles = [], authStatus = 200, signedIn = true,
+                stripeCustomers = [], stripeSubs = [], restaurantsMidDelete = null } = {}) {
   const original = globalThis.fetch;
   const tables = { restaurants: structuredClone(restaurants), profiles: structuredClone(profiles) };
   const calls = [];
+  let restaurantReads = 0;
 
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url));
@@ -55,11 +57,34 @@ function stub({ restaurants = [], profiles = [], authStatus = 200, signedIn = tr
       return signedIn ? new Response(JSON.stringify(USER), { status: 200 }) : new Response('{}', { status: 401 });
     }
     if (u.hostname === 'api.stripe.com') {
-      calls.push({ kind: 'stripe_cancel', method, path: u.pathname });
-      return new Response('{"status":"canceled"}', { status: 200 });
+      // Model the three shapes the route uses: list customers by email, list a
+      // customer's subscriptions, and cancel one.
+      if (method === 'GET' && u.pathname === '/v1/customers') {
+        const email = u.searchParams.get('email');
+        calls.push({ kind: 'stripe_list_customers', email });
+        return new Response(JSON.stringify({ data: stripeCustomers.filter((c) => c.email === email) }), { status: 200 });
+      }
+      if (method === 'GET' && u.pathname === '/v1/subscriptions') {
+        const customer = u.searchParams.get('customer');
+        calls.push({ kind: 'stripe_list_subs', customer });
+        return new Response(JSON.stringify({ data: stripeSubs.filter((s) => s.customer === customer) }), { status: 200 });
+      }
+      if (method === 'DELETE' && u.pathname.startsWith('/v1/subscriptions/')) {
+        calls.push({ kind: 'stripe_cancel', method, id: decodeURIComponent(u.pathname.split('/').pop()) });
+        return new Response('{"status":"canceled"}', { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
     }
 
     const from = u.pathname.replace('/rest/v1/', '');
+    // Lets a test change what "SELECT owner_id restaurants" returns on the
+    // SECOND read (the mid-deletion re-check) to model a concurrent acquisition.
+    if (from === 'restaurants' && method === 'GET') {
+      restaurantReads += 1;
+      if (restaurantReads === 2 && restaurantsMidDelete) {
+        return new Response(JSON.stringify(restaurantsMidDelete), { status: 200 });
+      }
+    }
     const rows = tables[from] || (tables[from] = []);
     const match = (row) => [...u.searchParams].every(([k, v]) => {
       if (['select', 'order', 'limit', 'offset'].includes(k)) return true;
@@ -145,15 +170,72 @@ test('the account really is gone, not merely reported gone', async () => {
   });
 });
 
-test('a live Pro subscription is cancelled before the account that could cancel it', async () => {
+test('the subscription recorded on the row is cancelled before the account goes', async () => {
   // Otherwise it bills on against an account nothing in this app can reach —
   // the same orphan a Payment Link once created here, but self-inflicted.
   await withStub({ profiles: [{ id: 'user_kai', stripe_subscription_id: 'sub_1' }] }, async (s) => {
     await post();
     const cancel = s.calls.find((c) => c.kind === 'stripe_cancel');
     assert.ok(cancel, 'the subscription was left running');
-    assert.equal(cancel.method, 'DELETE');
-    assert.match(cancel.path, /sub_1/);
+    assert.equal(cancel.id, 'sub_1');
+  });
+});
+
+test('a subscription the webhook has not recorded yet is still cancelled, via Stripe', async () => {
+  /**
+   * The confirmed audit finding. A Pro checkout paid seconds ago has a live
+   * Stripe subscription, but its checkout.session.completed has not landed, so
+   * profile.stripe_subscription_id is still null. Cancelling only the recorded
+   * id would cancel nothing and bill the deleted user forever. Asking Stripe by
+   * the customer's email finds it anyway.
+   */
+  await withStub({
+    profiles: [{ id: 'user_kai', stripe_subscription_id: null, stripe_customer_id: null }],
+    stripeCustomers: [{ id: 'cus_race', email: USER.email }],
+    stripeSubs: [{ id: 'sub_inflight', customer: 'cus_race', status: 'active' }],
+  }, async (s) => {
+    await post();
+    const cancels = s.calls.filter((c) => c.kind === 'stripe_cancel').map((c) => c.id);
+    assert.ok(cancels.includes('sub_inflight'), `the in-flight subscription was orphaned: cancelled ${JSON.stringify(cancels)}`);
+    assert.ok(s.calls.some((c) => c.kind === 'stripe_list_customers' && c.email === USER.email),
+      'Stripe must be asked by email, not just trusted from the row');
+  });
+});
+
+test('a canceled subscription is not re-cancelled, only live ones', async () => {
+  await withStub({
+    profiles: [{ id: 'user_kai', stripe_customer_id: 'cus_1' }],
+    stripeCustomers: [{ id: 'cus_1', email: USER.email }],
+    stripeSubs: [
+      { id: 'sub_dead', customer: 'cus_1', status: 'canceled' },
+      { id: 'sub_live', customer: 'cus_1', status: 'trialing' },
+    ],
+  }, async (s) => {
+    await post();
+    const cancels = s.calls.filter((c) => c.kind === 'stripe_cancel').map((c) => c.id);
+    assert.ok(cancels.includes('sub_live'), 'the trialing one must be cancelled');
+    assert.ok(!cancels.includes('sub_dead'), 'a canceled one must not be touched');
+  });
+});
+
+test('a restaurant acquired mid-deletion is refused, not orphaned', async () => {
+  /**
+   * Completeness finding #1. The ownership guard is a check; the auth-user
+   * delete is the act; between them is a window. restaurants.owner_id is
+   * `on delete set null`, and findOrAdoptRestaurant treats a null owner as
+   * adoptable — so orphaning a real restaurant hands it to whoever claims the
+   * slug next. The re-read right before the delete refuses instead.
+   */
+  await withStub({
+    profiles: [{ id: 'user_kai' }],
+    // First read (the top guard): no real restaurant. Second read (the
+    // pre-delete re-check): a real one appeared.
+    restaurantsMidDelete: [{ id: 'r_new', demo: false }],
+  }, async (s) => {
+    const res = await post();
+    assert.equal(res.status, 409, 'must refuse rather than orphan the business');
+    assert.equal((await res.json()).code, 'owns_restaurant');
+    assert.equal(s.calls.some((c) => c.kind === 'auth_delete'), false, 'the auth user must not be deleted');
   });
 });
 

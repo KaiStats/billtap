@@ -291,13 +291,38 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
       // The session carries the metadata we set at checkout; the subscription
       // it created carries the dates. Read the subscription back from Stripe
       // rather than trusting anything in the payload beyond the signature.
+      /**
+       * client_reference_id is a fallback of last resort, not a source of truth.
+       *
+       * create-pro-checkout sets it to a user_id, but create-checkout sets it to
+       * a restaurant_id — so trusting it to mean 'pro' would misfile a restaurant
+       * checkout. The subscription metadata is authoritative and is read below;
+       * this only stands in when there is no subscription to read at all, and
+       * applySubscription's Profile path fails the auth.users FK if the id was
+       * really a restaurant, so a wrong guess cannot cross-grant — it errors and
+       * retries rather than provisioning the wrong account.
+       */
       subject = subject || (object.client_reference_id
         ? { kind: 'pro', id: String(object.client_reference_id) }
         : null);
       subscription = await readSubscription(env, typeof object.subscription === 'string' ? object.subscription : null);
       if (subscription) subject = subjectOf(subscription) || subject;
     } else if (type.startsWith('customer.subscription.')) {
-      subscription = object;
+      /**
+       * Re-read the live subscription instead of trusting the event payload.
+       *
+       * Stripe delivers at-least-once and out-of-order, so a stale
+       * `subscription.updated` (past_due, canceled) can arrive after a newer
+       * `active` one. Applying the payload verbatim would write the old status
+       * over the new and drag plan_expires_at backwards, briefly downgrading a
+       * paying customer. Reading the subscription back gets Stripe's current
+       * truth regardless of which event triggered us — the same thing the
+       * invoice and checkout branches already do. On a read failure, fall back
+       * to the payload rather than dropping the event.
+       */
+      const fresh = await readSubscription(env, typeof object.id === 'string' ? object.id : null);
+      subscription = fresh || object;
+      subject = subjectOf(subscription) || subject;
     } else if (type === 'invoice.payment_failed' || type === 'invoice.paid') {
       subscription = await readSubscription(env, typeof object.subscription === 'string' ? object.subscription : null);
       if (subscription) subject = subjectOf(subscription);
