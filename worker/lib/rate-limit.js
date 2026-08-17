@@ -358,7 +358,35 @@ export async function rateLimit(request, env, path) {
   if (!isLimited(path)) return null;
 
   const limiter = limiterFor(env, path);
-  if (!limiter) return null;
+  if (!limiter) {
+    /**
+     * Still fails open, and no longer fails silent.
+     *
+     * Proceeding without a limiter is deliberate and the header above argues
+     * for it: commenting the binding out of wrangler.jsonc is a way to switch
+     * limiting off in a hurry, and a deploy must not fail on a feature an
+     * account might not have. That part is unchanged.
+     *
+     * What was missing is any way to find out. The binding is live in
+     * wrangler.jsonc today, so an absent one now means it was removed, renamed,
+     * or lost in a config edit — and the app would carry on unmetered with
+     * nothing anywhere to say so. Every expensive bug in this codebase has had
+     * that shape: the restaurant picker 404ing into a caught error, the service
+     * worker never installing, a paid subscription matching nothing. A security
+     * control that is off is worth one line of log.
+     *
+     * Logged per path rather than once, because the costly limiter and the
+     * ordinary one are separate bindings and losing one is not losing both.
+     */
+    console.error(JSON.stringify({
+      at: new Date().toISOString(),
+      alarm: 'rate_limiter_binding_missing',
+      path,
+      severity: COSTLY.has(path) ? 'critical' : 'warning',
+      effect: 'request allowed unmetered — check the bindings in wrangler.jsonc',
+    }));
+    return null;
+  }
 
   try {
     const { success } = await limiter.limit({ key: limitKey(request, path) });

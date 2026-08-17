@@ -11,6 +11,7 @@
  *   PUBLIC_BASE_URL     optional, defaults to the request's own origin
  */
 import { json, clean, EMAIL_RE } from '../lib/email.js';
+import { currentUser, serviceRole } from '../lib/data.js';
 
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 
@@ -25,6 +26,43 @@ export async function onRequestPost({ request, env }) {
   const restaurantId = clean(body.restaurant_id, 64);
   const email = clean(body.email, 200).toLowerCase();
   if (!restaurantId) return json({ error: 'restaurant_id is required' }, 400);
+
+  /**
+   * Who this checkout is for, answered by the session and never by the body.
+   *
+   * ── What taking it from the body allowed ────────────────────────────────
+   *
+   * This route accepted any restaurant_id from anyone, and verify-checkout
+   * writes the resulting plan onto whatever Stripe's client_reference_id names.
+   * That was described here as merely loose — "the worst a stranger can do is
+   * pay for somebody else's subscription" — and that reading was wrong, because
+   * the write does not only set `plan`. It overwrites stripe_subscription_id
+   * and billing_address too.
+   *
+   * So: find a restaurant's id, which is in URLs and API responses, start a
+   * checkout naming it, pay the $149. That restaurant's row now points at *your*
+   * subscription. Theirs is orphaned — still billing them, and no longer
+   * reachable from anything in this app. Then cancel yours, and the webhook
+   * writes `cancelled` onto their row and takes their QR codes off the tables.
+   * $149 to cut a competitor off and leave them paying for it.
+   *
+   * The fix is the one create-pro-checkout was built with from the start and
+   * whose header already explains why: a paid plan attaches to somebody, so the
+   * question "who is this for" has to be answered by a verified session.
+   *
+   * Ownership is re-read here rather than trusted from the client, and the
+   * refusal is deliberately the same shape for "no such restaurant" and "not
+   * yours" — telling a stranger which ids exist is its own small leak.
+   */
+  const user = await currentUser(env, request);
+  if (!user) return json({ error: 'Sign in first.', code: 'unauthorized' }, 401);
+
+  const owned = await serviceRole(env).entity('Restaurant')
+    .filter({ id: restaurantId }, { select: 'id,owner_id' });
+  if (!owned.length || String(owned[0].owner_id || '') !== String(user.id)) {
+    console.error(`create-checkout: ${user.id} tried to pay for restaurant ${restaurantId}`);
+    return json({ error: 'That restaurant is not on your account.', code: 'not_yours' }, 403);
+  }
 
   const key = env.STRIPE_SECRET_KEY;
   const price = env.STRIPE_PRICE_ID;

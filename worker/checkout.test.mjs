@@ -29,6 +29,9 @@ const ENV = {
 const request = (sessionId = 'cs_test_1') =>
   new Request('https://billtap.app/api/verify-checkout', {
     method: 'POST',
+    // The bearer the browser attaches. Without it the route cannot tell whose
+    // restaurant this is, and correctly refuses to activate anything.
+    headers: { Authorization: 'Bearer token' },
     body: JSON.stringify({ session_id: sessionId }),
   });
 
@@ -38,6 +41,9 @@ const request = (sessionId = 'cs_test_1') =>
  * `writes` is the point of it: everything below is about which row was patched
  * with what, and whether it was patched at all.
  */
+/** The signed-in operator these tests act as, and the row they own. */
+const CALLER = { id: 'user_owner', email: 'owner@example.com' };
+
 function stubNetwork(stripeSession) {
   const writes = [];
   const original = globalThis.fetch;
@@ -48,9 +54,27 @@ function stubNetwork(stripeSession) {
     }
     if (href.includes('supabase.co')) {
       const method = (init.method || 'GET').toUpperCase();
+      /**
+       * Auth and ownership, which this fixture predates.
+       *
+       * verify-checkout now refuses to activate a row the caller does not own —
+       * create-checkout used to take restaurant_id straight from the request
+       * body, so a paid `cs_` id can name somebody else's restaurant, and
+       * writing the plan onto it would overwrite their stripe_subscription_id.
+       * See worker/checkout-ownership.test.mjs for that case in full.
+       *
+       * These tests are about what a *legitimate* payment writes, so the caller
+       * owns r1 and the interesting assertions below are unchanged.
+       */
+      if (href.includes('/auth/v1/user')) {
+        return new Response(JSON.stringify(CALLER), { status: 200 });
+      }
       if (method === 'PATCH') {
         writes.push({ url: href, body: JSON.parse(init.body || '{}') });
         return new Response(JSON.stringify([{ id: 'r1' }]), { status: 200 });
+      }
+      if (href.includes('/rest/v1/restaurants')) {
+        return new Response(JSON.stringify([{ id: 'r1', owner_id: CALLER.id }]), { status: 200 });
       }
       return new Response('[]', { status: 200 });
     }

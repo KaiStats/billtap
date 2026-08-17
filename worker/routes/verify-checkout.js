@@ -20,7 +20,7 @@
  */
 import { json, clean } from '../lib/email.js';
 import { audit, ACTIONS } from '../lib/audit.js';
-import { serviceRole } from '../lib/data.js';
+import { serviceRole, currentUser } from '../lib/data.js';
 
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
 import { subscriptionPeriodEnd } from '../lib/stripe.js';
@@ -93,6 +93,32 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     // alternative — reporting ok while the row still says trial — leaves
     // somebody who has been charged looking at a dashboard that says they have
     // not paid, which is the outcome worth failing loudly for.
+    /**
+     * And the row must belong to whoever is asking.
+     *
+     * client_reference_id is only as trustworthy as whatever create-checkout
+     * put there, and until today that route took restaurant_id straight from
+     * the request body — so a `cs_` id can exist naming a restaurant the payer
+     * does not operate. Closing that door up front does nothing for a session
+     * already minted and still completable, and those stay valid for 24 hours.
+     *
+     * A mismatch writes nothing and answers `paid: false`. That is correct from
+     * where the caller stands: as far as their own account is concerned,
+     * nothing changed — which is precisely the point.
+     */
+    if (paid && restaurantId) {
+      const caller = await currentUser(env, request);
+      const rows = await serviceRole(env).entity('Restaurant')
+        .filter({ id: restaurantId }, { select: 'id,owner_id' });
+      const owner = String(rows[0]?.owner_id || '');
+      if (!caller || !rows.length || owner !== String(caller.id)) {
+        console.error(
+          `verify-checkout: refusing to activate ${restaurantId} for ${caller?.id || 'an anonymous caller'}`,
+        );
+        return json({ paid: false, code: 'not_yours' });
+      }
+    }
+
     if (paid && restaurantId) {
       await serviceRole(env).entity('Restaurant').update(restaurantId, {
         plan: 'active',

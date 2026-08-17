@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
 import { invoke } from "@/api/functions";
 import { planSummary } from "@/lib/plan";
+import { accessToken } from "@/lib/supabase";
 
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -99,9 +100,23 @@ export default function RestaurantDashboard() {
     (async () => {
       setBilling("verifying");
       try {
+        /**
+         * With the bearer, because both billing routes now check ownership.
+         *
+         * create-checkout used to take restaurant_id straight from the request
+         * body, so anyone could start a checkout naming anyone's restaurant and
+         * the paid session would overwrite that row's stripe_subscription_id.
+         * Both ends answer "who is this for" from the session now, and without
+         * this header the Worker sees an anonymous caller and refuses — which
+         * is the right answer to the request and a baffling one to look at.
+         */
+        const token = await accessToken();
         const res = await fetch("/api/verify-checkout", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ session_id: param }),
         });
         const data = await res.json();
@@ -128,14 +143,20 @@ export default function RestaurantDashboard() {
   const startCheckout = async () => {
     setBilling("starting");
     try {
+      const token = await accessToken();
       const res = await fetch("/api/create-checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ restaurant_id: restaurant.id, email: restaurant.alert_email }),
       });
       const data = await res.json();
       if (data.url) { window.location.href = data.url; return; }
-      setBilling("failed");
+      // Distinguished, because "that restaurant is not on your account" sends
+      // somebody to look somewhere completely different from a Stripe outage.
+      setBilling(data.code === "not_yours" || data.code === "unauthorized" ? "not_yours" : "failed");
     } catch {
       setBilling("failed");
     }
@@ -444,6 +465,14 @@ export default function RestaurantDashboard() {
               {billing === "failed" && (
                 <p className="mt-2 text-sm" role="alert" style={{ color: "#ff8080" }}>
                   We couldn't confirm that payment. Nothing was charged twice — call (702) 844-0938.
+                </p>
+              )}
+              {/* Its own message: a signed-out session and a Stripe outage send
+                  somebody to look in completely different places. */}
+              {billing === "not_yours" && (
+                <p className="mt-2 text-sm" role="alert" style={{ color: "#ff8080" }}>
+                  You're signed in to a different account than this restaurant belongs to.
+                  Sign in as its owner and try again — nothing was charged.
                 </p>
               )}
             </div>
