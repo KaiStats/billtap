@@ -456,7 +456,7 @@ function SessionHostComponent() {
                   That&apos;s {party.limit} people — the table is full
                 </p>
                 <p className="text-xs mt-1 text-white/55">
-                  Anyone else who scans will be turned away. Pro lifts the limit for $0.99/month.
+                  Anyone else who scans will be turned away. Pro lifts the limit for $3.99/month.
                 </p>
                 <button
                   type="button"

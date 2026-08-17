@@ -421,6 +421,7 @@ export default function Landing() {
    */
   const proFeatures = [
     "Everything in Free",
+    "Your running tab — every bill still settling, across all your meals, in one place",
     "Unlimited party size",
   ];
 
@@ -489,11 +490,11 @@ export default function Landing() {
 
   const faqs = [
     { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
-    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($0.99/mo) raises the party size." },
+    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($3.99/mo) adds your running tab \u2014 every bill still settling in one place \u2014 and unlimited party size." },
     { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
     { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
     { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
-    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. An 11th person is told the split is full, and you're told on your own screen once the table hits 10. Pro ($0.99/mo) raises it." },
+    { q: "Is there a limit on group size?", a: "Free supports up to 10 people per session — enough for most dinners. An 11th person is told the split is full, and you're told on your own screen once the table hits 10. Pro ($3.99/mo) raises it, and keeps every unsettled bill in one running tab." },
     { q: "Is my data secure?", a: "Yes. QR tokens are HMAC-signed and time-limited. We don't sell data. Receipts and split history are private to session participants." },
   ];
 
@@ -729,9 +730,9 @@ export default function Landing() {
             <div className="relative rounded-2xl bg-card p-8 flex flex-col border-glow shadow-float">
               <div className="absolute -top-3 left-8"><span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-3 py-1 shadow-glow">Most popular</span></div>
               <p className="mono text-xs uppercase tracking-[0.2em] text-primary">Pro</p>
-              <p className="text-sm text-muted-foreground mt-2">For bigger groups.</p>
+              <p className="text-sm text-muted-foreground mt-2">Never lose track of who's paid you back.</p>
               <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="mono text-5xl font-semibold tabular-nums">$0.99</span>
+                <span className="mono text-5xl font-semibold tabular-nums">$3.99</span>
                 <span className="text-muted-foreground">/ month</span>
               </div>
               <ul className="space-y-3 mt-7 mb-8 flex-1">
@@ -768,7 +769,7 @@ export default function Landing() {
               {proError && (
                 <p className="text-center text-xs mt-3" style={{ color: "#e5484d" }}>{proError}</p>
               )}
-              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $0.99/mo</p>
+              <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then $3.99/mo</p>
             </div>
           </div>
 

@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { listSplits } from '@/lib/splitHistory';
+import { computeTab, stillOwing } from '@/lib/runningTab';
+import { invoke } from '@/api/functions';
 import { Button } from '@/components/ui/button';
-import { Plus, Clock, TrendingUp, Users, ChevronRight } from 'lucide-react';
+import { Plus, Clock, TrendingUp, Users, ChevronRight, Receipt, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import ListLayout from '@/components/ListLayout';
 import { useNavigate } from 'react-router';
@@ -33,6 +35,27 @@ export default function Home() {
       participants: Array.from({ length: e.participants || 0 }),
     })),
   });
+
+  /**
+   * Whether to draw the running tab or the offer to unlock it.
+   *
+   * The server is the authority — getMyPlan reads the same Profile row
+   * resolvePartyLimit enforces the cap from — so the screen shows what the
+   * server will actually honour rather than guessing. Defaults to free while it
+   * loads and on any error, which is the safe direction: a Pro user waiting a
+   * beat for their tab, never a free user shown a paid view.
+   */
+  const { data: plan } = useQuery({
+    queryKey: ['my-plan'],
+    queryFn: async () => (await invoke('getMyPlan', {}))?.data ?? { pro: false },
+    staleTime: 60_000,
+  });
+  const isPro = Boolean(plan?.pro);
+
+  // The tab is computed from the raw index, not from `sessions` above, because
+  // that map drops the paid count this needs. listSplits is already read once
+  // by React Query; this is a cheap second pass over the same localStorage.
+  const tab = computeTab(listSplits());
 
   const recentSessions = sessions.slice(0, 3);
   const totalSessions = sessions.length;
@@ -106,6 +129,80 @@ export default function Home() {
             );
           })}
         </div>
+
+        {/* Your Tab — Pro. Only worth showing at all when something is owed. */}
+        {isPro && tab.count > 0 && (
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Receipt className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h2 className="text-lg font-semibold text-foreground">Your Tab</h2>
+              <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">PRO</span>
+            </div>
+            <div className="rounded-2xl p-4 mb-2" style={{ background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.18)' }}>
+              <p className="text-sm text-white/70">
+                <span className="font-semibold text-foreground">{tab.count}</span> bill{tab.count === 1 ? '' : 's'} still settling
+                {tab.asHost > 0 && <> · you hosted {tab.asHost}</>}
+              </p>
+              {/* "across these bills", never "owed to you" — the index does not
+                  know per-person shares, so the app does not claim to. */}
+              <p className="mono text-2xl font-semibold tabular-nums text-primary mt-1">
+                ${tab.billsTotal.toFixed(2)}
+                <span className="text-xs text-white/40 font-sans ml-2">across these bills</span>
+              </p>
+            </div>
+            <div className="space-y-2">
+              {tab.unsettled.slice(0, 6).map((e) => {
+                const owing = stillOwing(e);
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => navigate(sessionPath('/receipt-detail', e.id, { host: e.role === 'host' ? 1 : 0 }))}
+                    className="press w-full rounded-2xl p-4 text-left flex items-center justify-between transition-[transform,border-color,background-color] duration-200 ease-out-expo hover:-translate-y-0.5 hover:bg-white/[0.05] group"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-foreground truncate">{e.title || 'Split'}</h3>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {(e.participants || 0) > 0
+                          ? <>{(e.paid || 0)} of {e.participants} paid{owing > 0 && <> · {owing} still owing</>}</>
+                          : 'not shared yet'}
+                        {' · '}
+                        <span className="mono text-primary font-semibold tabular-nums">${(e.total || 0).toFixed(2)}</span>
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground ml-3 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* The offer, for a free user who has bills that are still settling.
+            Shown only when there is something a tab would actually help with —
+            an empty tab is not a reason to sell one. */}
+        {!isPro && tab.count > 1 && (
+          <section className="mb-6">
+            <button
+              onClick={() => navigate('/#pricing')}
+              className="press w-full rounded-2xl p-4 text-left flex items-center gap-3 transition-transform duration-200 hover:-translate-y-0.5"
+              style={{ background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.18)' }}
+            >
+              <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-foreground text-sm">
+                  You have {tab.count} bills still settling
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Keep them all in one running tab with Pro — see what's outstanding at a glance.
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+            </button>
+          </section>
+        )}
 
         {/* Recent Sessions */}
         {recentSessions.length > 0 && (
