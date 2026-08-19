@@ -57,6 +57,35 @@ function suppressed(env, kind, to) {
   return { ok: false, reason: 'suppressed_outside_production' };
 }
 
+/**
+ * How long to hold between a failed attempt and its retry.
+ *
+ * Long enough that a provider blip (a deploy, a load balancer hiccup) has a
+ * different answer the second time; short enough that the whole send path stays
+ * well inside one Worker invocation even at the worst case of four attempts.
+ */
+const EMAIL_RETRY_DELAY_MS = 400;
+
+/**
+ * One attempt against one provider.
+ *
+ * `retryable` says whether trying again could possibly change the answer:
+ * a network error or timeout might, a 5xx or 429 might, a 401/422 will not —
+ * that is a credential or payload problem and every retry would burn the
+ * timeout budget to learn the same thing.
+ */
+async function attemptSend(request) {
+  try {
+    const res = await fetchWithTimeout(request.url, request.init, TIMEOUTS.email);
+    if (res.ok) return { ok: true };
+    console.error(`email: ${request.name} rejected the send`, res.status, await res.text());
+    return { ok: false, retryable: res.status >= 500 || res.status === 429, reason: 'email_send_failed' };
+  } catch (err) {
+    console.error(`email: ${request.name} request threw`, err?.message);
+    return { ok: false, retryable: true, reason: 'email_send_failed' };
+  }
+}
+
 export async function sendEmail(env, { to, subject, html, text, replyTo }) {
   const held = suppressed(env, 'email', to);
   if (held) return held;
@@ -71,56 +100,84 @@ export async function sendEmail(env, { to, subject, html, text, replyTo }) {
 
   const from = env.LEAD_NOTIFY_FROM || 'BillTap <alerts@billtap.app>';
 
-  const request = postmarkToken
-    ? {
-        url: 'https://api.postmarkapp.com/email',
-        init: {
-          method: 'POST',
-          headers: {
-            'X-Postmark-Server-Token': postmarkToken,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            From: from,
-            To: to,
-            Subject: subject,
-            HtmlBody: html,
-            TextBody: text,
-            ...(replyTo ? { ReplyTo: replyTo } : {}),
-            MessageStream: env.POSTMARK_MESSAGE_STREAM || 'outbound',
-          }),
+  /**
+   * Every provider this environment can send through, in preference order.
+   *
+   * This used to be either/or: Postmark when its token existed, Resend only
+   * otherwise. So an account with both configured still had a single point of
+   * failure, and a Postmark outage lost the low-rating alert — the one email
+   * whose whole value is arriving while the guest is still in the building,
+   * and which nothing upstream retries because the browser fires it
+   * best-effort. Now a configured second provider is a fallback, not dead
+   * config.
+   */
+  const providers = [];
+  if (postmarkToken) {
+    providers.push({
+      url: 'https://api.postmarkapp.com/email',
+      init: {
+        method: 'POST',
+        headers: {
+          'X-Postmark-Server-Token': postmarkToken,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-        name: 'Postmark',
-      }
-    : {
-        url: 'https://api.resend.com/emails',
-        init: {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from,
-            to: [to],
-            ...(replyTo ? { reply_to: replyTo } : {}),
-            subject,
-            html,
-            text,
-          }),
-        },
-        name: 'Resend',
-      };
-
-  try {
-    const res = await fetchWithTimeout(request.url, request.init, TIMEOUTS.email);
-    if (!res.ok) {
-      console.error(`email: ${request.name} rejected the send`, res.status, await res.text());
-      return { ok: false, reason: 'email_send_failed' };
-    }
-    return { ok: true };
-  } catch (err) {
-    console.error(`email: ${request.name} request threw`, err?.message);
-    return { ok: false, reason: 'email_send_failed' };
+        body: JSON.stringify({
+          From: from,
+          To: to,
+          Subject: subject,
+          HtmlBody: html,
+          TextBody: text,
+          ...(replyTo ? { ReplyTo: replyTo } : {}),
+          MessageStream: env.POSTMARK_MESSAGE_STREAM || 'outbound',
+        }),
+      },
+      name: 'Postmark',
+    });
   }
+  if (resendKey) {
+    providers.push({
+      url: 'https://api.resend.com/emails',
+      init: {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from,
+          to: [to],
+          ...(replyTo ? { reply_to: replyTo } : {}),
+          subject,
+          html,
+          text,
+        }),
+      },
+      name: 'Resend',
+    });
+  }
+
+  /**
+   * Two attempts per provider on retryable failures, then the next provider.
+   *
+   * A retry after a *timeout* can double-send — the first request may have
+   * landed after we stopped waiting. Accepted, and deliberately so: every
+   * caller here is a notification, and for the one that matters most (the
+   * low-rating alert) a duplicate email is a shrug while a missing one is the
+   * product not working in front of the person deciding whether to buy it.
+   *
+   * A non-retryable rejection still moves on to the next provider rather than
+   * giving up: a 422 from Postmark (an unverified sender, a payload rule) says
+   * nothing about whether Resend will take the same message.
+   */
+  let last = { ok: false, reason: 'email_send_failed' };
+  for (const provider of providers) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, EMAIL_RETRY_DELAY_MS));
+      const result = await attemptSend(provider);
+      if (result.ok) return { ok: true };
+      last = result;
+      if (!result.retryable) break;
+    }
+  }
+  return { ok: false, reason: last.reason };
 }
 
 /**

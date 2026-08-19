@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { Loader2, Camera, Users } from "lucide-react";
+import { Loader2, Camera, Users, Star } from "lucide-react";
 import { invoke } from "@/api/functions";
 import Seo from "@/components/Seo";
+import RatingCapture from "@/components/RatingCapture";
 
 const GOLD = "#f0b429";
 
@@ -18,6 +19,49 @@ export default function TableEntry() {
   const navigate = useNavigate();
   const [restaurant, setRestaurant] = useState(null);
   const [state, setState] = useState("loading"); // loading | ready | missing | error
+  // The demo shortcut's session, once one exists. Demo rows only — see below.
+  const [demoSession, setDemoSession] = useState(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  /**
+   * Demo rows only: jump straight to the rating.
+   *
+   * The demo that closes is the low-rating alert arriving while the prospect
+   * holds the phone — and the full path to that moment (photograph a bill,
+   * build the split, mark it paid) is two minutes of walking through a product
+   * the prospect has not bought yet, standing up, mid-service. Two minutes is
+   * longer than the attention this page gets.
+   *
+   * So a demo page gets one extra button that goes straight there. Under it is
+   * the ordinary machinery, nothing new on the server: createSession with an
+   * even $62.40 check (a plausible number, so the alert email reads like a real
+   * table, and it names the check total the manager would look up in the POS),
+   * then the same RatingCapture every diner sees. A second tap makes a second
+   * session, so the demo can run twice at one table without a dedupe fight —
+   * the rows expire with the demo restaurant tonight either way.
+   *
+   * Only rendered when restaurant.demo is true: a real restaurant's guests
+   * rate after paying, not from the table tent.
+   */
+  async function startDemoRating() {
+    if (demoBusy) return;
+    setDemoBusy(true);
+    try {
+      const res = await invoke("createSession", {
+        title: `${restaurant.name} — demo table`,
+        restaurant_slug: slug,
+        split_mode: "even",
+        total_amount: 62.4,
+      });
+      const id = res?.data?.session?.id;
+      if (id) setDemoSession(id);
+    } catch {
+      // The button stays; tapping again retries. An error banner on a sales
+      // demo is worse than a second tap.
+    } finally {
+      setDemoBusy(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -142,6 +186,26 @@ export default function TableEntry() {
           <Users className="w-4 h-4" />
           Join a split already started
         </button>
+
+        {restaurant.demo ? (
+          <button
+            onClick={startDemoRating}
+            disabled={demoBusy}
+            className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
+          >
+            {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+            Rate your visit
+          </button>
+        ) : null}
+
+        {demoSession ? (
+          <RatingCapture
+            restaurantId={restaurant.id}
+            sessionId={demoSession}
+            onDismiss={() => setDemoSession(null)}
+          />
+        ) : null}
 
         <p className="mt-7 text-xs" style={{ color: "rgba(255,255,255,.35)" }}>
           Powered by BillTap
