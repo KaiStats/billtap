@@ -5,6 +5,42 @@ import { invoke } from "@/api/functions";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
+ * Page the operator, and keep trying if the first attempt doesn't land.
+ *
+ * The server claims the alert (GuestRating.alerted_at) before sending and
+ * RELEASES that claim when no channel delivered, answering 5xx — a design
+ * whose entire point is that a retry can succeed. This is that retry. Without
+ * it, one transient failure between this phone and the operator's inbox lost
+ * the alert forever, silently, and the alert is the thing the restaurant is
+ * paying for.
+ *
+ * Bounded: three attempts over a few seconds. A 2xx is delivered-or-deduped
+ * and a non-429 4xx will answer the same every time, so both stop the loop.
+ * Never awaited by callers — the guest's next screen must not wait on an
+ * email — and keepalive lets the browser finish the request even if the tab
+ * closes underneath it.
+ */
+async function fireRatingAlert(ratingId) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    }
+    try {
+      const res = await fetch("/api/rating-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating_id: ratingId }),
+        keepalive: true,
+      });
+      if (res.ok) return;
+      if (res.status < 500 && res.status !== 429) return;
+    } catch {
+      /* Network blip — the next attempt is why the loop exists. */
+    }
+  }
+}
+
+/**
  * Shown once a guest marks their share paid.
  *
  * This is the whole restaurant product in one screen: the operator hears about
@@ -119,13 +155,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
        * the comment; it decides that, not this component.
        */
       if (needsManager && id) {
-        fetch("/api/rating-alert", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rating_id: id }),
-          // So the browser finishes it even if the page goes away underneath.
-          keepalive: true,
-        }).catch(() => { /* Best effort, like the call in sendPrivate. */ });
+        void fireRatingAlert(id);
       }
     } catch {
       /* Never block the guest on our bookkeeping. */
@@ -213,18 +243,12 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     // the record behind it.
     await saveContact({ comment: comment.trim() });
 
-    try {
-      // Page the operator. The rating is already stored, so a failure here
-      // costs the alert, not the record. The server looks the rating up to find
-      // the restaurant's alert contact, which is what stops this being a relay.
-      await fetch("/api/rating-alert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating_id: ratingId }),
-      });
-    } catch {
-      /* Best effort. */
-    }
+    // Page the operator. The rating is already stored, so a failure here costs
+    // the alert, not the record. The server looks the rating up to find the
+    // restaurant's alert contact, which is what stops this being a relay.
+    // Fired, not awaited: the retry loop can run for a few seconds and the
+    // guest tapping "send" must not watch a spinner for the length of it.
+    void fireRatingAlert(ratingId);
 
     setBusy(false);
     setSentFeedback(true);
