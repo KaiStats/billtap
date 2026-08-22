@@ -114,6 +114,39 @@ export function entitlement(restaurant, now = Date.now()) {
     return { entitled: false, state: 'demo_expired', reason: 'demo expired' };
   }
 
+  /**
+   * A row we deliberately keep off the billing clock, not a gap in one.
+   *
+   * ── Mariposa, specifically ────────────────────────────────────────────────
+   *
+   * She is the first pilot and the live sales demo. Migration 0011 gave her
+   * row a real `trial_ends_at`, which was the honest fix for "a NULL date reads
+   * as an accidental forever" — but it also means her trial now runs out on the
+   * same clock as everybody else's, and the alert she is demoed with goes
+   * silent at that clock's mercy, not by anyone's decision.
+   *
+   * "Her trial is deliberately open-ended" and "our entitlement logic silently
+   * gives free service to any row with a NULL date" used to be the same state:
+   * `plan: 'trial'`, `trial_ends_at: null`. This flag is what tells them apart.
+   * It says nothing about payment — that is still `plan` and `trial_ends_at`,
+   * untouched — it only says this particular row is not on that clock, on
+   * purpose, because somebody set the flag rather than because a column was
+   * left blank.
+   *
+   * Second in line, after the demo arm and before the trial/subscription
+   * checks below, for the same reason those checks do not apply to a demo row:
+   * there is no billing question here for `plan` or `trial_ends_at` to answer.
+   *
+   * No expiry, unlike `demo`. A demo is a page stood up for a stranger who has
+   * agreed to nothing and is torn down by worker/routes/retention.js; a
+   * reference account is ours, kept on purpose, for as long as it is useful as
+   * a live demo restaurant. Migration 0023 adds the column, default false, and
+   * sets it for Mariposa specifically — nothing else is affected.
+   */
+  if (restaurant.reference_account) {
+    return { entitled: true, state: 'reference', reason: 'reference account — not on the billing clock' };
+  }
+
   const plan = restaurant.plan || 'trial';
   const periodEnd = Number(restaurant.current_period_end) || null;
   const trialEnd = Number(restaurant.trial_ends_at) || null;

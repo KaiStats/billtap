@@ -484,7 +484,7 @@ test('the dashboard read returns the row the settings form populates from', asyn
     // Allow-list, not a spread.
     assert.deepEqual(Object.keys(out.restaurant).sort(), [
       'alert_email', 'alert_phone', 'current_period_end', 'google_review_url',
-      'id', 'name', 'plan', 'rating_threshold', 'slug', 'trial_ends_at',
+      'id', 'name', 'plan', 'rating_threshold', 'reference_account', 'slug', 'trial_ends_at',
     ]);
   });
 });

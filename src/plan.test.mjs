@@ -108,6 +108,21 @@ test('a demo with no expiry still reads as a demo', () => {
   assert.equal(s.heading, 'Demo');
 });
 
+test('a reference account says so, not "Trial ended"', () => {
+  // Mariposa's actual shape after migration 0011: plan: 'trial' with a real
+  // trial_ends_at that has since passed. entitlement() serves her anyway —
+  // the reference_account arm — so the screen must not read that stale date
+  // as a warning nobody meant to raise.
+  const s = planSummary(
+    { reference_account: true, plan: 'trial', trial_ends_at: NOW - 9 * DAY },
+    NOW,
+  );
+  assert.equal(s.headline, 'Reference account');
+  assert.equal(s.heading, 'Reference account');
+  assert.notEqual(s.heading, 'Trial ended');
+  assert.ok(!/Trial ends/.test(s.headline));
+});
+
 test('an unrecognised plan is treated as a trial, not as paying', () => {
   // A plan string this build has never heard of — a webhook shipped ahead of
   // the client, say. Failing to "Free trial" understates what the operator

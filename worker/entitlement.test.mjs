@@ -143,6 +143,47 @@ test('demo is a flag, not a guess — a real restaurant is unaffected', () => {
   assert.equal(entitlement({ plan: 'cancelled' }, NOW).state, 'cancelled');
 });
 
+// ── The reference account ──────────────────────────────────────────────────
+//
+// Mariposa's row, specifically: a real pilot with a real trial_ends_at that
+// migration 0011 gave her, deliberately kept off the billing clock rather
+// than left off it by accident. See migration 0023.
+
+test('a reference account is served with no trial_ends_at at all', () => {
+  const row = { reference_account: true, plan: 'trial', trial_ends_at: null };
+  assert.equal(isEntitled(row, NOW), true);
+  assert.equal(entitlement(row, NOW).state, 'reference');
+});
+
+test('a reference account is served past an expired trial_ends_at', () => {
+  // The exact shape that would otherwise deny her: migration 0011 wrote a
+  // real date, the date ran out, and none of that is a decision anybody made
+  // about whether her demo should still work.
+  const row = { reference_account: true, plan: 'trial', trial_ends_at: inDays(-1) };
+  assert.equal(isEntitled(row, NOW), true);
+  assert.equal(entitlement(row, NOW).state, 'reference');
+});
+
+test('nothing downstream can override the reference-account arm', () => {
+  for (const contamination of [
+    { plan: 'cancelled' },
+    { plan: 'trial', trial_ends_at: inDays(-30) },
+    { plan: 'past_due', current_period_end: inDays(-90) },
+    { plan: 'active', current_period_end: inDays(-(STALE_DAYS + 10)) },
+  ]) {
+    const row = { ...contamination, reference_account: true };
+    assert.equal(isEntitled(row, NOW), true, JSON.stringify(contamination));
+    assert.equal(entitlement(row, NOW).state, 'reference', JSON.stringify(contamination));
+  }
+});
+
+test('reference_account is a flag, not a guess — an ordinary row is unaffected', () => {
+  // default false, per migration 0023 — the arm must be inert for every row
+  // that does not carry it explicitly.
+  assert.equal(entitlement({ reference_account: false, plan: 'cancelled' }, NOW).state, 'cancelled');
+  assert.equal(entitlement({ plan: 'cancelled' }, NOW).state, 'cancelled');
+});
+
 // ── The unknowns ────────────────────────────────────────────────────────────
 
 test('an unrecognised plan is a trial, never a subscription', () => {
@@ -172,6 +213,8 @@ test('every answer carries a state and a reason worth logging', () => {
     { demo: true, demo_expires_at: inDays(0.5) },
     { demo: true, demo_expires_at: inDays(-0.5) },
     { demo: true },
+    { reference_account: true, plan: 'trial', trial_ends_at: null },
+    { reference_account: true, plan: 'trial', trial_ends_at: inDays(-30) },
   ];
   for (const r of rows) {
     const e = entitlement(r, NOW);

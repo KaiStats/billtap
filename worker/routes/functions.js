@@ -474,6 +474,11 @@ export function ownerView(r) {
     plan: r.plan ?? 'trial',
     trial_ends_at: r.trial_ends_at ?? null,
     current_period_end: r.current_period_end ?? null,
+    // Read-only from here — restaurantPatch's allow-list never lets a caller
+    // set it. Exposed so src/lib/plan.js can describe the row honestly rather
+    // than reading a stale trial_ends_at as "Trial ended" on a row that is
+    // being served regardless. See migration 0023.
+    reference_account: !!r.reference_account,
   };
 }
 

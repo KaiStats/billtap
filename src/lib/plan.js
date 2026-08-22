@@ -85,6 +85,26 @@ export function planSummary(restaurant, now = Date.now()) {
   }
 
   /**
+   * A reference account, described as what it is rather than as a trial.
+   *
+   * Same reasoning as the demo block above: `reference_account` is entitled —
+   * see shared/entitlement.js — so without this it falls into the trial
+   * switch below and reads `trial_ends_at`, which migration 0011 gave it and
+   * which may well be in the past. That would print "Trial ends [past date]"
+   * on a row that is being served regardless, which is the same shape of lie
+   * the demo copy exists to avoid: an operator reading their own screen as a
+   * warning about something nobody decided was a problem.
+   */
+  if (current === 'reference') {
+    return {
+      tone: GOLD,
+      headline: "Reference account",
+      heading: "Reference account",
+      detail: "Not on the billing clock. This restaurant is kept as a live pilot and sales demo, separate from the $149/month plan.",
+    };
+  }
+
+  /**
    * Service has stopped, and saying so plainly comes before everything else.
    *
    * The same rule the Worker gates on — shared/entitlement.js — decides
