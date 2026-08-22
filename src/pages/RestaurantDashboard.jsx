@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2, CreditCard } from "lucide-react";
 import { invoke } from "@/api/functions";
 import { planSummary } from "@/lib/plan";
+import { reviewLift } from "@/lib/reviewLift";
 import { accessToken } from "@/lib/supabase";
 
 const GOLD = "#f0b429";
@@ -34,7 +35,7 @@ export default function RestaurantDashboard() {
   // rating_threshold three, matching DEFAULT_RATING_THRESHOLD in
   // worker/routes/functions.js. A form that opens on the wrong number quietly
   // saves it the first time an operator presses Save for any other reason.
-  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3 });
+  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3, google_review_count: "", google_rating: "" });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
@@ -63,6 +64,10 @@ export default function RestaurantDashboard() {
           alert_email: r.alert_email || "",
           alert_phone: r.alert_phone || "",
           rating_threshold: r.rating_threshold ?? 3,
+          // Blank rather than 0 when unset: a zero in these boxes reads as a
+          // real reading of zero reviews, which is a different claim.
+          google_review_count: r.google_review_count ?? "",
+          google_rating: r.google_rating ?? "",
         });
       }
       setRatings(res?.data?.ratings || []);
@@ -187,6 +192,9 @@ export default function RestaurantDashboard() {
   // different things about the same row — which is what they did. See
   // src/lib/plan.js for the two ways that went wrong in production.
   const plan = useMemo(() => planSummary(restaurant), [restaurant]);
+  // The outcome, not the activity. Null when there is no baseline to compare
+  // against — see src/lib/reviewLift.js.
+  const lift = useMemo(() => reviewLift(restaurant), [restaurant]);
   const { tone: billingTone, heading: billingHeading, detail: billingDetail } = plan;
 
   /**
@@ -256,6 +264,21 @@ export default function RestaurantDashboard() {
         alert_email: form.alert_email.trim(),
         alert_phone: form.alert_phone.trim(),
         rating_threshold: Number(form.rating_threshold),
+        /**
+         * Omitted when blank, never sent as zero.
+         *
+         * restaurantPatch treats a present key as a reading, and Number("")
+         * is 0 — so sending the empty box would record "this restaurant has
+         * zero Google reviews", which is a real claim and a false one. Worse,
+         * it would become the baseline on the first save and permanently
+         * report every existing review as BillTap's doing.
+         */
+        ...(String(form.google_review_count).trim() !== ""
+          ? { google_review_count: Number(form.google_review_count) }
+          : {}),
+        ...(String(form.google_rating).trim() !== ""
+          ? { google_rating: Number(form.google_rating) }
+          : {}),
       });
       // Only after the write is acknowledged. "Saved" appearing on an optimistic
       // update is the exact lie this endpoint exists to stop telling.
@@ -360,6 +383,48 @@ export default function RestaurantDashboard() {
           <Stat label="Paged you" accent="#ff8080" value={stats.low.length} hint="Heard before they left" />
           <Stat label="Guest emails" accent="#60a5fa" value={contacts.length} hint="Your list" />
         </div>
+
+        {/*
+          What actually happened to their listing.
+
+          The four numbers above are activity — how many guests rated, how many
+          tapped through. This is the outcome, and it is the one an operator
+          decides renewal on. See src/lib/reviewLift.js for why it renders
+          nothing at all rather than assuming a baseline.
+        */}
+        {lift ? (
+          <div className="mt-3 p-5 rounded-2xl" style={{ background: "rgba(0,200,150,.07)", border: "1px solid rgba(0,200,150,.2)" }}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-sm font-semibold text-white">Your Google listing since BillTap</div>
+                <div className="mt-2 flex items-baseline gap-3 flex-wrap">
+                  {lift.countDelta !== null && (
+                    <span className="text-3xl font-black" style={{ color: lift.countDelta < 0 ? "#ff8080" : "#00c896" }}>
+                      {lift.countDelta > 0 ? "+" : ""}{lift.countDelta} review{Math.abs(lift.countDelta) === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {lift.ratingDelta !== null && lift.ratingDelta !== 0 && (
+                    <span className="text-lg font-bold" style={{ color: lift.ratingDelta < 0 ? "#ff8080" : "#00c896" }}>
+                      {lift.ratingDelta > 0 ? "+" : ""}{lift.ratingDelta.toFixed(1)} stars
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs" style={{ color: "rgba(255,255,255,.5)" }}>
+                  {lift.countDelta !== null && <>{lift.countStart} → {lift.countNow} reviews. </>}
+                  {lift.ratingDelta !== null && <>{lift.ratingStart?.toFixed(1)} → {lift.ratingNow?.toFixed(1)} stars. </>}
+                </div>
+              </div>
+              {/* Stale is not hidden. A hand-typed number that nobody has
+                  refreshed in a month should say so rather than be presented
+                  as though it were live. */}
+              {lift.stale && (
+                <div className="text-xs px-3 py-1.5 rounded-full" style={{ background: "rgba(240,180,41,.15)", color: GOLD }}>
+                  {lift.ageDays === null ? "Update your numbers" : `${lift.ageDays} days old — update below`}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {/* Needs attention */}
         <section className="mt-10">
@@ -529,6 +594,44 @@ export default function RestaurantDashboard() {
                   Happy guests go straight here. Without it, the handoff button stays disabled.
                 </p>
               </div>
+
+              {/*
+                The two numbers that make the panel at the top mean anything.
+
+                Asked for as "what does your listing say right now" rather than
+                as a baseline, because the first reading becomes the baseline
+                server-side and an operator should never have to know the word.
+                Blank is a legitimate answer and stays blank — the save omits
+                an empty box rather than sending it as a zero.
+              */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="grc" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>
+                    Google reviews today
+                  </label>
+                  <input id="grc" className={field} style={fieldStyle} type="number" inputMode="numeric"
+                    min="0" step="1"
+                    value={form.google_review_count}
+                    onChange={(e) => setForm({ ...form, google_review_count: e.target.value })}
+                    placeholder="89" />
+                </div>
+                <div>
+                  <label htmlFor="grs" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>
+                    Star average
+                  </label>
+                  <input id="grs" className={field} style={fieldStyle} type="number" inputMode="decimal"
+                    min="0" max="5" step="0.1"
+                    value={form.google_rating}
+                    onChange={(e) => setForm({ ...form, google_rating: e.target.value })}
+                    placeholder="4.1" />
+                </div>
+                <p className="col-span-2 -mt-1 text-xs" style={{ color: "rgba(255,255,255,.4)" }}>
+                  Open your Google listing and copy what it says. The first time you save these
+                  we remember them as your starting point, so the panel above can show what
+                  BillTap actually earned you. Update them whenever you like.
+                </p>
+              </div>
+
               <div>
                 <label htmlFor="a" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>Alert email</label>
                 <input id="a" className={field} style={fieldStyle} type="email" value={form.alert_email}

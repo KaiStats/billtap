@@ -19,12 +19,12 @@ export default function TableEntry() {
   const navigate = useNavigate();
   const [restaurant, setRestaurant] = useState(null);
   const [state, setState] = useState("loading"); // loading | ready | missing | error
-  // The demo shortcut's session, once one exists. Demo rows only — see below.
-  const [demoSession, setDemoSession] = useState(null);
-  const [demoBusy, setDemoBusy] = useState(false);
+  // The rating session, once one exists. Every guest can open one — see below.
+  const [ratingSession, setRatingSession] = useState(null);
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   /**
-   * Demo rows only: jump straight to the rating.
+   * Jump straight to the rating, skipping the split.
    *
    * The demo that closes is the low-rating alert arriving while the prospect
    * holds the phone — and the full path to that moment (photograph a bill,
@@ -40,26 +40,55 @@ export default function TableEntry() {
    * session, so the demo can run twice at one table without a dedupe fight —
    * the rows expire with the demo restaurant tonight either way.
    *
-   * Only rendered when restaurant.demo is true: a real restaurant's guests
-   * rate after paying, not from the table tent.
+   * ── And now every guest gets it, not only prospects ───────────────────────
+   *
+   * This button used to render only when restaurant.demo was true, under a
+   * comment saying a real restaurant's guests rate after paying rather than
+   * from the table tent. That was the single biggest limit on the paid
+   * product: the alert and the Google handoff open at the end of Claim.jsx,
+   * so they only ever fired for a table that photographed a bill, built a
+   * split and marked it paid.
+   *
+   * Every other table — a solo diner, a business lunch on one card, a couple
+   * where one person pays, anyone who just wants to leave — never reached the
+   * thing the restaurant is paying $149 a month for. And the tent reads
+   * "Split the check at ...", so a guest with nothing to split had no reason
+   * to scan it at all.
+   *
+   * The argument for giving prospects the shortcut is the argument for giving
+   * it to everyone: two minutes of receipt-photographing is "longer than the
+   * attention this page gets" whether the person holding the phone is being
+   * sold to or is waiting on their card to come back.
+   *
+   * A real visit carries no check, so no total is invented for it. The alert
+   * already handles that — worker/routes/rating-alert.js sends the total only
+   * when it is above zero — so the manager gets "somebody rated you two stars"
+   * without a fabricated $62.40 attached to it. The demo keeps its plausible
+   * number, because there the number is the point.
    */
-  async function startDemoRating() {
-    if (demoBusy) return;
-    setDemoBusy(true);
+  async function startRating() {
+    if (ratingBusy) return;
+    setRatingBusy(true);
     try {
       const res = await invoke("createSession", {
-        title: `${restaurant.name} — demo table`,
+        title: restaurant.demo
+          ? `${restaurant.name} — demo table`
+          : `${restaurant.name} — rating`,
         restaurant_slug: slug,
         split_mode: "even",
-        total_amount: 62.4,
+        // Marked so a visit with no bill is never counted as one. See
+        // migration 0024.
+        ...(restaurant.demo
+          ? { total_amount: 62.4 }
+          : { kind: "rating_only", total_amount: 0 }),
       });
       const id = res?.data?.session?.id;
-      if (id) setDemoSession(id);
+      if (id) setRatingSession(id);
     } catch {
-      // The button stays; tapping again retries. An error banner on a sales
-      // demo is worse than a second tap.
+      // The button stays; tapping again retries. An error banner over a guest
+      // who was trying to do the restaurant a favour is worse than a second tap.
     } finally {
-      setDemoBusy(false);
+      setRatingBusy(false);
     }
   }
 
@@ -163,10 +192,15 @@ export default function TableEntry() {
           <span className="font-black text-2xl" style={{ color: "#1a1200" }}>B</span>
         </div>
 
-        <p className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>Split the check at</p>
+        {/*
+          "Split the check at" told a guest with nothing to split that this
+          card was not for them, which is most tables. Both things the tent
+          can do are named now, in the order they are most often wanted.
+        */}
+        <p className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>You&apos;re at</p>
         <h1 className="mt-2 text-3xl font-black">{restaurant.name}</h1>
         <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
-          Everyone pays their exact share in about thirty seconds. No app to download.
+          Split the check, or just tell them how it went. No app to download.
         </p>
 
         <button
@@ -187,23 +221,27 @@ export default function TableEntry() {
           Join a split already started
         </button>
 
-        {restaurant.demo ? (
-          <button
-            onClick={startDemoRating}
-            disabled={demoBusy}
-            className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-            style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
-          >
-            {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-            Rate your visit
-          </button>
-        ) : null}
+        {/*
+          Shown to every guest, not only on a demo page. The reasoning is in
+          startRating above: this is the one tap that reaches the alert and the
+          Google review link, and gating it behind a completed bill split meant
+          most tables never reached either.
+        */}
+        <button
+          onClick={startRating}
+          disabled={ratingBusy}
+          className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+          style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
+        >
+          {ratingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+          Rate your visit
+        </button>
 
-        {demoSession ? (
+        {ratingSession ? (
           <RatingCapture
             restaurantId={restaurant.id}
-            sessionId={demoSession}
-            onDismiss={() => setDemoSession(null)}
+            sessionId={ratingSession}
+            onDismiss={() => setRatingSession(null)}
           />
         ) : null}
 

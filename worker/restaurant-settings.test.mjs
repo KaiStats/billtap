@@ -483,7 +483,9 @@ test('the dashboard read returns the row the settings form populates from', asyn
 
     // Allow-list, not a spread.
     assert.deepEqual(Object.keys(out.restaurant).sort(), [
-      'alert_email', 'alert_phone', 'current_period_end', 'google_review_url',
+      'alert_email', 'alert_phone', 'current_period_end',
+      'google_baseline_at', 'google_rating', 'google_rating_start',
+      'google_review_count', 'google_review_count_start', 'google_review_url', 'google_reviews_at',
       'id', 'name', 'plan', 'rating_threshold', 'reference_account', 'slug', 'trial_ends_at',
     ]);
   });
@@ -653,4 +655,87 @@ test('one validator covers create and update, so the two cannot drift', async ()
   const { patch, fields } = restaurantPatch({ alert_phone: '+1 702 555 0134', plan: 'active' }, {});
   assert.deepEqual(fields, ['alert_phone']);
   assert.equal(patch.plan, undefined);
+});
+
+// ── The review lift ─────────────────────────────────────────────────────────
+//
+// The number a GM decides renewal on: "my reviews were 89 when I signed up,
+// what are they now". The baseline is what makes that answerable, so what
+// these mostly pin is that nothing can move it after it is set.
+
+test('the first Google reading becomes the baseline', async () => {
+  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+    const { res } = await save({ google_review_count: 89, google_rating: 4.1 });
+    assert.equal(res.status, 200);
+
+    const row = tables.restaurants[0];
+    assert.equal(row.google_review_count, 89);
+    assert.equal(row.google_review_count_start, 89, 'the starting point is captured from the first reading');
+    assert.equal(row.google_rating_start, 4.1);
+    assert.ok(row.google_baseline_at, 'and dated');
+    assert.ok(row.google_reviews_at, 'as is the reading itself');
+  });
+});
+
+test('a later reading moves the current figure and never the baseline', async () => {
+  /**
+   * The failure this exists for would not look like a bug.
+   *
+   * If a second save re-baselined to today's number, the lift would silently
+   * reset to zero every time an operator updated their count — so the panel
+   * would read "0 new reviews" forever, and it would look like the product
+   * not working rather than like a defect.
+   */
+  const withBaseline = {
+    ...MARIPOSA(),
+    google_review_count: 89, google_review_count_start: 89,
+    google_rating: 4.1, google_rating_start: 4.1,
+    google_baseline_at: 1000,
+  };
+  await withStub({ restaurants: [withBaseline] }, async ({ tables }) => {
+    await save({ google_review_count: 134, google_rating: 4.4 });
+
+    const row = tables.restaurants[0];
+    assert.equal(row.google_review_count, 134, 'today moves');
+    assert.equal(row.google_review_count_start, 89, 'August does not');
+    assert.equal(row.google_rating_start, 4.1);
+    assert.equal(row.google_baseline_at, 1000, 'and the baseline keeps its own date');
+  });
+});
+
+test('a caller cannot write the baseline directly', async () => {
+  // Otherwise the lift is whatever the client says it is, and the one number
+  // this product asks an operator to trust is the one it cannot vouch for.
+  const withBaseline = {
+    ...MARIPOSA(),
+    google_review_count: 134, google_review_count_start: 89, google_rating_start: 4.1,
+  };
+  await withStub({ restaurants: [withBaseline] }, async ({ tables }) => {
+    await save({
+      google_review_count: 134,
+      google_review_count_start: 0,
+      google_rating_start: 0,
+      google_baseline_at: 1,
+    });
+
+    const row = tables.restaurants[0];
+    assert.equal(row.google_review_count_start, 89, 'ignored, not applied');
+    assert.equal(row.google_rating_start, 4.1);
+  });
+});
+
+test('an implausible Google reading is refused rather than stored', async () => {
+  // Typed by hand. A rating of 45 would render as a lift no restaurant has had.
+  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+    for (const body of [
+      { google_rating: 45 },
+      { google_rating: -1 },
+      { google_review_count: -5 },
+      { google_review_count: 3.5 },
+    ]) {
+      const { res } = await save(body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+    }
+    assert.equal(tables.restaurants[0].google_rating, undefined, 'nothing was written');
+  });
 });

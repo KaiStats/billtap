@@ -448,6 +448,60 @@ test('a guest who scanned a table tent can, because that is the product', async 
   });
 });
 
+// ── The rating-only visit ───────────────────────────────────────────────────
+//
+// The paid product — the low-rating alert and the Google review handoff — used
+// to be reachable only by finishing a bill split, so the tables that did not
+// split a check (a solo diner, a business lunch on one card, anyone in a
+// hurry) never reached the thing the restaurant pays for. These pin the path
+// that opens it to them, and the marker that stops those rows being counted as
+// bills.
+
+test('a guest with nothing to split can still open a rating', async () => {
+  await withStub({ entities: { Restaurant: [{ id: 'r1', slug: 'joes' }] } }, async ({ env, store }) => {
+    const res = await create(env, req(), {
+      title: "Joe's — rating", restaurant_slug: 'joes', kind: 'rating_only', total_amount: 0,
+    });
+    assert.equal(res.status, 200);
+
+    // The restaurant is on the row, which is the whole point: submitGuestRating
+    // reads restaurant_id off the stored session and never from its caller, so
+    // this is what lets the rating reach the right operator safely.
+    assert.equal((await body(res)).session.restaurant_id, 'r1');
+    assert.equal(store.Session[0].kind, 'rating_only');
+    assert.equal(store.Session[0].total_amount, 0, 'no bill is invented for a visit that had none');
+  });
+});
+
+test('an ordinary split is still a split, and unknown kinds are too', async () => {
+  // Defaulted rather than refused: every caller written before this column
+  // existed means 'split', and a body that names something else does not get
+  // to write a kind no query knows to look for.
+  await withStub({}, async ({ env, store }) => {
+    await create(env, req(), { title: 'Dinner', items: [] });
+    assert.equal(store.Session[0].kind, 'split');
+
+    for (const kind of ['nonsense', '', null, 42, { evil: true }]) {
+      store.Session.length = 0;
+      await create(env, req(), { title: 'Dinner', items: [], kind });
+      assert.equal(store.Session[0].kind, 'split', `${JSON.stringify(kind)} must not become a kind`);
+    }
+  });
+});
+
+test('a rating-only session cannot be pointed at a restaurant by its caller', async () => {
+  // The property that makes creating the row worthwhile rather than recording
+  // the rating loose. restaurant_id comes from the slug lookup; a body naming
+  // someone else's restaurant id is ignored.
+  await withStub({ entities: { Restaurant: [{ id: 'r1', slug: 'joes' }] } }, async ({ env, store }) => {
+    await create(env, req(), {
+      title: 'Rating', restaurant_slug: 'joes', kind: 'rating_only',
+      restaurant_id: 'r_someone_else',
+    });
+    assert.equal(store.Session[0].restaurant_id, 'r1');
+  });
+});
+
 test('a title is required and whitespace does not count as one', async () => {
   await withStub({ users: { [HOST_COOKIE]: HOST } }, async ({ env }) => {
     assert.equal((await create(env, req(HOST_COOKIE), { items: [] })).status, 400);

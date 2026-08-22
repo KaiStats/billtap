@@ -437,6 +437,38 @@ export function restaurantPatch(body, { creating = false } = {}) {
     fields.push('alert_phone');
   }
 
+  /**
+   * What their Google listing says today.
+   *
+   * Two fields, one meaning: the count and the star average an operator (or,
+   * later, the Google Business Profile API) reads off their listing. The
+   * baseline is NOT settable from here — see saveMyRestaurant, which fills it
+   * from the first reading and then never moves it. Letting a caller write the
+   * baseline would let them rewrite history and report a lift that did not
+   * happen.
+   *
+   * Bounds match the column constraints in migration 0025. These are typed by
+   * hand, and a rating of 45 would render as a lift no restaurant has had.
+   */
+  if (has('google_review_count')) {
+    const count = Number(body.google_review_count);
+    if (!Number.isInteger(count) || count < 0 || count > 1000000) {
+      return { error: "That review count doesn't look right." };
+    }
+    patch.google_review_count = count;
+    fields.push('google_review_count');
+  }
+
+  if (has('google_rating')) {
+    const stars = Number(body.google_rating);
+    if (!Number.isFinite(stars) || stars < 0 || stars > 5) {
+      return { error: 'A Google rating has to be between 0 and 5.' };
+    }
+    // One decimal, which is all Google shows and all the column stores.
+    patch.google_rating = Math.round(stars * 10) / 10;
+    fields.push('google_rating');
+  }
+
   if (has('rating_threshold')) {
     const threshold = Number(body.rating_threshold);
     // One to four, matching the form. Five would page the operator about every
@@ -479,6 +511,21 @@ export function ownerView(r) {
     // than reading a stale trial_ends_at as "Trial ended" on a row that is
     // being served regardless. See migration 0023.
     reference_account: !!r.reference_account,
+    /**
+     * The review lift, both ends of it.
+     *
+     * The operator's own numbers, so there is nothing sensitive here — but
+     * they are on the allow-list explicitly rather than by a spread, like
+     * everything else on this row. The dashboard needs both the current
+     * reading and the baseline to show a delta at all, and `_at` so it can
+     * say how old a hand-entered figure is rather than implying it is live.
+     */
+    google_review_count: r.google_review_count ?? null,
+    google_rating: r.google_rating ?? null,
+    google_reviews_at: r.google_reviews_at ?? null,
+    google_review_count_start: r.google_review_count_start ?? null,
+    google_rating_start: r.google_rating_start ?? null,
+    google_baseline_at: r.google_baseline_at ?? null,
   };
 }
 
@@ -1714,8 +1761,25 @@ const HANDLERS = {
    * and requiring a login there would defeat the entire product.
    */
   async createSession({ env, request, body, audit = NO_AUDIT }) {
-    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug, ticket } = body;
+    const { title, image_url, items, tax, tip, split_mode, total_amount: customTotal, restaurant_slug, ticket, kind: rawKind } = body;
     const user = await currentUser(env, request);
+
+    /**
+     * Splitting a bill, or only leaving a rating.
+     *
+     * A closed choice and never free text, so the body cannot write a kind
+     * that the column's check constraint would reject or that no later query
+     * knows to look for. Anything unrecognised is a split, which is what every
+     * caller before this meant.
+     *
+     * The rating-only session exists because the paid product — the alert and
+     * the review handoff — used to be reachable only by completing a split.
+     * See migration 0024 for why the row is created at all rather than the
+     * rating being recorded loose: submitGuestRating takes restaurant_id from
+     * the stored session and never from its caller, and that is what stops the
+     * endpoint being pointed at any restaurant by anyone.
+     */
+    const kind = rawKind === 'rating_only' ? 'rating_only' : 'split';
 
     // No sign-in gate. An account-less host is the product's premise — "split a
     // bill, no account" — and this function already mints a host_key and stores
@@ -1898,6 +1962,7 @@ const HANDLERS = {
       title: title.trim().slice(0, 100),
       image_url: image_url || null,
       split_mode: mode,
+      kind,
       total_amount: Math.round(total * 100) / 100,
       tax: Math.round(taxVal * 100) / 100,
       tip: Math.round(tipVal * 100) / 100,
@@ -1943,6 +2008,7 @@ const HANDLERS = {
         amount: Math.round(total * 100) / 100,
         item_count: list.length,
         split_mode: mode,
+        kind,
       },
     });
 
@@ -2765,6 +2831,18 @@ const HANDLERS = {
         plan: 'trial',
         trial_ends_at: Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
         created_at: Date.now(),
+        // A restaurant onboarded with its Google numbers already in hand — the
+        // sales call that captured them — baselines from that same reading.
+        // The update path does the equivalent; see the note there.
+        ...(patch.google_review_count !== undefined
+          ? { google_review_count_start: patch.google_review_count }
+          : {}),
+        ...(patch.google_rating !== undefined
+          ? { google_rating_start: patch.google_rating }
+          : {}),
+        ...(patch.google_review_count !== undefined || patch.google_rating !== undefined
+          ? { google_baseline_at: Date.now(), google_reviews_at: Date.now() }
+          : {}),
       });
 
       await audit({
@@ -2779,6 +2857,40 @@ const HANDLERS = {
     // Nothing to write. Answering with the current row rather than a 400 keeps
     // a save that changed nothing from reading as a failure on the screen.
     if (!fields.length) return json({ restaurant: ownerView(existing) });
+
+    /**
+     * The first Google reading becomes the baseline, and nothing moves it after.
+     *
+     * The lift is the whole product here — 134 reviews means nothing without
+     * knowing it was 89 in August — so the starting point has to be captured
+     * once and then be immutable. Doing it from the first reading rather than
+     * asking for it separately means an operator types one number and never
+     * has to know the word "baseline".
+     *
+     * Guarded on the stored row rather than the patch: a second save must not
+     * re-baseline to today's figure, which would silently erase every review
+     * earned so far and reset the lift to zero. That is the failure worth
+     * spending a condition on — it would not look like a bug, it would look
+     * like the product not working.
+     *
+     * restaurantPatch deliberately cannot write these, so this is the only
+     * place they are ever set.
+     */
+    const baselining = {};
+    if (patch.google_review_count !== undefined && existing.google_review_count_start == null) {
+      baselining.google_review_count_start = patch.google_review_count;
+    }
+    if (patch.google_rating !== undefined && existing.google_rating_start == null) {
+      baselining.google_rating_start = patch.google_rating;
+    }
+    if (Object.keys(baselining).length) baselining.google_baseline_at = Date.now();
+
+    // When the current reading was taken, so the screen can say how old it is
+    // rather than implying a hand-typed number is live.
+    if (patch.google_review_count !== undefined || patch.google_rating !== undefined) {
+      patch.google_reviews_at = Date.now();
+    }
+    Object.assign(patch, baselining);
 
     const row = await svc.entity('Restaurant').update(existing.id, patch);
     await audit({
