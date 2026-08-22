@@ -138,6 +138,15 @@ export default function ReceiptDetail() {
 
   const confirmPaid = (participantId) => confirmMutation.mutate({ participantId, action: "confirm" });
   const undoPaid = (participantId) => confirmMutation.mutate({ participantId, action: "undo" });
+  /**
+   * Everyone who has said they sent it, in one tap.
+   *
+   * The host has just read their Venmo or Zelle feed and seen four payments
+   * land. Making them come back and match four names to four buttons is where
+   * a table of six loses someone. This settles exactly the diners showing as
+   * "sent" — never the ones who have claimed items and sent nothing.
+   */
+  const confirmAllReported = () => confirmMutation.mutate({ action: "confirm_reported" });
 
   if (loading) return (
     <div className="min-h-screen bg-background">
@@ -151,6 +160,12 @@ export default function ReceiptDetail() {
   const items         = session.items || [];
   const paid          = participants.filter(p => p.payment_status === "paid").length;
   const awaiting      = participants.filter(p => p.payment_status === "pending_verification").length;
+  // What the one-tap confirm would settle. Shown on the button, because "got
+  // everyone's" is a claim about money and the host should see the number
+  // before agreeing to it.
+  const awaitingTotal = participants
+    .filter(p => p.payment_status === "pending_verification")
+    .reduce((s, p) => s + (p.amount_owed || 0), 0);
   const total         = participants.length;
   const claimedCount  = items.filter(i => (i.claimed_by || []).length > 0).length;
   const allPaid       = participants.length > 0 && participants.every(p => p.payment_status === "paid");
@@ -262,6 +277,26 @@ export default function ReceiptDetail() {
               <p className="text-xs text-amber-300 mt-2">
                 Everyone is confirmed, but ${shortfall.toFixed(2)} of the bill is still uncovered.
               </p>
+            )}
+
+            {/*
+              The one tap that replaces four.
+
+              Only the diners who have themselves tapped "I've sent it" — so
+              this stays an agreement between two people rather than a host
+              marking the table settled. The amount is on the button because
+              the host is asserting they received it.
+            */}
+            {isHost && awaiting > 0 && (
+              <Button
+                onClick={confirmAllReported}
+                disabled={confirmMutation.isPending}
+                aria-label={`Got all ${awaiting} payments totalling $${awaitingTotal.toFixed(2)} — confirm them`}
+                className="w-full h-12 mt-3 text-sm font-bold bg-success hover:bg-success/90 text-white rounded-xl"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                Got all {awaiting} — ${awaitingTotal.toFixed(2)}
+              </Button>
             )}
           </div>
         </div>

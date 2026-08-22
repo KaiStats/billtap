@@ -741,12 +741,11 @@ test('re-confirming an item you already hold is not treated as stealing it', asy
   });
 });
 
-test('an item has exactly one payer, so nobody is charged for it twice', async () => {
-  // The server refuses a second claimant and src/pages/Claim.jsx greys the row
-  // out, so the two agree. shareFor() still divides by claimed_by.length; that
-  // is defensive arithmetic for a shared-item feature that does not exist yet,
-  // and this test is what will fail loudly if the guard is ever relaxed without
-  // the UI following.
+test('a shared item is divided among everyone on it, and the table pays it exactly once', async () => {
+  // The nachos. Two people reach for the same plate, which is the ordinary
+  // case at a table and used to be a 409 — leaving whoever tapped first paying
+  // the whole $30. shareFor() has always divided by claimed_by.length; this is
+  // the path that finally reaches it.
   const session = {
     ...simpleSession(),
     items: [{ id: 'i1', name: 'Nachos', price: 30, quantity: 1, claimed_by: [] }],
@@ -755,11 +754,6 @@ test('an item has exactly one payer, so nobody is charged for it twice', async (
   await withStub({ entities: { Session: [session] } }, async ({ env, store }) => {
     await join(env, { session_id: 's1', participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
 
-    // Through onRequestPost rather than the handler directly, because the
-    // refusal is raised as an AppError from inside patchSession's mutate
-    // callback and it is the dispatcher that renders it. What a diner's phone
-    // receives is what this asserts, and that is unchanged: a 409 saying the
-    // item is taken.
     const res = await onRequestPost({
       request: new Request('https://billtap.app/api/fn/joinSession', {
         method: 'POST',
@@ -772,14 +766,48 @@ test('an item has exactly one payer, so nobody is charged for it twice', async (
       name: 'joinSession',
     });
 
-    assert.equal(res.status, 409);
-    const payload = await res.json();
-    assert.match(payload.error, /already claimed/);
-    assert.equal(payload.code, 'item_claimed');
-    assert.ok(payload.request_id, 'traceable, like every other failure here');
+    assert.equal(res.status, 200);
+    assert.deepEqual(store.Session[0].items[0].claimed_by, [ALICE, BOB], 'joining adds, never displaces');
 
-    assert.deepEqual(store.Session[0].items[0].claimed_by, [ALICE]);
-    assert.equal(store.Session[0].participants[0].amount_owed, 30, 'Alice owes all of it');
+    const owed = store.Session[0].participants.map((p) => p.amount_owed);
+    assert.deepEqual(owed, [15, 15], '$30 of nachos, split two ways');
+
+    // The property that matters to the host: the table collects the plate
+    // once. Splitting it must not mint or lose money.
+    assert.equal(owed.reduce((s, n) => s + n, 0), 30);
+  });
+});
+
+test('a shared item carries its share of tax and tip, and the bill still balances', async () => {
+  /**
+   * The combination, because it is where a split silently loses money.
+   *
+   * shareFor() divides the item by its claimers but takes the tax/tip ratio
+   * from the *undivided* subtotal. If those two disagreed, a table with a
+   * shared plate would collect the wrong total and nobody would notice until
+   * the host was short at the till.
+   *
+   * $30 nachos shared two ways, $3 tax, $6 tip. Each diner: $15 of food, half
+   * the $9 of extras, $19.50 — and $19.50 twice is the $39 bill exactly.
+   */
+  const session = {
+    ...simpleSession(),
+    items: [{ id: 'i1', name: 'Nachos', price: 30, quantity: 1, claimed_by: [] }],
+    tax: 3,
+    tip: 6,
+    total_amount: 39,
+  };
+  await withStub({ entities: { Session: [session] } }, async ({ env, store }) => {
+    await join(env, { session_id: 's1', participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await join(env, { session_id: 's1', participant_id: BOB, name: 'Bob', items: [{ id: 'i1', claimed_by: [BOB] }] });
+
+    const owed = store.Session[0].participants.map((p) => p.amount_owed);
+    assert.deepEqual(owed, [19.5, 19.5]);
+    assert.equal(
+      owed.reduce((s, n) => s + n, 0),
+      39,
+      'the table pays the bill exactly — no cent invented, none lost',
+    );
   });
 });
 

@@ -2056,12 +2056,64 @@ const HANDLERS = {
     if (!session_id || typeof session_id !== 'string') {
       return json({ error: 'session_id is required' }, 400);
     }
-    if (!participant_id || !PARTICIPANT_RE.test(String(participant_id))) {
+
+    /**
+     * Settling everyone who said they sent it, in one tap.
+     *
+     * ── The friction this removes ─────────────────────────────────────────
+     *
+     * Nothing can verify a Venmo or Zelle transfer — neither offers an API
+     * that reports an incoming personal payment — so the host confirming is
+     * not a formality this product has failed to automate. It is the only
+     * evidence there is, and it stays.
+     *
+     * What was wasteful is the shape of it. The host reads four payments in
+     * their banking app, comes back, and taps four separate buttons, matching
+     * name to name each time. That is where a table of six goes wrong: one
+     * person gets missed, or confirmed twice over on a slow connection.
+     *
+     * ── Why this confirms only the reported ───────────────────────────────
+     *
+     * Not "mark everyone paid". It settles exactly the diners who have
+     * themselves tapped "I've sent it" — the pending_verification rows — so
+     * the two-sided signal the split is built on survives the shortcut: the
+     * diner asserts, the host agrees. Somebody who has claimed items and
+     * quietly sent nothing is not swept up by a host's single tap.
+     *
+     * And only the set the host was looking at. A diner who self-reports
+     * between the screen rendering and this call is deliberately left for the
+     * next tap rather than confirmed by a host who never saw them.
+     */
+    const bulk = action === 'confirm_reported';
+
+    if (!bulk && (!participant_id || !PARTICIPANT_RE.test(String(participant_id)))) {
       return json({ error: 'Invalid participant_id' }, 400);
     }
-    if (action !== 'confirm' && action !== 'undo') {
-      return json({ error: "action must be 'confirm' or 'undo'" }, 400);
+    if (action !== 'confirm' && action !== 'undo' && !bulk) {
+      return json({ error: "action must be 'confirm', 'undo' or 'confirm_reported'" }, 400);
     }
+
+    /**
+     * The single place in this codebase where a diner becomes paid.
+     *
+     * Both routes through this handler — the host confirming one person, and
+     * the host confirming everyone who reported — settle through here, so
+     * there is exactly one expression that can write the paid status and one
+     * definition of what settling means. worker/money-invariants.test.mjs
+     * greps this file to hold that line: a second assignment anywhere is a
+     * second answer to "who is trusted to say the money arrived".
+     *
+     * `paid_amount` is frozen from `amount_owed` at this moment on purpose.
+     * The owed figure keeps moving as people join and claim; what was actually
+     * settled does not, so a host can see that Alice paid $26 against a share
+     * that later became $31 rather than being shown one comforting number.
+     */
+    const settle = (p) => ({
+      ...p,
+      payment_status: 'paid',
+      paid_amount: Math.round((Number(p.amount_owed) || 0) * 100) / 100,
+      paid_at: Date.now(),
+    });
 
     const svc = serviceRole(env);
     const sessions = await svc.entity('Session').filter({ id: session_id });
@@ -2085,6 +2137,77 @@ const HANDLERS = {
     }
 
     const participants = session.participants || [];
+
+    if (bulk) {
+      const reported = participants.filter((p) => p.payment_status === 'pending_verification');
+      // Nothing to do, and not an error: the host tapped it when the list was
+      // already clear, or twice in a row.
+      if (!reported.length) {
+        return json({ session: publicSession(session), unchanged: true, confirmed: 0 });
+      }
+      const reportedIds = new Set(reported.map((p) => p.participant_id));
+
+      const settledSession = await patchSession(
+        svc,
+        session_id,
+        (fresh) => {
+          const rows = fresh.participants || [];
+          const next = rows.map((p) => {
+            // Re-checked against the row being written onto: somebody the host
+            // confirmed individually while this was in flight is already paid,
+            // and must keep the amount that was frozen for them then.
+            if (!reportedIds.has(p.participant_id) || p.payment_status !== 'pending_verification') return p;
+            return settle(p);
+          });
+          const everyonePaid = next.length > 0 && next.every((p) => p.payment_status === 'paid');
+          return {
+            participants: next,
+            status: everyonePaid
+              ? 'completed'
+              : (fresh.status === 'completed' ? 'claiming' : fresh.status),
+          };
+        },
+        (fresh) => {
+          const rows = fresh.participants || [];
+          return [...reportedIds].every(
+            (id) => rows.find((p) => p.participant_id === id)?.payment_status === 'paid',
+          );
+        },
+      );
+
+      if (!settledSession) return json({ error: 'Session not found' }, 404);
+
+      /**
+       * One audit row per diner, not one for the batch.
+       *
+       * The row exists to end a dispute, and a dispute is always about one
+       * person and one amount — "the host confirmed $23.40 for p_17 at
+       * 8:42pm". A single row saying "confirmed four people" answers that
+       * question for nobody.
+       */
+      const after = settledSession.participants || [];
+      for (const id of reportedIds) {
+        const row = after.find((p) => p.participant_id === id);
+        await audit({
+          action: ACTIONS.PAYMENT_CONFIRMED,
+          sessionId: session_id,
+          restaurantId: settledSession.restaurant_id,
+          actorHostKey: host_key,
+          actorParticipantId: id,
+          detail: {
+            amount: row?.paid_amount ?? null,
+            status: settledSession.status,
+            verified_by: host_key ? 'host_key' : 'session',
+            // So the trail shows this was the batch tap rather than the host
+            // reading and confirming this diner on their own.
+            bulk: true,
+          },
+        });
+      }
+
+      return json({ session: publicSession(settledSession), confirmed: reportedIds.size });
+    }
+
     const target = participants.find((p) => p.participant_id === participant_id);
     if (!target) return json({ error: 'Participant not found in session' }, 404);
 
@@ -2113,16 +2236,7 @@ const HANDLERS = {
             const { paid_amount, paid_at, ...rest } = p;
             return { ...rest, payment_status: 'unpaid' };
           }
-          return {
-            ...p,
-            payment_status: 'paid',
-            // What was actually settled, recorded at the moment it was settled.
-            // amount_owed keeps moving as people join and claim; this does not,
-            // so a host can see that Alice paid $26 against a share that later
-            // became $31 rather than being shown one comforting number.
-            paid_amount: Math.round((Number(p.amount_owed) || 0) * 100) / 100,
-            paid_at: Date.now(),
-          };
+          return settle(p);
         });
 
         // The one place a split can complete, because it is the one place the
@@ -2321,18 +2435,63 @@ const HANDLERS = {
         // Apply this caller's claim deltas to the STORED items, one at a time.
         let nextItems = storedItems;
         if (splitMode === 'itemized' && requested.length) {
+          /**
+           * Sharing an item is the normal case, not an error.
+           *
+           * ── What this used to do ────────────────────────────────────────
+           *
+           * Any item with an existing claimer was refused outright: one item,
+           * one person, forever. That is wrong at a real table — the nachos,
+           * the bottle of wine and the shared dessert are exactly the things
+           * a group needs to divide — and it made whoever tapped first pay
+           * 100% of something two or three people ate.
+           *
+           * The rest of the system was already built for sharing and could
+           * never reach it: shareFor() below divides an item by
+           * `claimed_by.length`, and the guest screen renders a `÷N` badge
+           * and a "You: $x" line that no session could ever produce.
+           *
+           * ── Sharing is not stealing ─────────────────────────────────────
+           *
+           * The distinction the old check missed. Adding yourself alongside
+           * the existing claimers is sharing; removing one of them is
+           * stealing. Only the second is a problem, and it is already
+           * impossible: the map below carries `others` across untouched and
+           * edits nothing but this caller's own membership. So there is
+           * nothing left to refuse here.
+           */
           for (const item of requested) {
             const original = storedItems.find((i) => i.id === item.id);
             if (!original) continue;
             const originalClaimed = original.claimed_by || [];
-            const stealing =
+            const joining =
               wanted.has(item.id) &&
               originalClaimed.length > 0 &&
               !originalClaimed.includes(participant_id);
-            // A refusal, not a retry. Someone else holds this item and looping
-            // would only re-read the same answer.
-            if (stealing) {
-              throw new AppError('item_claimed', `Item "${original.name}" is already claimed`, 409);
+
+            /**
+             * The one case that still cannot be joined: somebody on this item
+             * has already settled.
+             *
+             * A paid diner's amount is frozen a few lines below, so their
+             * share cannot be recomputed downward to make room for a new
+             * claimer. Alice pays $24 for the nachos on her own, Bob then
+             * joins them and is quoted $12, and the host collects $36 for a
+             * $24 plate. Refusing here keeps the table's arithmetic honest;
+             * the fix for the group is to settle up after claiming, which is
+             * the order the screen already leads them through.
+             */
+            if (joining) {
+              const settled = originalClaimed.some((pid) =>
+                rows.find((p) => p.participant_id === pid)?.payment_status === 'paid',
+              );
+              if (settled) {
+                throw new AppError(
+                  'item_settled',
+                  `Item "${original.name}" is already paid for by someone who has settled`,
+                  409,
+                );
+              }
             }
           }
 

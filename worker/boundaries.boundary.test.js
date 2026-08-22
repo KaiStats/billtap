@@ -86,7 +86,7 @@ describe('the public layer never carries technical detail', () => {
     for (const safe of [
       'That receipt has too many line items.',
       'Only the host can confirm a payment.',
-      'Item "Steak frites" is already claimed',
+      'Item "Steak frites" is already paid for by someone who has settled',
       'Session is full (max 50 participants)',
       'Your payment is already settled for this split',
     ]) {

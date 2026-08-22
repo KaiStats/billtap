@@ -110,7 +110,10 @@ test('a second diner claiming does not erase the first diner claim', async () =>
   }
 });
 
-test('a guest cannot claim an item someone else already holds', async () => {
+test('a guest joining an item someone else holds splits it rather than being refused', async () => {
+  // The shared plate: nachos, the bottle of wine, the dessert with two forks.
+  // This used to be a 409 — one item, one person — which left whoever tapped
+  // first paying for all of something two people ate.
   const env = stubEnv({
     ...baseSession,
     items: [{ id: 'i1', name: 'Steak', price: 20, quantity: 1, claimed_by: [ALICE] }],
@@ -118,12 +121,39 @@ test('a guest cannot claim an item someone else already holds', async () => {
   });
   const restore = installFetch(env.__store);
   try {
-    // Refusals from inside the claim merge throw an AppError rather than
-    // returning a Response, because the merge now runs inside patchSession's
-    // mutate callback and that callback has to hand back a patch or nothing.
-    // onRequestPost turns it into the same 409 the caller always got, plus the
-    // code and request id every other failure in this Worker carries — see the
-    // boundary test in worker/api.test.mjs, which asserts the HTTP response.
+    await HANDLERS.joinSession({
+      env,
+      body: {
+        session_id: 's1', participant_id: BOB, name: 'Bob',
+        items: [{ id: 'i1', claimed_by: [BOB] }],
+      },
+    });
+
+    const stored = env.__store.Session[0];
+    // Alice is still on it — joining adds, it never displaces.
+    assert.deepEqual(stored.items[0].claimed_by, [ALICE, BOB]);
+
+    // And the $20 steak is now $10 each rather than $20 for whoever was quicker.
+    const alice = stored.participants.find((p) => p.participant_id === ALICE);
+    const bob = stored.participants.find((p) => p.participant_id === BOB);
+    assert.equal(alice.amount_owed, 10);
+    assert.equal(bob.amount_owed, 10);
+  } finally {
+    restore();
+  }
+});
+
+test('an item whose claimer has already settled cannot be joined', async () => {
+  // The one case sharing must still refuse. A paid diner's amount is frozen,
+  // so it cannot be recomputed downward to make room — Alice pays $20 alone,
+  // Bob joins and is quoted $10, and the host collects $30 for a $20 steak.
+  const env = stubEnv({
+    ...baseSession,
+    items: [{ id: 'i1', name: 'Steak', price: 20, quantity: 1, claimed_by: [ALICE] }],
+    participants: [{ participant_id: ALICE, name: 'Alice', amount_owed: 20, payment_status: 'paid' }],
+  });
+  const restore = installFetch(env.__store);
+  try {
     await assert.rejects(
       () => HANDLERS.joinSession({
         env,
@@ -135,14 +165,14 @@ test('a guest cannot claim an item someone else already holds', async () => {
       (error) => {
         assert.equal(error.name, 'AppError');
         assert.equal(error.status, 409);
-        assert.equal(error.code, 'item_claimed');
-        assert.match(error.message, /already claimed/);
+        assert.equal(error.code, 'item_settled');
         return true;
       },
     );
 
     // And Bob's attempt changed nothing.
     assert.deepEqual(env.__store.Session[0].items[0].claimed_by, [ALICE]);
+    assert.equal(env.__store.Session[0].participants[0].amount_owed, 20, "Alice's settled amount is untouched");
   } finally {
     restore();
   }

@@ -760,3 +760,106 @@ test('a wrong host key mints nothing', async () => {
     assert.equal(res.status, 403);
   });
 });
+
+// ── Settling everyone who reported, in one tap ───────────────────────────────
+//
+// Nothing can verify a Venmo or Zelle transfer, so the host's confirmation is
+// the only evidence a payment arrived and it stays. What these pin is the
+// shape of it: the host reads four payments in their banking app and agrees to
+// them once, rather than matching four names to four buttons.
+
+test('confirm_reported settles every diner who said they sent it', async () => {
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({ env });
+
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await join(env, { session_id: session.id, participant_id: BOB, name: 'Bob', items: [{ id: 'i2', claimed_by: [BOB] }] });
+
+    await selfReport(env, { session_id: session.id, participant_id: ALICE });
+    await selfReport(env, { session_id: session.id, participant_id: BOB });
+
+    const res = await confirm(env, req(), {
+      session_id: session.id, host_key: hostKey, action: 'confirm_reported',
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await body(res)).confirmed, 2);
+
+    const rows = store.Session[0].participants;
+    assert.deepEqual(rows.map((p) => p.payment_status), ['paid', 'paid']);
+    // Frozen at the moment of settlement, exactly as the one-at-a-time path does.
+    assert.equal(rows.find((p) => p.participant_id === ALICE).paid_amount, 20);
+    assert.equal(rows.find((p) => p.participant_id === BOB).paid_amount, 10);
+    assert.equal(store.Session[0].status, 'completed', 'the last paid completes the split');
+  });
+});
+
+test('confirm_reported never settles a diner who has not said they sent it', async () => {
+  // The property that keeps this an agreement between two people rather than a
+  // host marking the table settled. Cara claimed a share and sent nothing.
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session, hostKey } = await newSplit({
+      env,
+      overrides: {
+        items: [
+          { id: 'i1', name: 'Steak', price: 20, quantity: 1, claimed_by: [] },
+          { id: 'i2', name: 'Salad', price: 10, quantity: 1, claimed_by: [] },
+          { id: 'i3', name: 'Soup', price: 8, quantity: 1, claimed_by: [] },
+        ],
+      },
+    });
+
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await join(env, { session_id: session.id, participant_id: CARA, name: 'Cara', items: [{ id: 'i3', claimed_by: [CARA] }] });
+
+    await selfReport(env, { session_id: session.id, participant_id: ALICE });
+
+    const res = await confirm(env, req(), {
+      session_id: session.id, host_key: hostKey, action: 'confirm_reported',
+    });
+    assert.equal((await body(res)).confirmed, 1);
+
+    const rows = store.Session[0].participants;
+    assert.equal(rows.find((p) => p.participant_id === ALICE).payment_status, 'paid');
+    assert.equal(rows.find((p) => p.participant_id === CARA).payment_status, 'unpaid', 'Cara sent nothing and is untouched');
+    assert.equal(store.Session[0].status, 'claiming', 'the split is not complete');
+  });
+});
+
+test('confirm_reported is idempotent and needs no participant_id', async () => {
+  await withStub(RESTAURANT, async ({ env }) => {
+    const { session, hostKey } = await newSplit({ env });
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await selfReport(env, { session_id: session.id, participant_id: ALICE });
+
+    const first = await confirm(env, req(), { session_id: session.id, host_key: hostKey, action: 'confirm_reported' });
+    assert.equal((await body(first)).confirmed, 1);
+
+    // The host taps again on a slow connection. Nothing is double-settled and
+    // it is not an error.
+    const second = await confirm(env, req(), { session_id: session.id, host_key: hostKey, action: 'confirm_reported' });
+    assert.equal(second.status, 200);
+    const out = await body(second);
+    assert.equal(out.confirmed, 0);
+    assert.equal(out.unchanged, true);
+  });
+});
+
+test('only the host can settle the table in one tap', async () => {
+  // The batch path must sit behind exactly the same door as the single one:
+  // otherwise it is a way to mark a bill paid without the key.
+  await withStub(RESTAURANT, async ({ env, store }) => {
+    const { session } = await newSplit({ env });
+    await join(env, { session_id: session.id, participant_id: ALICE, name: 'Alice', items: [{ id: 'i1', claimed_by: [ALICE] }] });
+    await selfReport(env, { session_id: session.id, participant_id: ALICE });
+
+    const res = await confirm(env, req(), {
+      session_id: session.id, host_key: 'guessed', action: 'confirm_reported',
+    });
+    assert.equal(res.status, 403);
+    assert.equal(
+      store.Session[0].participants[0].payment_status,
+      'pending_verification',
+      'a rejected key settles nothing',
+    );
+  });
+});

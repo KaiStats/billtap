@@ -13,6 +13,7 @@ import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { rememberSplit } from "@/lib/splitHistory";
 import RatingCapture from "@/components/RatingCapture";
 import { sessionPath } from '@/lib/sessionLinks';
+import { paymentNote } from '@/lib/paymentNote';
 import { logClientError } from "@/lib/clientLog";
 
 // Haptic feedback helper
@@ -405,13 +406,40 @@ export default function Claim() {
       claimMutation.mutate({ optimisticItems, optimisticParticipants });
       return;
     }
+    /**
+     * The one item that cannot be joined, caught before the round trip.
+     *
+     * The button for this is already disabled, so reaching here means somebody
+     * settled in the moment between the last render and this tap. Answering it
+     * on the phone keeps the `item_settled` refusal in
+     * worker/routes/functions.js as the backstop it should be rather than the
+     * thing the diner actually meets.
+     */
     if (currentlyClaimed.length > 0) {
-      const claimer = (session.participants || []).find(p => p.participant_id === currentlyClaimed[0]);
-      announceTaken(`${claimer?.name || 'Someone'} just grabbed that one.`);
-      return;
+      const settledClaimer = (session.participants || []).find(
+        p => currentlyClaimed.includes(p.participant_id) && p.payment_status === "paid",
+      );
+      if (settledClaimer) {
+        announceTaken(`${settledClaimer.name || "Someone"} already paid for that one.`);
+        return;
+      }
     }
+
+    /**
+     * Joining an item somebody else already tapped splits it, rather than
+     * bouncing off it.
+     *
+     * This used to announce "someone just grabbed that one" and return, so the
+     * shared plate went entirely onto whoever was quickest. The `÷N` badge and
+     * the "You: $x" line further down the file were written for this and could
+     * never appear.
+     *
+     * The array is appended to, not replaced: replacing it would drop the
+     * existing claimers on the floor optimistically and then snap back when
+     * the server answered with them still attached.
+     */
     haptic([50]);
-    const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [myId] });
+    const optimisticItems = session.items.map(i => i.id !== itemId ? i : { ...i, claimed_by: [...currentlyClaimed, myId] });
     const optimisticParticipants = (session.participants || []).map(p => ({ ...p, amount_owed: Math.round(calcMyShare(optimisticItems, p.participant_id, session.tax, session.tip) * 100) / 100 }));
     claimMutation.mutate({ optimisticItems, optimisticParticipants });
     if (typeof window.gtag === 'function') {
@@ -474,11 +502,15 @@ export default function Claim() {
     if (session.restaurant_id) setShowRating(true);
   };
 
+  /** The line the host reads in their feed. See src/lib/paymentNote.js. */
+  const myPaymentNote = () => paymentNote(myName, session?.title);
+
   const handlePaymentClick = () => {
     const hostInfo = session.host_payment_info;
     if (!hostInfo) { setShowPaymentModal(true); return; }
 
     const amount = myShare.toFixed(2);
+    const note = encodeURIComponent(myPaymentNote());
 
     Sentry.addBreadcrumb({ category: 'payment', message: `Payment handoff: ${hostInfo.method}`, level: 'info' });
     if (typeof window.gtag === 'function') {
@@ -487,8 +519,8 @@ export default function Claim() {
 
     if (hostInfo.method === "venmo") {
       const handle = hostInfo.handle.replace(/^@/, '');
-      const deepLink = `venmo://paycharge?txn=pay&recipients=@${handle}&amount=${amount}&note=BillTap%20Split`;
-      const webFallback = `https://venmo.com/u/${handle}?txn=pay&amount=${amount}&note=BillTap%20Split`;
+      const deepLink = `venmo://paycharge?txn=pay&recipients=@${handle}&amount=${amount}&note=${note}`;
+      const webFallback = `https://venmo.com/u/${handle}?txn=pay&amount=${amount}&note=${note}`;
       window.location.href = deepLink;
       setTimeout(() => window.open(webFallback, '_blank'), 2000);
       return;
@@ -720,27 +752,54 @@ export default function Claim() {
             const isMine = claimed.includes(myId);
             const itemTotal = item.price * (item.quantity || 1);
             const myCost = isMine ? itemTotal / claimed.length : 0;
-            const isClaimedByOther = claimed.length > 0 && !isMine;
+            /**
+             * What tapping this would cost — one more way than it is split now.
+             *
+             * Shown before the tap, not after. "Share — $6.00" answers the
+             * question the diner actually has when reaching for a plate two
+             * other people are already on.
+             */
+            const costIfJoined = itemTotal / (claimed.length + 1);
+            const sharedByOthers = claimed.length > 0 && !isMine;
+            /**
+             * The only unjoinable item: one whose claimer has already settled.
+             *
+             * Their amount is frozen server-side, so it cannot be recomputed
+             * to make room — joining would have the table collect more than
+             * the plate cost. Matches the `item_settled` refusal in
+             * worker/routes/functions.js.
+             */
+            const lockedBySettled = sharedByOthers && claimed.some(
+              pid => (participants || []).find(p => p.participant_id === pid)?.payment_status === "paid",
+            );
             const claimerInitial = claimed.length > 0 ? ((participants || []).find(p => p.participant_id === claimed[0])?.name?.[0] || "?") : "";
 
             return (
               <button
                 key={item.id}
-                onClick={() => !isClaimedByOther && toggleClaim(item.id)}
-                aria-label={`${isMine ? "Unclaim" : "Claim"} ${item.name}`}
+                onClick={() => !lockedBySettled && toggleClaim(item.id)}
+                aria-label={
+                  isMine
+                    ? `Remove yourself from ${item.name}`
+                    : lockedBySettled
+                    ? `${item.name} is already paid for`
+                    : sharedByOthers
+                    ? `Share ${item.name}, ${(claimed.length + 1)} ways, $${costIfJoined.toFixed(2)} each`
+                    : `Claim ${item.name}`
+                }
                 aria-pressed={isMine}
-                disabled={isClaimedByOther}
+                disabled={lockedBySettled}
                 className={`w-full text-left p-4 rounded-2xl transition-[transform,border-color,background-color] duration-200 ease-out-expo enabled:active:scale-[0.98] ${
                   isMine
                     ? "border-2 border-primary shadow-glow"
-                    : isClaimedByOther
+                    : lockedBySettled
                     ? "opacity-50 cursor-not-allowed border-2 border-transparent"
                     : "border-2 border-transparent hover:border-primary/30 hover:-translate-y-0.5"
                 }`}
                 style={
                   isMine
                     ? { background: 'rgba(0,200,150,0.15)' }
-                    : isClaimedByOther
+                    : lockedBySettled
                     ? { background: 'rgba(255,255,255,0.02)', border: '2px solid transparent' }
                     : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }
                 }
@@ -748,13 +807,13 @@ export default function Claim() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      isMine ? "bg-primary border-primary" : isClaimedByOther ? "bg-white/10 border-white/20" : "border-white/20"
+                      isMine ? "bg-primary border-primary" : sharedByOthers ? "bg-white/10 border-white/20" : "border-white/20"
                     }`}>
                       {isMine && <Check className="animate-pop w-3.5 h-3.5 text-primary-foreground" aria-hidden="true" />}
-                      {isClaimedByOther && <span className="text-xs font-bold text-white/50">{claimerInitial}</span>}
+                      {sharedByOthers && <span className="text-xs font-bold text-white/50">{claimerInitial}</span>}
                     </div>
                     <div>
-                      <div className={`font-semibold text-sm ${isMine ? "text-white" : isClaimedByOther ? "text-white/30 line-through" : "text-foreground"}`}>
+                      <div className={`font-semibold text-sm ${isMine ? "text-white" : lockedBySettled ? "text-white/30 line-through" : "text-foreground"}`}>
                         {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
                       </div>
                       {claimed.length > 0 && (
@@ -770,8 +829,13 @@ export default function Claim() {
                     </div>
                   </div>
                   <div className="text-right shrink-0 ml-2 flex flex-col items-end gap-1">
-                    <div className={`mono font-bold text-sm tabular-nums ${isClaimedByOther ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
+                    <div className={`mono font-bold text-sm tabular-nums ${lockedBySettled ? "text-white/30" : "text-foreground"}`}>${itemTotal.toFixed(2)}</div>
                     {isMine && claimed.length > 1 && <div className="mono text-xs text-primary font-semibold tabular-nums">You: ${myCost.toFixed(2)}</div>}
+                    {/* The offer, before the tap: what this costs if you join. */}
+                    {sharedByOthers && !lockedBySettled && (
+                      <div className="mono text-xs text-primary font-semibold tabular-nums">Share: ${costIfJoined.toFixed(2)}</div>
+                    )}
+                    {lockedBySettled && <div className="text-xs text-white/30 font-semibold">Paid</div>}
                     {item.quantity > 1 && (
                       <button
                         onClick={(e) => {
@@ -908,6 +972,29 @@ export default function Claim() {
                 <p className="text-lg font-bold text-foreground">{session.host_payment_info.handle}</p>
                 <p className="mono text-3xl font-semibold tabular-nums text-primary mt-2">${myShare.toFixed(2)}</p>
               </div>
+
+              {/*
+                The memo, because Zelle is typed by hand.
+                Venmo and Cash App get the note attached to the deep link; here
+                the diner is entering everything themselves, so the one line
+                that tells the host which payment this is has to be visible and
+                copyable rather than assumed.
+              */}
+              <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <p className="text-xs text-muted-foreground mb-1">Put this in the memo so your host knows it&apos;s you:</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground truncate flex-1">{myPaymentNote()}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Copy the payment memo"
+                    onClick={() => navigator.clipboard.writeText(myPaymentNote())}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => navigator.clipboard.writeText(session.host_payment_info.handle)} className="flex-1">
                   <Copy className="w-4 h-4 mr-2" /> Copy
