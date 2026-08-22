@@ -4,6 +4,7 @@ import { Star, Download, Save, Loader2, AlertTriangle, Users, TrendingUp, Link2,
 import { invoke } from "@/api/functions";
 import { planSummary } from "@/lib/plan";
 import { reviewLift } from "@/lib/reviewLift";
+import { shareCardLines, drawShareCard, shareCardImage } from "@/lib/shareCard";
 import { accessToken } from "@/lib/supabase";
 
 const GOLD = "#f0b429";
@@ -195,6 +196,39 @@ export default function RestaurantDashboard() {
   // The outcome, not the activity. Null when there is no baseline to compare
   // against — see src/lib/reviewLift.js.
   const lift = useMemo(() => reviewLift(restaurant), [restaurant]);
+
+  /**
+   * The results, as something an operator can hand to another operator.
+   *
+   * Restaurants talk to restaurants, and this panel is the artifact that
+   * conversation needs. A GM who can only describe it from memory refers
+   * nobody; a GM with a picture on their phone refers the place next door.
+   *
+   * The card names the restaurant, because a peer's first question is "whose
+   * numbers are these" and an anonymous chart answers nothing.
+   */
+  const shareLift = async () => {
+    if (!lift) return;
+    const lines = shareCardLines({
+      title: restaurant?.name,
+      fairness: null,
+    });
+    lines.headline = `+${lift.countDelta} Google reviews`;
+    lines.sub = lift.ratingDelta
+      ? `${lift.countStart} → ${lift.countNow} reviews, ${lift.ratingStart?.toFixed(1)} → ${lift.ratingNow?.toFixed(1)} stars.`
+      : `${lift.countStart} → ${lift.countNow} reviews since we started using BillTap.`;
+    lines.stats = [
+      { label: "Before", value: String(lift.countStart) },
+      { label: "Now", value: String(lift.countNow) },
+      ...(lift.ratingNow !== null ? [{ label: "Stars", value: lift.ratingNow.toFixed(1) }] : []),
+    ];
+
+    const blob = await drawShareCard(lines);
+    await shareCardImage({
+      blob,
+      text: `${restaurant?.name || "We"} went from ${lift.countStart} to ${lift.countNow} Google reviews with BillTap.`,
+    });
+  };
   const { tone: billingTone, heading: billingHeading, detail: billingDetail } = plan;
 
   /**
@@ -423,6 +457,28 @@ export default function RestaurantDashboard() {
                 </div>
               )}
             </div>
+
+            {/*
+              Operators talk to operators.
+
+              This panel is the artifact one GM shows another, and until now it
+              could only be described from memory. Exporting it turns a happy
+              restaurant into a referral without anyone from BillTap in the
+              room — which is the only B2B channel that scales without more
+              door-knocking.
+
+              Only offered once there is something real to show: a stale or
+              flat result exported to a peer is worse than no export at all.
+            */}
+            {lift.countDelta > 0 && !lift.stale && (
+              <button
+                onClick={shareLift}
+                className="mt-4 h-10 px-4 rounded-xl font-semibold text-xs"
+                style={{ background: "rgba(0,200,150,.15)", color: "#00c896", border: "1px solid rgba(0,200,150,.3)" }}
+              >
+                Share these results
+              </button>
+            )}
           </div>
         ) : null}
 

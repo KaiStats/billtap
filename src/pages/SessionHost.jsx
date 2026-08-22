@@ -6,6 +6,8 @@ import { useLiveSplit } from "@/hooks/useLiveSplit";
 import { QRCodeSVG } from "qrcode.react";
 import confetti from "canvas-confetti";
 import { Copy, Check, Users, ArrowRight, MessageSquare, Mail, Share2, DollarSign, Settings } from "lucide-react";
+import { tableFairness } from '@/lib/fairness';
+import { shareCardLines, drawShareCard, shareCardImage } from '@/lib/shareCard';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -176,6 +178,46 @@ function SessionHostComponent() {
     } else {
       copyLink();
     }
+  };
+
+  /**
+   * The finished split, as a picture.
+   *
+   * This used to share `summaryText` — three lines of plain text, offered
+   * underneath a card that was already designed and already on screen. The
+   * picture existed and was discarded at the exact moment of sharing.
+   *
+   * The headline is the table's fairness number rather than the total, because
+   * "$284 split six ways" is a receipt and "$47 went back to the people who
+   * did not order the wine" is a story. When there is no such number — a table
+   * where everybody ordered much the same — the card says so instead of
+   * inventing one. See src/lib/fairness.js and src/lib/shareCard.js.
+   */
+  const shareSummaryCard = async () => {
+    const rows = session?.participants || [];
+    const minutes = session?.created_date
+      ? Math.max(1, Math.round((Date.now() - new Date(session.created_date).getTime()) / 60000))
+      : null;
+    const fairness = tableFairness({
+      totalAmount: session?.total_amount,
+      participants: rows,
+      splitMode: session?.split_mode,
+    });
+
+    const lines = shareCardLines({
+      title: session?.title,
+      people: rows.length,
+      total: session?.total_amount,
+      minutes,
+      fairness,
+    });
+    const blob = await drawShareCard(lines);
+    await shareCardImage({
+      blob,
+      text: fairness
+        ? `Split dinner with BillTap — $${fairness.moved.toFixed(2)} went back to the people who actually ordered it.`
+        : `Split dinner with BillTap — ${rows.length} people, everyone paid their own way.`,
+    });
   };
 
   const saveSettings = (changes) =>
@@ -582,9 +624,14 @@ function SessionHostComponent() {
 
           {/* Split Summary Modal */}
           {showSummaryCard && (() => {
-            const paidCount = participants.filter(p => p.payment_status === "paid").length;
             const minutesTaken = session.created_date ? Math.max(1, Math.round((Date.now() - new Date(session.created_date).getTime()) / 60000)) : null;
-            const summaryText = `BillTap split at ${session.title}\n${participants.length} people · $${(session.total_amount || 0).toFixed(2)} total\nEveryone paid${minutesTaken ? ` in ${minutesTaken} minute${minutesTaken !== 1 ? 's' : ''}` : ''} ⚡`;
+            // The table's fairness number, shown on the card the host is
+            // looking at as well as on the one they share. See shareSummaryCard.
+            const fairness = tableFairness({
+              totalAmount: session.total_amount,
+              participants,
+              splitMode: session.split_mode,
+            });
             return (
               <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end justify-center p-4 z-50" onClick={() => setShowSummaryCard(false)}>
                 <div
@@ -609,15 +656,29 @@ function SessionHostComponent() {
                       </div>
                     ))}
                   </div>
+
+                  {/*
+                    The line that makes this worth sharing.
+
+                    "6 people, $284" is a receipt. "$47 went back to the people
+                    who did not order the wine" is a story, and it is the same
+                    data. Absent when the table ordered much the same — see
+                    src/lib/fairness.js for why that case invents nothing.
+                  */}
+                  {fairness && (
+                    <div className="rounded-xl py-3 px-4" style={{ background: 'rgba(0,200,150,0.1)', border: '1px solid rgba(0,200,150,0.25)' }}>
+                      <div className="mono font-black text-xl tabular-nums" style={{ color: '#00c896' }}>
+                        ${fairness.moved.toFixed(2)}
+                      </div>
+                      <div className="text-white/50 text-xs mt-0.5">
+                        went back to the {fairness.spared} {fairness.spared === 1 ? "person" : "people"} who ordered less
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button
-                      onClick={() => {
-                        if (navigator.share) {
-                          navigator.share({ title: 'BillTap Split', text: summaryText });
-                        } else {
-                          navigator.clipboard.writeText(summaryText);
-                        }
-                      }}
+                      onClick={shareSummaryCard}
                       className="press flex-1 h-12 rounded-xl font-bold bg-primary text-primary-foreground text-sm shadow-glow transition hover:brightness-110"
                     >
                       Share Summary

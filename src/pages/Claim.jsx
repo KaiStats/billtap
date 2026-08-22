@@ -14,6 +14,8 @@ import { rememberSplit } from "@/lib/splitHistory";
 import RatingCapture from "@/components/RatingCapture";
 import { sessionPath } from '@/lib/sessionLinks';
 import { paymentNote } from '@/lib/paymentNote';
+import { fairnessFor } from '@/lib/fairness';
+import { shareCardLines, drawShareCard, shareCardImage } from '@/lib/shareCard';
 import { logClientError } from "@/lib/clientLog";
 
 // Haptic feedback helper
@@ -577,6 +579,51 @@ export default function Claim() {
     return calcMyShare(items, myId, session.tax, session.tip);
   }, [session, splitMode, participants, items, myId]);
 
+  /**
+   * What "just split it evenly" would have cost this diner.
+   *
+   * The emotional core of the product, and until now the app delivered it
+   * silently: a total, with no sign that anything had been avoided. Somebody
+   * who did not drink pays $18 on a bill where six ways would have taken $31
+   * off them, and nothing on the screen said so.
+   *
+   * Null for even and custom splits, and for a difference small enough to be
+   * rounding noise. See src/lib/fairness.js — including why a diner who
+   * ordered more than the average is never told they lost.
+   */
+  const fairness = useMemo(
+    () => fairnessFor({
+      totalAmount: session?.total_amount,
+      people: participants.length,
+      myShare,
+      splitMode,
+    }),
+    [session, participants.length, myShare, splitMode],
+  );
+
+  /**
+   * The diner's own saving, as a picture.
+   *
+   * Falls all the way back to the clipboard rather than doing nothing — see
+   * shareCardImage. A tap that appears to have no effect is the worst
+   * available outcome for a button somebody pressed on purpose.
+   */
+  const shareMySaving = async () => {
+    if (!fairness) return;
+    const lines = shareCardLines({
+      title: session?.title,
+      people: participants.length,
+      total: session?.total_amount,
+      fairness,
+    });
+    const blob = await drawShareCard(lines);
+    const result = await shareCardImage({
+      blob,
+      text: `Split dinner with BillTap — I paid $${fairness.actual.toFixed(2)} instead of $${fairness.even.toFixed(2)}.`,
+    });
+    if (result === "copied") announceTaken("Copied — paste it anywhere.");
+  };
+
   const meParticipant = participants.find(p => p.participant_id === myId);
   const payStatus = meParticipant?.payment_status;
   // markMePaid writes "pending_verification", never "paid" — only the host
@@ -1055,6 +1102,18 @@ export default function Claim() {
                 <div>
                   <div className="font-bold text-white text-sm">You owe</div>
                   <div className="text-xs text-white/50">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
+                  {/*
+                    The comparison, right beside the number it is about.
+                    "You owe $18" is a utility. "$18 — $13 less than an even
+                    split would have taken" is the thing somebody repeats to
+                    a friend, and it is one subtraction away from data the
+                    session already holds.
+                  */}
+                  {fairness?.notable && (
+                    <div className="text-xs font-semibold mt-1" style={{ color: "#00c896" }}>
+                      ${fairness.saved.toFixed(2)} less than splitting evenly
+                    </div>
+                  )}
                 </div>
                 <div className="mono text-3xl font-semibold tabular-nums text-primary">${myShare.toFixed(2)}</div>
               </div>
@@ -1097,6 +1156,44 @@ export default function Claim() {
                   actually confirmed the transfer read the identical screen. */}
               {awaitingHost ? "✓ Sent — waiting for host" : paymentSent ? "✓ Confirmed by host" : `Pay $${myShare.toFixed(2)}`}
             </button>
+          )}
+
+          {/*
+            The two seconds after paying, which is the only moment this is
+            worth saying.
+
+            They have just watched the app take $13 off what six-ways would
+            have cost them. That is the sentence people repeat, and it has
+            never been offered to them in a form they could send. The share
+            hands over a picture rather than a paragraph — see
+            src/lib/shareCard.js.
+
+            Deliberately not an install prompt. PWAInstallPrompt already asks
+            on a *second* visit, on the reasoning that a diner mid-meal should
+            not be interrupted, and that reasoning is right. This is a line and
+            a link, not a takeover.
+          */}
+          {paymentSent && fairness?.notable && (
+            <div className="rounded-2xl p-4" style={{ background: "rgba(0,200,150,0.08)", border: "1px solid rgba(0,200,150,0.25)" }}>
+              <div className="text-sm font-bold" style={{ color: "#00c896" }}>
+                You paid ${fairness.actual.toFixed(2)} instead of ${fairness.even.toFixed(2)}
+              </div>
+              <div className="text-xs mt-0.5 text-white/50">
+                An even split would have cost you ${fairness.saved.toFixed(2)} more.
+              </div>
+              <button
+                onClick={shareMySaving}
+                className="mt-3 w-full h-11 rounded-xl font-bold text-sm bg-primary text-primary-foreground active:scale-[0.99] transition"
+              >
+                Share this
+              </button>
+              <button
+                onClick={() => navigate("/new-receipt")}
+                className="mt-2 w-full h-10 rounded-xl font-semibold text-xs text-white/50"
+              >
+                Next time, you start it →
+              </button>
+            </div>
           )}
 
           {/* The person who made this split is at the table eating too, so they
