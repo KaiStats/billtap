@@ -47,10 +47,10 @@ async function sitemap(rows, opts) {
 const paying = (slug) => ({ slug, demo: false, plan: 'active', current_period_end: future() });
 
 test('a paying restaurant is listed', async () => {
-  const { res, body } = await sitemap([paying('mariposa')]);
+  const { res, body } = await sitemap([paying('test-kitchen')]);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/xml/);
-  assert.match(body, /<loc>https:\/\/billtap\.app\/r\/mariposa<\/loc>/);
+  assert.match(body, /<loc>https:\/\/billtap\.app\/r\/test-kitchen<\/loc>/);
 });
 
 test('a demo page is never submitted for indexing', async () => {
@@ -62,11 +62,34 @@ test('a demo page is never submitted for indexing', async () => {
    * noindex and the random slug exist to prevent.
    */
   const { body } = await sitemap([
-    paying('mariposa'),
+    paying('test-kitchen'),
     { slug: 'rs-5xvmph', demo: true, demo_expires_at: future(), plan: 'trial' },
   ]);
-  assert.match(body, /mariposa/);
+  assert.match(body, /test-kitchen/);
   assert.ok(!body.includes('rs-5xvmph'), 'a demo slug reached the sitemap');
+});
+
+test('a reference account is never submitted for indexing', async () => {
+  /**
+   * The one that nearly shipped.
+   *
+   * `reference_account` keeps a row off the billing clock and says nothing
+   * about consent to be published. The only row carrying it in production is
+   * a prospect who has not said yes -- src/pages/Restaurants.jsx names them
+   * and explains that a fabricated claim they were a customer was already
+   * deleted from the marketing page once, because the owner can read that
+   * page and would be right to walk.
+   *
+   * Listing one here makes that claim again, to Google, and puts a page
+   * bearing a real business's name into search results. It is the demo harm
+   * exactly, sneaking past every demo protection because `demo` is false.
+   */
+  const { body } = await sitemap([
+    paying('a-real-customer'),
+    { slug: 'test-kitchen', demo: false, reference_account: true, plan: 'trial', trial_ends_at: past() },
+  ]);
+  assert.match(body, /a-real-customer/);
+  assert.ok(!body.includes('test-kitchen'), 'a reference account reached a public customer list');
 });
 
 test('a restaurant that stopped paying is not kept in the index queue', async () => {
@@ -94,12 +117,12 @@ test('nothing but the slug is exposed', async () => {
   // The row carries the owner, the alert address and the Stripe ids. A public
   // unauthenticated URL is exactly where a spread would leak them.
   const { body } = await sitemap([{
-    ...paying('mariposa'),
-    alert_email: 'gm@mariposa.example',
+    ...paying('test-kitchen'),
+    alert_email: 'gm@test-kitchen.example',
     owner_id: 'user_secret',
     stripe_subscription_id: 'sub_live_123',
   }]);
-  for (const secret of ['gm@mariposa.example', 'user_secret', 'sub_live_123', 'active']) {
+  for (const secret of ['gm@test-kitchen.example', 'user_secret', 'sub_live_123', 'active']) {
     assert.ok(!body.includes(secret), `${secret} reached a public sitemap`);
   }
 });
@@ -127,7 +150,7 @@ test('a database failure answers an empty sitemap, not a 500', async () => {
 test('the response is cached, so a crawler cannot bill us per hit', async () => {
   // Public, unauthenticated, and backed by a database read. Without a cache
   // header that is a free denial-of-wallet button.
-  const { res } = await sitemap([paying('mariposa')]);
+  const { res } = await sitemap([paying('test-kitchen')]);
   assert.match(res.headers.get('cache-control'), /max-age=\d+/);
 });
 

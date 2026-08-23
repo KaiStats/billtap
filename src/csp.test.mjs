@@ -155,7 +155,7 @@ test('the Meta Pixel does not load on the guest or signed-in surfaces', () => {
    * phone in a restaurant, for an audience that is by definition never the
    * buyer — see the header in public/analytics.js.
    */
-  for (const path of ['/claim', '/claim/', '/r/mariposa', '/f/mariposa', '/session-host', '/new', '/new-receipt', '/dashboard', '/profile', '/login']) {
+  for (const path of ['/claim', '/claim/', '/r/test-kitchen', '/f/test-kitchen', '/session-host', '/new', '/new-receipt', '/dashboard', '/profile', '/login']) {
     assert.equal(analyticsAt(path).pixel, false, `the Pixel is still loading on ${path}`);
   }
 });
@@ -164,13 +164,13 @@ test('/restaurants is not swallowed by the /r/ guest prefix', () => {
   // The trap in a prefix match, and the most expensive page in the product to
   // get wrong: /restaurants is where the $149 plan is sold.
   assert.equal(analyticsAt('/restaurants').pixel, true);
-  assert.equal(analyticsAt('/r/mariposa').pixel, false);
+  assert.equal(analyticsAt('/r/test-kitchen').pixel, false);
 });
 
 test('the Google tag loads everywhere, including for guests', () => {
   // It is the product analytics rather than an ad tag, it costs effectively
   // nothing measured against production, and Claim.jsx calls window.gtag.
-  for (const path of ['/', '/restaurants', '/claim', '/r/mariposa', '/dashboard']) {
+  for (const path of ['/', '/restaurants', '/claim', '/r/test-kitchen', '/dashboard']) {
     assert.equal(analyticsAt(path).ga, true, `the Google tag is missing on ${path}`);
   }
 });
@@ -197,11 +197,11 @@ test('every origin script-src allows is one the app actually calls', () => {
 
 // ── No manufactured social proof ────────────────────────────────────────────
 //
-// The pitch page carried "Mariposa | Cocina & Cocktails runs BillTap every
-// service" under a "Live in Las Vegas" heading, beside "30 sec average time to
-// split & pay". Mariposa was not a customer — a prospect who had not said yes —
-// and the thirty seconds was invented. The comment above the section claimed it
-// contained "deliberately no invented numbers".
+// The pitch page carried a named Las Vegas restaurant under a "Live in Las
+// Vegas" heading — "runs BillTap every service" — beside "30 sec average time
+// to split & pay". That restaurant was not a customer, only a prospect who had
+// not said yes, and the thirty seconds was invented. The comment above the
+// section claimed it contained "deliberately no invented numbers".
 //
 // This guards the property rather than the wording, because the wording will
 // change and the property must not: nothing on a public page may name a
@@ -217,7 +217,17 @@ test('the pitch page names no restaurant as a customer', () => {
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
-  assert.ok(!/Mariposa/i.test(copy),
+  /**
+   * The real business, deliberately spelled out here and nowhere else in the
+   * fixtures.
+   *
+   * Every other appearance of this name was renamed to a placeholder so a
+   * public repo does not use a real restaurant as its example. This one has to
+   * stay literal: the whole job of the assertion is to fail if THIS name comes
+   * back into the rendered copy, and a guard pointed at an invented placeholder
+   * asserts nothing at all.
+   */
+  assert.ok(!/mariposa/i.test(copy),
     'a named restaurant is back in the rendered copy — it must be a customer who agreed to be named');
   assert.ok(!/runs BillTap every service/i.test(copy));
   assert.ok(!/taking real tables today/i.test(copy));

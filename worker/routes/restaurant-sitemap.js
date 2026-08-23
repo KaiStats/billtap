@@ -24,6 +24,24 @@
  * protect. A sitemap is an explicit request to index; submitting a page we
  * are about to delete, for a stranger's restaurant, is the exact harm.
  *
+ * Reference accounts are excluded for the same reason wearing different
+ * clothes, and this one nearly shipped.
+ *
+ * `reference_account` exists to keep a row off the billing clock — see
+ * migration 0023. It says nothing about whether that restaurant agreed to be
+ * published, and the one row carrying it is Mariposa, which the comment in
+ * src/pages/Restaurants.jsx describes exactly: "Mariposa is not a customer.
+ * They are a prospect who has not said yes." A fabricated claim that they were
+ * a customer was already removed from the marketing page once, on the grounds
+ * that the owner can read it and would be right to walk.
+ *
+ * Listing them here would make the same claim again, in a file addressed to
+ * Google, and get a page bearing their name into search results. Every
+ * protection the demo path has — an unguessable slug, a noindex, deletion
+ * within a day — is bypassed by a reference row simply because `demo` is
+ * false. So the filter is entitlement AND being an actual customer, and those
+ * turn out not to be the same question.
+ *
  * Unentitled rows are excluded because SEO is part of what the $149 buys. A
  * restaurant whose trial ran out or who cancelled still has a page — the
  * guest-facing half never stops working, see shared/entitlement.js — but we
@@ -131,7 +149,7 @@ export async function onRequestGet({ env }) {
     );
 
     const entries = (Array.isArray(rows) ? rows : [])
-      .filter((r) => r && r.slug && !r.demo && isEntitled(r))
+      .filter((r) => r && r.slug && !r.demo && !r.reference_account && isEntitled(r))
       .slice(0, MAX_URLS)
       .map((r) => ({ loc: `${SITE}/r/${r.slug}`, lastmod: lastmod(r) }));
 

@@ -581,23 +581,23 @@ test('the reconcile pass gets its own invocation, like the other two', async () 
 // which is why a redirect fixes it and nothing needs reprinting.
 
 test('a card printed with /f/ reaches the guest page', async () => {
-  const res = await get('/f/mariposa');
+  const res = await get('/f/test-kitchen');
   assert.equal(res.status, 301, 'permanent: the cards are not being reprinted');
-  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa');
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/test-kitchen');
 });
 
 test('the redirect carries the query string across', async () => {
   // A table number or a campaign tag on the end belongs to the page being
   // redirected to, and dropping it silently loses whatever it was for.
-  const res = await get('/f/mariposa?table=12&utm_source=tent');
-  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa?table=12&utm_source=tent');
+  const res = await get('/f/test-kitchen?table=12&utm_source=tent');
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/test-kitchen?table=12&utm_source=tent');
 });
 
 test('a trailing slash on a printed card is not a dead end', async () => {
   // Nobody types these, but a QR encoder or a link unfurler may add one.
-  const res = await get('/f/mariposa/');
+  const res = await get('/f/test-kitchen/');
   assert.equal(res.status, 301);
-  assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa');
+  assert.equal(res.headers.get('location'), 'https://billtap.app/r/test-kitchen');
 });
 
 test('a slug with the punctuation slugs actually contain still redirects', async () => {
@@ -620,7 +620,7 @@ test('bare /f is still a 404, because no card says just that', async () => {
 test('the printed prefix does not swallow a deeper path', async () => {
   // /f/<slug>/anything is not a card. Matching it would turn every nested typo
   // into a redirect to a slug that was never printed.
-  assert.equal((await get('/f/mariposa/extra')).status, 404);
+  assert.equal((await get('/f/test-kitchen/extra')).status, 404);
 });
 
 test('robots.txt allows a restaurant page and the printed prefix that redirects to it', () => {
@@ -635,7 +635,7 @@ test('robots.txt allows a restaurant page and the printed prefix that redirects 
    * it"); the two files disagreed and robots was winning.
    *
    * The cost was concrete: every social crawler honours robots, so a guest
-   * sharing billtap.app/r/mariposa got a bare URL with no name and no image,
+   * sharing billtap.app/r/test-kitchen got a bare URL with no name and no image,
    * for a restaurant paying $149 a month.
    *
    * `/f/` follows it. It was disallowed only because its 301 target was, and
@@ -682,16 +682,16 @@ test('a card read with the wrong case still reaches the right page', async () =>
    * LEGACY_REDIRECTS exists because capitalised paths reach this app in the
    * wild, and a printed card is read by more things than a browser: a QR
    * decoder, an OCR, a person typing it off a flyer, an SMS client that
-   * title-cases what it takes for a sentence. `/F/mariposa` used to 404.
+   * title-cases what it takes for a sentence. `/F/test-kitchen` used to 404.
    *
    * The slug is lowercased on the way out too. Getting past the 404 only to
-   * hand `/r/Mariposa` to a byte-exact slug lookup would move the dead end
+   * hand `/r/Test-Kitchen` to a byte-exact slug lookup would move the dead end
    * rather than remove it — slugify() guarantees every stored slug is
    * lowercase, so anything else matches no row.
    */
-  for (const path of ['/F/mariposa', '/f/Mariposa', '/F/MARIPOSA']) {
+  for (const path of ['/F/test-kitchen', '/f/Test-Kitchen', '/F/TEST-KITCHEN']) {
     const res = await get(path);
     assert.equal(res.status, 301, path);
-    assert.equal(res.headers.get('location'), 'https://billtap.app/r/mariposa', path);
+    assert.equal(res.headers.get('location'), 'https://billtap.app/r/test-kitchen', path);
   }
 });

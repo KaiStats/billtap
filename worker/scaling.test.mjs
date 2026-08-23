@@ -535,7 +535,7 @@ test('a demo restaurant and its guest rows never reach the bucket', async () => 
     rowsFor: {
       restaurants: [
         { id: 'r_real', name: 'Herb & Rye', demo: false },
-        { id: 'r_demo', name: 'Mariposa', demo: true },
+        { id: 'r_demo', name: 'Test Kitchen', demo: true },
       ],
       guest_ratings: [
         { id: 'gr_real', restaurant_id: 'r_real', stars: 5 },

@@ -270,7 +270,7 @@ test('the audit log is pseudonymised rather than purged', async () => {
 test('demo pages this person stood up are deleted outright, with their guest rows', async () => {
   // They carry a real business's name and were never theirs to keep.
   await withStub({
-    restaurants: [{ id: 'd1', owner_id: 'user_kai', name: 'Mariposa', slug: 'x7k', demo: true }],
+    restaurants: [{ id: 'd1', owner_id: 'user_kai', name: 'Test Kitchen', slug: 'x7k', demo: true }],
   }, async (s) => {
     const res = await post();
     assert.equal(res.status, 200);

@@ -22,9 +22,9 @@ const ENV = {
 
 const DAY = 86400000;
 const PAYING = () => ({
-  id: 'r1', name: 'Mariposa', slug: 'mariposa',
+  id: 'r1', name: 'Test Kitchen', slug: 'test-kitchen',
   google_review_url: 'https://g.page/r/CX0/review',
-  alert_email: 'gm@mariposa.example',
+  alert_email: 'gm@test-kitchen.example',
   rating_threshold: 4,
   plan: 'active', current_period_end: Date.now() + 20 * DAY,
 });
@@ -73,7 +73,7 @@ async function withStub(opts, fn) {
   try { return await fn(s); } finally { s.restore(); }
 }
 
-const publicLookup = (slug = 'mariposa') =>
+const publicLookup = (slug = 'test-kitchen') =>
   HANDLERS.getPublicRestaurant({
     env: ENV,
     request: new Request('https://billtap.app/api/fn/getPublicRestaurant', { method: 'POST' }),
@@ -108,7 +108,7 @@ test('an unpaid one hands out nothing, and the guest sees no error', async () =>
     const out = await res.json();
     assert.equal(res.status, 200, 'still a normal answer — the guest did nothing wrong');
     assert.equal(out.restaurant.google_review_url, null);
-    assert.equal(out.restaurant.name, 'Mariposa', 'the rest of the screen still works');
+    assert.equal(out.restaurant.name, 'Test Kitchen', 'the rest of the screen still works');
     assert.equal(out.restaurant.rating_threshold, 4);
   });
 });
@@ -130,7 +130,7 @@ test('a paying restaurant is paged about an unhappy guest', async () => {
     const res = await alertFor();
     assert.equal(res.status, 200);
     assert.equal(emails.length, 1);
-    assert.equal(emails[0].To, 'gm@mariposa.example');
+    assert.equal(emails[0].To, 'gm@test-kitchen.example');
   });
 });
 

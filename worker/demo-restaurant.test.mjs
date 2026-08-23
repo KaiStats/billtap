@@ -378,7 +378,7 @@ test("a demo is never mistaken for the operator's own restaurant", async () => {
     created_date: '2026-08-01T00:00:00Z',
   };
   const real = {
-    id: 'r_real', name: 'Mariposa', slug: 'mariposa',
+    id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen',
     owner_id: KAI, alert_email: OPERATOR_EMAIL, plan: 'active',
     created_date: '2026-08-09T00:00:00Z',
   };
@@ -390,7 +390,7 @@ test("a demo is never mistaken for the operator's own restaurant", async () => {
       env: ENV, request: request(), audit: async () => {},
     });
     const out = await res.json();
-    assert.equal(out.restaurant.slug, 'mariposa');
+    assert.equal(out.restaurant.slug, 'test-kitchen');
   });
 });
 
@@ -437,7 +437,7 @@ test("an operator's own split is not filed against one of his demos", async () =
     id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq',
     owner_id: KAI, demo: true, demo_expires_at: Date.now() + 3600000,
   };
-  const real = { id: 'r_real', name: 'Mariposa', slug: 'mariposa', owner_id: KAI, demo: false };
+  const real = { id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', owner_id: KAI, demo: false };
 
   await withStub({ restaurants: [demo, real] }, async ({ tables }) => {
     const res = await HANDLERS.createSession({
@@ -474,11 +474,11 @@ test('demos never appear in the public restaurant list', async () => {
   // A list of restaurant names, answered to anyone who asks. A demo's name is a
   // business that has not agreed to appear on a list of BillTap's restaurants.
   const demo = { id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq', demo: true };
-  const real = { id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false };
+  const real = { id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', demo: false };
   await withStub({ restaurants: [demo, real] }, async () => {
     const res = await HANDLERS.listRestaurants({ env: ENV });
     const out = await res.json();
-    assert.deepEqual(out.restaurants.map((r) => r.name), ['Mariposa']);
+    assert.deepEqual(out.restaurants.map((r) => r.name), ['Test Kitchen']);
   });
 });
 
@@ -492,7 +492,7 @@ test('his live demos come back soonest-to-expire, and expired ones do not', asyn
     // Expired at lunchtime. The cleanup job is nightly, so it is still in the
     // table — and it must stop being offered now rather than at 09:30 tomorrow.
     { id: 'c', name: 'Gone', slug: 'g-cccccc', owner_id: KAI, demo: true, demo_expires_at: now - 3600000 },
-    { id: 'd', name: 'Mariposa', slug: 'mariposa', owner_id: KAI, demo: false },
+    { id: 'd', name: 'Test Kitchen', slug: 'test-kitchen', owner_id: KAI, demo: false },
     { id: 'e', name: 'Someone Else', slug: 'x-eeeeee', owner_id: 'user_other', demo: true, demo_expires_at: now + 3600000 },
   ];
   await withStub({ restaurants: rows }, async () => {
@@ -620,7 +620,7 @@ test('a real restaurant is never touched, expired demos beside it or not', async
   // that decides what is disposable has to be exact.
   await withStub({}, async (s) => {
     seed(s, [withChildren('expired', NOW - 3600000)]);
-    s.tables.restaurants.push({ id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false, plan: 'active' });
+    s.tables.restaurants.push({ id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', demo: false, plan: 'active' });
     s.tables.guest_ratings.push({ id: 'gr_real', restaurant_id: 'r_real', stars: 5 });
 
     await sweepExpiredDemos(ENV, serviceRole(ENV), { now: NOW });
@@ -671,12 +671,12 @@ test('one demo that will not delete does not stop the rest', async () => {
 });
 
 test('a real restaurant is not flagged as a demo', async () => {
-  const real = { id: 'r_real', name: 'Mariposa', slug: 'mariposa', plan: 'active', current_period_end: Date.now() + 20 * 86400000 };
+  const real = { id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', plan: 'active', current_period_end: Date.now() + 20 * 86400000 };
   await withStub({ restaurants: [real] }, async () => {
     const res = await HANDLERS.getPublicRestaurant({
       env: ENV,
       request: new Request('https://billtap.app/api/fn/getPublicRestaurant', { method: 'POST' }),
-      body: { slug: 'mariposa' },
+      body: { slug: 'test-kitchen' },
     });
     assert.equal((await res.json()).restaurant.demo, false);
   });
@@ -690,13 +690,13 @@ test('a real restaurant is not flagged as a demo', async () => {
 
 test('a scanned table, server and check number are stored on the split', async () => {
   await withStub({ user: null }, async (s) => {
-    s.tables.restaurants.push({ id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false });
+    s.tables.restaurants.push({ id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', demo: false });
     const res = await HANDLERS.createSession({
       env: ENV,
       request: request(false),
       body: {
         title: 'Dinner', total_amount: 40, items: [], participants: [],
-        restaurant_slug: 'mariposa',
+        restaurant_slug: 'test-kitchen',
         ticket: { table: '14', server: 'Marco', number: '4471' },
       },
       audit: async () => {},
@@ -926,7 +926,7 @@ test('a restaurant table never sees a consumer upsell', async () => {
   // Their limit is the row ceiling, not a tier. The restaurant already pays
   // $149 and its party of twelve is the business it bought.
   await withStub({ user: null }, async (s) => {
-    s.tables.restaurants.push({ id: 'r_real', name: 'Mariposa', slug: 'mariposa', demo: false });
+    s.tables.restaurants.push({ id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', demo: false });
     s.tables.sessions = [{
       id: 's_rest', participants: party(12), items: [], restaurant_id: 'r_real',
       created_by_id: null, host_key_hash: HK_HASH, expires_at: Date.now() + 86400000,

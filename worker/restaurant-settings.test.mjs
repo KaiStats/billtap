@@ -152,12 +152,12 @@ async function save(body, { signedIn = true, audited = [] } = {}) {
 }
 
 /** An existing restaurant belonging to OWNER. */
-const MARIPOSA = () => ({
-  id: 'r_mariposa',
-  name: 'Mariposa',
-  slug: 'mariposa',
+const TEST_KITCHEN = () => ({
+  id: 'r_test_kitchen',
+  name: 'Test Kitchen',
+  slug: 'test-kitchen',
   owner_id: OWNER,
-  alert_email: 'gm@mariposa.example',
+  alert_email: 'gm@test-kitchen.example',
   alert_phone: null,
   google_review_url: null,
   rating_threshold: 3,
@@ -182,7 +182,7 @@ test('an id in the body reaches nobody — ownership comes from the session', as
   // The whole shape of this endpoint. There is no id parameter, so the worst a
   // caller can do by sending one is have it ignored: OTHER's row is untouched
   // and the write lands on a new row owned by the caller.
-  const victim = { ...MARIPOSA(), id: 'r_victim', slug: 'victim', owner_id: OTHER };
+  const victim = { ...TEST_KITCHEN(), id: 'r_victim', slug: 'victim', owner_id: OTHER };
   await withStub({ restaurants: [victim] }, async ({ tables }) => {
     const { res, json } = await save({
       id: 'r_victim',
@@ -193,7 +193,7 @@ test('an id in the body reaches nobody — ownership comes from the session', as
 
     assert.equal(res.status, 200);
     const untouched = tables.restaurants.find((r) => r.id === 'r_victim');
-    assert.equal(untouched.name, 'Mariposa');
+    assert.equal(untouched.name, 'Test Kitchen');
     assert.equal(untouched.google_review_url, null, "another owner's review link cannot be repointed");
     assert.equal(json.restaurant.id, 'r_1', 'the caller got their own new row');
     assert.equal(tables.restaurants.find((r) => r.id === 'r_1').owner_id, OWNER);
@@ -206,15 +206,15 @@ test('an id in the body reaches nobody — ownership comes from the session', as
 // cannot give it one: that trigger matches only rows carrying a
 // legacy_owner_id, and it fires only on INSERT into auth.users, so it does
 // nothing for a hand-made row and nothing for an operator who already has an
-// account. Mariposa is both.
+// account. Test Kitchen is both.
 //
 // The failure that produces is silent and expensive: the operator is shown the
 // create form, makes a second restaurant on a suffixed slug, and every table
 // tent already printed goes on pointing at the row he no longer owns.
 
-/** MARIPOSA before anyone has signed in for it — the hand-made shape. */
+/** TEST_KITCHEN before anyone has signed in for it — the hand-made shape. */
 const UNCLAIMED = () => ({
-  ...MARIPOSA(),
+  ...TEST_KITCHEN(),
   owner_id: null,
   legacy_owner_id: null,
   alert_email: 'owner@example.com',
@@ -222,16 +222,16 @@ const UNCLAIMED = () => ({
 
 test('an unclaimed row is adopted, not duplicated, on the first save', async () => {
   await withStub({ restaurants: [UNCLAIMED()] }, async ({ tables }) => {
-    const { res, json, audited } = await save({ name: 'Mariposa' });
+    const { res, json, audited } = await save({ name: 'Test Kitchen' });
 
     assert.equal(res.status, 200);
     assert.equal(tables.restaurants.length, 1, 'a second restaurant is the whole bug');
     assert.equal(tables.restaurants[0].owner_id, OWNER);
-    assert.equal(json.restaurant.slug, 'mariposa', 'and the printed table tents still resolve');
+    assert.equal(json.restaurant.slug, 'test-kitchen', 'and the printed table tents still resolve');
 
     assert.equal(audited[0].action, ACTIONS.RESTAURANT_CLAIMED);
     assert.equal(audited[0].actorUserId, OWNER);
-    assert.deepEqual(safeDetail(audited[0].detail), { slug: 'mariposa' });
+    assert.deepEqual(safeDetail(audited[0].detail), { slug: 'test-kitchen' });
   });
 });
 
@@ -247,7 +247,7 @@ test('the dashboard read adopts too, so the create form is never offered', async
     });
     const out = await res.json();
 
-    assert.equal(out.restaurant.slug, 'mariposa');
+    assert.equal(out.restaurant.slug, 'test-kitchen');
     assert.equal(tables.restaurants[0].owner_id, OWNER);
   });
 });
@@ -256,11 +256,11 @@ test('a restaurant that already has an owner is never adopted', async () => {
   // Same alert_email, different owner. The gate is owner_id being null, and
   // every row this endpoint creates sets it — so a live restaurant cannot be
   // taken from its operator by signing in with an address it happens to alert.
-  const theirs = { ...MARIPOSA(), owner_id: OTHER, alert_email: 'owner@example.com' };
+  const theirs = { ...TEST_KITCHEN(), owner_id: OTHER, alert_email: 'owner@example.com' };
   await withStub({ restaurants: [theirs] }, async ({ tables }) => {
     const { json } = await save({ name: 'Mine Now' });
 
-    assert.equal(tables.restaurants.find((r) => r.id === 'r_mariposa').owner_id, OTHER);
+    assert.equal(tables.restaurants.find((r) => r.id === 'r_test_kitchen').owner_id, OTHER);
     assert.equal(json.restaurant.id, 'r_1', 'the caller got a new row of their own instead');
     assert.equal(tables.restaurants.length, 2);
   });
@@ -271,7 +271,7 @@ test('an unclaimed row alerting a different address is not adopted', async () =>
   await withStub({ restaurants: [someone_else] }, async ({ tables }) => {
     const { json, audited } = await save({ name: 'Harrys' });
 
-    assert.equal(tables.restaurants.find((r) => r.id === 'r_mariposa').owner_id, null);
+    assert.equal(tables.restaurants.find((r) => r.id === 'r_test_kitchen').owner_id, null);
     assert.equal(json.restaurant.slug, 'harrys');
     assert.equal(audited[0].action, ACTIONS.RESTAURANT_CREATED, 'nothing was claimed');
   });
@@ -308,7 +308,7 @@ test('a first save creates the row, on trial, owned by the caller', async () => 
 test("an apostrophe drops out of a slug rather than becoming a hyphen", async () => {
   // This string is printed on a table tent and read aloud down a phone.
   assert.equal(slugify("Harry's"), 'harrys');
-  assert.equal(slugify('Mariposa'), 'mariposa');
+  assert.equal(slugify('Test Kitchen'), 'test-kitchen');
   assert.equal(slugify('Fish & Chips'), 'fish-chips');
   assert.equal(slugify('Café Rouge'), 'cafe-rouge');
   assert.equal(slugify('  --Joe--  '), 'joe');
@@ -317,11 +317,11 @@ test("an apostrophe drops out of a slug rather than becoming a hyphen", async ()
 test('a slug already in use gets a suffix rather than a collision', async () => {
   // Two restaurants sharing a slug means one of them has table tents pointing
   // at the other's listing.
-  const taken = { ...MARIPOSA(), id: 'r_taken', slug: 'mariposa', owner_id: OTHER };
+  const taken = { ...TEST_KITCHEN(), id: 'r_taken', slug: 'test-kitchen', owner_id: OTHER };
   await withStub({ restaurants: [taken] }, async ({ tables }) => {
-    const { json } = await save({ name: 'Mariposa' });
-    assert.equal(json.restaurant.slug, 'mariposa-2');
-    assert.equal(tables.restaurants.filter((r) => r.slug === 'mariposa').length, 1);
+    const { json } = await save({ name: 'Test Kitchen' });
+    assert.equal(json.restaurant.slug, 'test-kitchen-2');
+    assert.equal(tables.restaurants.filter((r) => r.slug === 'test-kitchen').length, 1);
   });
 });
 
@@ -347,11 +347,11 @@ test("a create with no alert email falls back to the address they signed in with
 test('renaming a restaurant does not move its slug', async () => {
   // The one that would be discovered by a guest, at a table, holding a card
   // that 404s. Printed table tents encode /r/<slug>.
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
-    const { json } = await save({ name: 'Mariposa Cantina' });
-    assert.equal(json.restaurant.name, 'Mariposa Cantina');
-    assert.equal(json.restaurant.slug, 'mariposa');
-    assert.equal(tables.restaurants[0].slug, 'mariposa');
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
+    const { json } = await save({ name: 'Test Kitchen Cantina' });
+    assert.equal(json.restaurant.name, 'Test Kitchen Cantina');
+    assert.equal(json.restaurant.slug, 'test-kitchen');
+    assert.equal(tables.restaurants[0].slug, 'test-kitchen');
     assert.equal(tables.restaurants.length, 1, 'a rename patches, it does not create a second row');
   });
 });
@@ -359,7 +359,7 @@ test('renaming a restaurant does not move its slug', async () => {
 test('the server-owned fields are ignored when sent, not refused', async () => {
   // Refusing would break a browser that echoes back the row it was given. The
   // guarantee is that none of them land.
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
     const { res } = await save({
       alert_phone: '(702) 555-0134',
       slug: 'somewhere-else',
@@ -374,7 +374,7 @@ test('the server-owned fields are ignored when sent, not refused', async () => {
     assert.equal(res.status, 200);
     const row = tables.restaurants[0];
     assert.equal(row.alert_phone, '(702) 555-0134', 'the field they were allowed to set did land');
-    assert.equal(row.slug, 'mariposa');
+    assert.equal(row.slug, 'test-kitchen');
     assert.equal(row.owner_id, OWNER);
     assert.equal(row.trial_ends_at, 1735689600000);
     assert.equal(row.stripe_customer_id, 'cus_live_123');
@@ -383,7 +383,7 @@ test('the server-owned fields are ignored when sent, not refused', async () => {
 });
 
 test('a threshold outside one to four is refused, and four is stored', async () => {
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
     for (const bad of [0, 5, -1, 3.5, 'four', {}]) {
       const { res } = await save({ rating_threshold: bad });
       assert.equal(res.status, 400, `${JSON.stringify(bad)} should be refused`);
@@ -442,7 +442,7 @@ test('a review link that is not Google over https is refused', async () => {
   ];
   for (const url of allowed) assert.equal(isGoogleReviewUrl(url), true, `${url} must be accepted`);
 
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
     const { res } = await save({ google_review_url: 'https://evil.example/review' });
     assert.equal(res.status, 400);
     assert.equal(tables.restaurants[0].google_review_url, null, 'nothing was written on the way to refusing');
@@ -456,7 +456,7 @@ test('a review link that is not Google over https is refused', async () => {
 test('an empty review link clears it rather than failing validation', async () => {
   // "Take that link down" is a legitimate thing to want: it puts the Google
   // handoff back to disabled instead of pointing it somewhere stale.
-  const withUrl = { ...MARIPOSA(), google_review_url: 'https://g.page/r/old/review' };
+  const withUrl = { ...TEST_KITCHEN(), google_review_url: 'https://g.page/r/old/review' };
   await withStub({ restaurants: [withUrl] }, async ({ tables }) => {
     const { res } = await save({ google_review_url: '   ' });
     assert.equal(res.status, 200);
@@ -467,7 +467,7 @@ test('an empty review link clears it rather than failing validation', async () =
 // ── The read half ───────────────────────────────────────────────────────────
 
 test('the dashboard read returns the row the settings form populates from', async () => {
-  await withStub({ restaurants: [MARIPOSA()] }, async () => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async () => {
     const res = await HANDLERS.getRestaurantDashboardData({
       env: ENV,
       request: request(),
@@ -475,11 +475,11 @@ test('the dashboard read returns the row the settings form populates from', asyn
     });
     const out = await res.json();
 
-    assert.equal(out.restaurant.name, 'Mariposa');
-    assert.equal(out.restaurant.slug, 'mariposa');
-    assert.equal(out.restaurant.alert_email, 'gm@mariposa.example');
+    assert.equal(out.restaurant.name, 'Test Kitchen');
+    assert.equal(out.restaurant.slug, 'test-kitchen');
+    assert.equal(out.restaurant.alert_email, 'gm@test-kitchen.example');
     assert.equal(out.restaurant.rating_threshold, 3);
-    assert.equal(out.restaurant_id, 'r_mariposa', 'and the old field is still there');
+    assert.equal(out.restaurant_id, 'r_test_kitchen', 'and the old field is still there');
 
     // Allow-list, not a spread.
     assert.deepEqual(Object.keys(out.restaurant).sort(), [
@@ -526,12 +526,12 @@ test('the guest-facing read sends the same number the operator set', async () =>
   // getPublicRestaurant feeds RatingCapture, which decides from it whether to
   // ask what went wrong and page the manager. It is the second reading of the
   // column and the one a guest actually meets.
-  const stringy = { ...MARIPOSA(), owner_id: OTHER, rating_threshold: '3' };
+  const stringy = { ...TEST_KITCHEN(), owner_id: OTHER, rating_threshold: '3' };
   await withStub({ restaurants: [stringy] }, async () => {
     const res = await HANDLERS.getPublicRestaurant({
       env: ENV,
       request: request(false),
-      body: { slug: 'mariposa' },
+      body: { slug: 'test-kitchen' },
       audit: async () => {},
     });
     const out = await res.json();
@@ -571,14 +571,14 @@ test('an empty slug base never produces a leading hyphen', async () => {
 // anyone was Stripe's success_url, once, on the day they paid.
 
 test('an operator gets the two fields a link needs, and nothing else', async () => {
-  await withStub({ restaurants: [MARIPOSA()] }, async () => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async () => {
     const res = await HANDLERS.getMyRestaurantSummary({
       env: ENV, request: request(), audit: async () => {},
     });
     const out = await res.json();
 
     assert.equal(res.status, 200);
-    assert.deepEqual(out.restaurant, { slug: 'mariposa', name: 'Mariposa' });
+    assert.deepEqual(out.restaurant, { slug: 'test-kitchen', name: 'Test Kitchen' });
     // Emphatically not the row. This is asked to decide whether to draw a link,
     // on a screen that displays none of it.
     assert.deepEqual(Object.keys(out.restaurant).sort(), ['name', 'slug']);
@@ -612,7 +612,7 @@ test('the summary never writes a guests.exported row', async () => {
   // load it would bury the real exports under navigation noise, destroying the
   // only signal "did anyone export our guest list" has.
   const audited = [];
-  await withStub({ restaurants: [MARIPOSA()] }, async () => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async () => {
     await HANDLERS.getMyRestaurantSummary({
       env: ENV,
       request: request(),
@@ -629,7 +629,7 @@ test('the summary adopts, so the link reaches the operator who cannot find the s
     const res = await HANDLERS.getMyRestaurantSummary({
       env: ENV, request: request(), audit: async () => {},
     });
-    assert.equal((await res.json()).restaurant.slug, 'mariposa');
+    assert.equal((await res.json()).restaurant.slug, 'test-kitchen');
     assert.equal(tables.restaurants[0].owner_id, OWNER);
   });
 });
@@ -664,7 +664,7 @@ test('one validator covers create and update, so the two cannot drift', async ()
 // these mostly pin is that nothing can move it after it is set.
 
 test('the first Google reading becomes the baseline', async () => {
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
     const { res } = await save({ google_review_count: 89, google_rating: 4.1 });
     assert.equal(res.status, 200);
 
@@ -687,7 +687,7 @@ test('a later reading moves the current figure and never the baseline', async ()
    * not working rather than like a defect.
    */
   const withBaseline = {
-    ...MARIPOSA(),
+    ...TEST_KITCHEN(),
     google_review_count: 89, google_review_count_start: 89,
     google_rating: 4.1, google_rating_start: 4.1,
     google_baseline_at: 1000,
@@ -707,7 +707,7 @@ test('a caller cannot write the baseline directly', async () => {
   // Otherwise the lift is whatever the client says it is, and the one number
   // this product asks an operator to trust is the one it cannot vouch for.
   const withBaseline = {
-    ...MARIPOSA(),
+    ...TEST_KITCHEN(),
     google_review_count: 134, google_review_count_start: 89, google_rating_start: 4.1,
   };
   await withStub({ restaurants: [withBaseline] }, async ({ tables }) => {
@@ -726,7 +726,7 @@ test('a caller cannot write the baseline directly', async () => {
 
 test('an implausible Google reading is refused rather than stored', async () => {
   // Typed by hand. A rating of 45 would render as a lift no restaurant has had.
-  await withStub({ restaurants: [MARIPOSA()] }, async ({ tables }) => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
     for (const body of [
       { google_rating: 45 },
       { google_rating: -1 },

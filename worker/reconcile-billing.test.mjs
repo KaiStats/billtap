@@ -24,7 +24,7 @@ const ENV = {
 };
 
 const SUBSCRIBED = () => ({
-  id: 'r1', name: 'Mariposa', plan: 'active',
+  id: 'r1', name: 'Test Kitchen', plan: 'active',
   stripe_subscription_id: 'sub_live_1',
   current_period_end: Date.UTC(2026, 7, 20),
 });

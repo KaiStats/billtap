@@ -207,13 +207,27 @@ export default function TableEntry() {
         actually set a review link, and only when they are entitled to it —
         getPublicRestaurant withholds that field otherwise, so an unpaid
         account cannot leak one either.
+
+        ── noindex is computed server-side, not inferred here ────────────────
+
+        It covers demo rows and reference accounts both, and the second is the
+        one that mattered. A reference account is a real business that has not
+        agreed to be published — `reference_account` only means "off the
+        billing clock" — and it slips past every demo protection precisely
+        because `demo` is false. getPublicRestaurant sends the answer as a
+        computed boolean so this page never has to know which kind of row it
+        is looking at.
+
+        `restaurant.demo` stays as the fallback for a cached response minted
+        before the field existed. When the answer is unknown the safe
+        direction is not to index.
       */}
       <Seo
         path={`/r/${slug}`}
         title={`${restaurant.name} — Split the check | BillTap`}
         description={`Split the check at ${restaurant.name}. Everyone scans, claims what they ordered, and pays their exact share — no app and no account.`}
-        noindex={!!restaurant.demo}
-        schema={restaurant.demo ? null : [{
+        noindex={restaurant.noindex ?? !!restaurant.demo}
+        schema={(restaurant.noindex ?? restaurant.demo) ? null : [{
           "@context": "https://schema.org",
           "@type": "Restaurant",
           name: restaurant.name,

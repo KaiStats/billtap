@@ -1344,6 +1344,23 @@ const HANDLERS = {
          * for whom the honest label is the better outcome.
          */
         demo: Boolean(r.demo),
+        /**
+         * Whether a crawler should index this page, decided here rather than
+         * inferred on the client.
+         *
+         * A demo is one reason. A reference account is the other, and it is
+         * the one that nearly got a page published: `reference_account` keeps
+         * a row off the billing clock (migration 0023) and says nothing about
+         * whether that business agreed to appear in search results. The only
+         * row carrying it is described in src/pages/Restaurants.jsx as "not a
+         * customer... a prospect who has not said yes", and a fabricated claim
+         * that they were a customer was deleted from that page once already.
+         *
+         * Sent as a computed boolean rather than as the flag itself, so the
+         * page never has to tell a guest which kind of row it is. The client
+         * only needs to know whether to write the tag; why is our business.
+         */
+        noindex: Boolean(r.demo || r.reference_account),
       },
     });
   },

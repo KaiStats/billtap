@@ -1252,24 +1252,53 @@ test('an unknown restaurant is a 404', async () => {
   });
 });
 
-test('the public lookup returns six fields and withholds the rest', async () => {
+test('the public lookup returns seven fields and withholds the rest', async () => {
   const full = {
     id: 'r1', name: "Joe's", slug: 'joes',
     google_review_url: 'https://g.page/joes', rating_threshold: 4,
     alert_email: 'owner@joes.com', alert_phone: '+15551234567',
     owner_id: 'user_1', stripe_customer_id: 'cus_123', stripe_subscription_id: 'sub_123',
+    reference_account: true,
   };
   await withStub({ entities: { Restaurant: [full] } }, async ({ env }) => {
     const { restaurant } = await body(await HANDLERS.getPublicRestaurant({ env, body: { slug: 'joes' } }));
     // `demo` joined this list with migration 0013: /r/:slug is rendered by the
     // SPA from this response, so telling a crawler not to index a demo page has
     // to be something the response says. It discloses nothing — see the comment
-    // on the field itself.
+    // on the field itself. `noindex` joined for the same reason and covers a
+    // second case demo alone missed.
     assert.deepEqual(Object.keys(restaurant).sort(),
-      ['demo', 'google_review_url', 'id', 'name', 'rating_threshold', 'slug']);
+      ['demo', 'google_review_url', 'id', 'name', 'noindex', 'rating_threshold', 'slug']);
     for (const secret of ['alert_email', 'alert_phone', 'owner_id', 'stripe_customer_id', 'stripe_subscription_id']) {
       assert.equal(restaurant[secret], undefined, `${secret} must not be public`);
     }
+    // The flag itself stays private; only the decision it drives is public.
+    assert.equal(restaurant.reference_account, undefined, 'the flag must not be public');
+  });
+});
+
+test('a reference account tells crawlers to stay away, without saying why', async () => {
+  /**
+   * The gap that nearly published a page.
+   *
+   * `reference_account` means "off the billing clock" and nothing about
+   * consent to be published. The only row that carries it is described in
+   * src/pages/Restaurants.jsx as "not a customer... a prospect who has not
+   * said yes" — and because `demo` is false, every protection the demo path
+   * has was bypassed.
+   */
+  const rows = [
+    { id: 'r1', name: 'Prospect', slug: 'prospect', reference_account: true },
+    { id: 'r2', name: 'Demo', slug: 'demo-row', demo: true },
+    { id: 'r3', name: 'Customer', slug: 'customer', plan: 'active' },
+  ];
+  await withStub({ entities: { Restaurant: rows } }, async ({ env }) => {
+    const get = async (slug) =>
+      (await body(await HANDLERS.getPublicRestaurant({ env, body: { slug } }))).restaurant;
+
+    assert.equal((await get('prospect')).noindex, true, 'a prospect must not be indexed');
+    assert.equal((await get('demo-row')).noindex, true);
+    assert.equal((await get('customer')).noindex, false, "a real customer's page is theirs to rank");
   });
 });
 
