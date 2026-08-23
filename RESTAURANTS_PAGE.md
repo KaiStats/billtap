@@ -167,6 +167,24 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `GEMINI_API_KEY` | for receipt scanning | — |
 | `QR_SIGNING_SECRET` | for table QR tokens | — |
 | `DEMO_OPERATOR_EMAILS` | to create demo pages | — (empty denies everyone) |
+| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) |
+
+**`DEMO_TTL_HOURS` is short on purpose.** A demo publishes a live page carrying
+a real business's name, for a business that has agreed to nothing, so every
+extra hour is another hour that page can be found or stumbled on by the owner
+whose name is on it. A day is the default because the page should not outlive
+the conversation it was made for.
+
+The "come back Tuesday" case is handled by extending the one demo that matters
+rather than by keeping them all alive: `extendDemoRestaurant` pushes a live
+demo's clock out on demand **without changing its slug**, so the URL already
+handed over keeps working. Everything nobody asked about still expires tonight,
+and `sweepExpiredDemos` hard-deletes it — row, ratings and contacts — on the
+nightly retention pass.
+
+Anything unset, empty, non-numeric, zero or negative falls back to 24 rather
+than erroring: this code runs mid-sales-call, and a bad binding must not be
+what stops a demo being created in front of a prospect.
 
 **`SUPABASE_SERVICE_ROLE_KEY` is a runtime secret, not a build variable.**
 `/api/rating-alert` uses it to look the rating up server-side and derive the

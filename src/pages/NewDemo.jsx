@@ -182,11 +182,27 @@ function timeLeft(expiresAt) {
   return remHours ? `${days}d ${remHours}h left` : `${days}d left`;
 }
 
-/** Under 24h remaining — the point where the countdown should read as urgent. */
+/**
+ * Under three hours left — the point where the countdown turns gold.
+ *
+ * This was 24 hours, which was defensible only while demos lived a week. With
+ * the default back at a day it made every demo urgent from the moment it was
+ * created: gold on creation, gold until it died, which is the same as having
+ * no warning at all. A signal that is always on is not a signal.
+ *
+ * Three hours is a fixed threshold rather than a fraction of the term because
+ * the browser is not told the term — DEMO_TTL_HOURS lives on the server and
+ * can change without a deploy. It reads correctly at either end of that range:
+ * the last eighth of a one-day demo, and genuinely the last moments of a
+ * one-week one. What it means is "extend this now if the prospect still cares",
+ * and that is true whenever it fires.
+ */
+const EXPIRING_SOON_MS = 3 * 3600000;
+
 function expiringSoon(expiresAt) {
   if (!expiresAt) return false;
   const ms = Number(expiresAt) - Date.now();
-  return ms > 0 && ms < 24 * 3600000;
+  return ms > 0 && ms < EXPIRING_SOON_MS;
 }
 
 /** @param {{ demo: any, highlight?: boolean, onExtend?: (slug: string) => void, extending?: boolean }} props */
@@ -232,7 +248,18 @@ function DemoCard({ demo, highlight = false, onExtend, extending = false }) {
           className="mt-3 text-xs font-bold underline disabled:opacity-50"
           style={{ color: GOLD }}
         >
-          {extending ? "Extending…" : "Extend another week"}
+          {/*
+            "Extend", not "Extend another week".
+
+            How long an extension buys is DEMO_TTL_HOURS on the server, which
+            the browser is never told and which can be changed without a
+            deploy. A button naming a specific term was a promise this screen
+            has no way to keep — it said "another week" while the default was a
+            day, which is the kind of small lie an operator only discovers in
+            front of a prospect. The countdown directly above updates the
+            moment this returns, so the honest answer is on screen anyway.
+          */}
+          {extending ? "Extending…" : "Extend"}
         </button>
       ) : null}
     </div>

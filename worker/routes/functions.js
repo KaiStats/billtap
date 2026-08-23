@@ -587,12 +587,27 @@ async function reserveSlug(svc, name) {
 /**
  * How long a demo page lives.
  *
- * A day was too short: the commonest good outcome at a door is "let me show my
- * partner", and the partner is in on Tuesday — so a URL handed over on Sunday
- * was 404ing in front of the exact person the prospect wanted to impress. A
- * week survives a normal decision cycle without becoming indefinite.
+ * ── Back to a day, deliberately ─────────────────────────────────────────────
+ *
+ * This was briefly a week, on the argument that "let me show my partner" is
+ * the commonest good outcome at a door and the partner is in on Tuesday. That
+ * is true, and it is not worth what it costs.
+ *
+ * What it costs is a standing list of live public pages carrying the names of
+ * businesses that agreed to nothing. Every day of life is another day each of
+ * those pages can be found, indexed, or stumbled on by the owner whose name is
+ * on it — and seven of them at a time rather than one. The original note here
+ * had it right: a page carrying a stranger's business name that outlives the
+ * conversation it was made for is not a demo any more.
+ *
+ * The Tuesday case does not need a longer default, because it now has an
+ * explicit answer. extendDemoRestaurant pushes a live demo's clock out on
+ * demand, without changing its slug, so the operator extends the one demo a
+ * prospect actually asked to keep. That is strictly better than extending
+ * every demo he has ever made on the chance that one of them mattered: the
+ * pages that no one asked about expire tonight, which is the whole point.
  */
-const DEMO_HOURS_DEFAULT = 168;
+const DEMO_HOURS_DEFAULT = 24;
 
 /** Floor on a configured DEMO_TTL_HOURS. Below this it is not a demo window. */
 const DEMO_HOURS_MIN = 1;
