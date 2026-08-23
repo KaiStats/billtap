@@ -22,17 +22,54 @@ Disallow: /icon-generator
 # everything else is index-by-default.
 Disallow: /new
 
-# Per-table guest links from the QR tents. These are one-off session URLs, not
-# pages — indexing them would strand crawlers on dead splits.
-Disallow: /r/
+# /r/<slug> is a paying restaurant's own page, and it is allowed.
+#
+# This line used to read "Disallow: /r/" under the note that these are "one-off
+# session URLs, not pages". That was a description of a different URL. A split
+# session is /claim?token=… and expires; /r/<slug> is permanent, branded, and
+# printed on the table tents — src/pages/TableEntry.jsx says as much in its own
+# comment: "A real restaurant's table-tent page is theirs and there is no
+# reason to hide it." The two files disagreed and robots was winning.
+#
+# What the disallow actually cost:
+#
+#   Every social crawler respects this file. So a guest texting
+#   billtap.app/r/mariposa, or posting it, got a bare URL with no name and no
+#   image — the restaurant paying $149 a month had a link that looked broken
+#   the moment it travelled.
+#
+# And it made the demo pages LESS safe, not more. A disallowed URL can still be
+# indexed from an external link: Google cannot fetch it, so it never reads the
+# noindex, and it lists the bare URL with no snippet and no way to remove it.
+# Allowing the crawl is what lets a crawler actually see the noindex that
+# TableEntry.jsx puts on every demo row — which is the mechanism that keeps a
+# non-consenting business's name out of the index, and it only works if the
+# page can be fetched.
+#
+# Demo pages therefore rely on noindex, deliberately and correctly. They also
+# carry unguessable slugs, are linked from nowhere, and are deleted within 24
+# hours by worker/routes/retention.js.
+Allow: /r/
 
-# The prefix a batch of printed cards used by mistake. It 301s to /r/<slug>, so
-# a crawler that finds one would be sent to a page already disallowed above —
-# listed explicitly so it never spends a crawl budget discovering that.
-Disallow: /f/
+# The prefix a batch of printed cards used by mistake. It 301s to /r/<slug>.
+#
+# Previously disallowed, on the reasoning that following it only led to another
+# disallowed page. That reasoning died with the line above: /r/ is allowed now,
+# so the redirect leads somewhere real and blocking it is the one thing that
+# would waste it. A crawler that meets an /f/ link — from a card somebody typed
+# in, or an old reference — should be able to follow the 301 and consolidate on
+# the canonical /r/ page rather than dropping the signal at the door.
+Allow: /f/
 
 # Tracking parameters are deliberately NOT blocked here — paid traffic lands on
 # /restaurants?utm_*, and disallowing those would stop Google crawling the very
 # page the ads point at. The canonical tag consolidates them instead.
 
 Sitemap: https://billtap.app/sitemap.xml
+
+# The restaurants' own pages, generated from the database rather than committed
+# — see worker/routes/restaurant-sitemap.js. Allowing /r/ above lets a crawler
+# fetch those pages; this is the only thing that lets one find them, since they
+# are linked from nowhere but a QR code on a table. Entitled, non-demo rows
+# only.
+Sitemap: https://billtap.app/sitemap-restaurants.xml

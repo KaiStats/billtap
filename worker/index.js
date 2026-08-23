@@ -26,6 +26,7 @@ import { onRequestPost as invokeFunction } from './routes/functions.js';
 import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
 import { onRequestGet as health } from './routes/health.js';
+import { onRequestGet as restaurantSitemap } from './routes/restaurant-sitemap.js';
 import { onRequestGet as errorLog } from './routes/error-log.js';
 import { scheduled as nightlyBackup } from './routes/nightly-backup.js';
 import { scheduled as applyRetention } from './routes/retention.js';
@@ -483,6 +484,20 @@ async function serve(request, env, ctx, outerId) {
     if (path === '/api/health') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       return health({ request, env });
+    }
+
+    /**
+     * The customers' pages, for crawlers only.
+     *
+     * Not under /api/, because a sitemap has to sit at a real path a crawler
+     * will accept and robots.txt points at this URL directly. Above the rate
+     * limiter for the same reason /api/health is: Googlebot arriving on its
+     * own schedule is exactly the traffic a per-address limit would refuse,
+     * and the route is edge-cached for an hour so a flood costs one read.
+     */
+    if (path === '/sitemap-restaurants.xml') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      return restaurantSitemap({ env });
     }
 
     /**

@@ -1,4 +1,5 @@
 import Seo from "@/components/Seo";
+import { postSchema } from "@/lib/posts";
 import { Link } from "react-router";
 
 // Same accent the /restaurants page uses. Kept local rather than imported:
@@ -17,6 +18,8 @@ export default function BlogPost04CostOfOneLostRegular() {
         path="/blog/cost-of-one-lost-regular"
         title="The Math on One Lost Regular | BillTap"
         description="A weekly regular is worth thousands a year. Here's the arithmetic on what one un-caught bad night actually costs."
+        type="article"
+        schema={postSchema("cost-of-one-lost-regular", "A weekly regular is worth thousands a year. Here's the arithmetic on what one un-caught bad night actually costs.")}
       />
 
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-20">

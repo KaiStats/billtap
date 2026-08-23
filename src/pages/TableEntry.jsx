@@ -178,14 +178,51 @@ export default function TableEntry() {
         Only demo rows. A real restaurant's table-tent page is theirs and there
         is no reason to hide it.
       */}
-      {restaurant.demo ? (
-        <Seo
-          title={`${restaurant.name} — BillTap`}
-          description="Split the check."
-          path={`/r/${slug}`}
-          noindex
-        />
-      ) : null}
+      {/*
+        ── And a real restaurant's page had no tags at all ────────────────────
+
+        The note above ends "there is no reason to hide it", and then the only
+        <Seo> on this screen was the demo's. So a paying restaurant's page
+        rendered with the SPA shell's title, no description, no canonical and
+        no share image.
+
+        That is not an abstract ranking problem, it is a live one every time a
+        guest sends the link: `billtap.app/r/mariposa` pasted into a text, a
+        group chat or a Facebook post unfurled as a bare URL with no name and
+        no picture. The restaurant is paying $149 a month for a link that
+        looks broken when it travels.
+
+        ── The schema is deliberately thin ───────────────────────────────────
+
+        `Restaurant` with a name and a url, and nothing else. This app knows
+        the name, the slug and — when they have set one — their Google review
+        link. It does not know their address, their hours, their price range
+        or their cuisine, and a LocalBusiness entity asserting any of those
+        from an empty column would be inventing facts about somebody's
+        business.
+
+        `sameAs` is the one genuinely valuable line: it ties this page to the
+        restaurant's real Google entity rather than leaving a same-named
+        stranger floating on our domain. It is only emitted when they have
+        actually set a review link, and only when they are entitled to it —
+        getPublicRestaurant withholds that field otherwise, so an unpaid
+        account cannot leak one either.
+      */}
+      <Seo
+        path={`/r/${slug}`}
+        title={`${restaurant.name} — Split the check | BillTap`}
+        description={`Split the check at ${restaurant.name}. Everyone scans, claims what they ordered, and pays their exact share — no app and no account.`}
+        noindex={!!restaurant.demo}
+        schema={restaurant.demo ? null : [{
+          "@context": "https://schema.org",
+          "@type": "Restaurant",
+          name: restaurant.name,
+          url: `https://billtap.app/r/${slug}`,
+          ...(restaurant.google_review_url
+            ? { sameAs: [restaurant.google_review_url] }
+            : {}),
+        }]}
+      />
       <div className="w-full max-w-sm text-center">
         <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-6"
           style={{ background: GOLD }}>

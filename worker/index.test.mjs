@@ -623,10 +623,58 @@ test('the printed prefix does not swallow a deeper path', async () => {
   assert.equal((await get('/f/mariposa/extra')).status, 404);
 });
 
-test('robots.txt disallows the printed prefix as well as /r/', () => {
+test('robots.txt allows a restaurant page and the printed prefix that redirects to it', () => {
+  /**
+   * This asserted the opposite until today, and the premise was wrong.
+   *
+   * `/r/<slug>` was disallowed under a comment calling these "one-off session
+   * URLs". They are not — a session is `/claim?token=…` and expires, while
+   * `/r/<slug>` is the permanent page printed on the table tents.
+   * TableEntry.jsx said so in its own comment the whole time ("A real
+   * restaurant's table-tent page is theirs and there is no reason to hide
+   * it"); the two files disagreed and robots was winning.
+   *
+   * The cost was concrete: every social crawler honours robots, so a guest
+   * sharing billtap.app/r/mariposa got a bare URL with no name and no image,
+   * for a restaurant paying $149 a month.
+   *
+   * `/f/` follows it. It was disallowed only because its 301 target was, and
+   * once the target is crawlable, blocking the source is the single thing that
+   * would waste the redirect.
+   */
   const robots = readFileSync(join(ROOT, 'public', 'robots.txt'), 'utf8');
-  assert.match(robots, /^Disallow: \/f\/$/m, 'the 301 target is disallowed; the source should be too');
-  assert.match(robots, /^Disallow: \/r\/$/m);
+  assert.match(robots, /^Allow: \/r\/$/m);
+  assert.match(robots, /^Allow: \/f\/$/m, 'the 301 target is crawlable, so the source must be too');
+  assert.ok(!/^Disallow: \/r\/$/m.test(robots), '/r/ must not be blocked');
+  assert.ok(!/^Disallow: \/f\/$/m.test(robots), '/f/ must not be blocked');
+});
+
+test('the demo provisioning tool and the signed-in surface stay disallowed', () => {
+  /**
+   * The guard that has to survive the change above.
+   *
+   * Opening /r/ makes what is still closed matter more, not less. /new
+   * publishes pages carrying real businesses' names, and every path below
+   * renders nothing without a session — a crawler reaching any of them finds
+   * an empty shell at best.
+   *
+   * Demo pages themselves are protected by noindex rather than by a
+   * disallow, deliberately: a disallowed URL can be indexed from an external
+   * link precisely because the crawler is never allowed to fetch it and read
+   * the noindex. Allowing the crawl is what makes that tag work.
+   */
+  const robots = readFileSync(join(ROOT, 'public', 'robots.txt'), 'utf8');
+  for (const path of ['/new', '/restaurant-dashboard', '/login', '/register', '/profile']) {
+    assert.match(robots, new RegExp(`^Disallow: ${path}$`, 'm'), `${path} must stay blocked`);
+  }
+});
+
+test('robots points crawlers at both sitemaps', () => {
+  // Allowing /r/ lets a crawler fetch a restaurant page; only the generated
+  // sitemap lets one find it, since nothing links there but a QR code.
+  const robots = readFileSync(join(ROOT, 'public', 'robots.txt'), 'utf8');
+  assert.match(robots, /^Sitemap: https:\/\/billtap\.app\/sitemap\.xml$/m);
+  assert.match(robots, /^Sitemap: https:\/\/billtap\.app\/sitemap-restaurants\.xml$/m);
 });
 
 test('a card read with the wrong case still reaches the right page', async () => {

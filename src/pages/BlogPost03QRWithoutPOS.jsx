@@ -1,4 +1,5 @@
 import Seo from "@/components/Seo";
+import { postSchema } from "@/lib/posts";
 import { Link } from "react-router";
 
 // Same accent the /restaurants page uses. Kept local rather than imported:
@@ -17,6 +18,8 @@ export default function BlogPost03QRWithoutPOS() {
         path="/blog/qr-without-pos-change"
         title="QR Code Bill Splitting Without Changing Your POS | BillTap"
         description="No integration, no new hardware, no retraining. BillTap runs alongside Toast, Clover, Square, or anything else you already use."
+        type="article"
+        schema={postSchema("qr-without-pos-change", "No integration, no new hardware, no retraining. BillTap runs alongside Toast, Clover, Square, or anything else you already use.")}
       />
 
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-20">

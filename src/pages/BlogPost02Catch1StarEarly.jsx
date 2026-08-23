@@ -1,4 +1,5 @@
 import Seo from "@/components/Seo";
+import { postSchema } from "@/lib/posts";
 import { Link } from "react-router";
 
 // Same accent the /restaurants page uses. Kept local rather than imported:
@@ -17,6 +18,8 @@ export default function BlogPost02Catch1StarEarly() {
         path="/blog/catch-1-star-early"
         title="Catch a 1-Star Review Before It Gets Posted | BillTap"
         description="A low rating alerts you while the guest is still at the table, so a manager can fix it in person instead of replying to it on Google a week later."
+        type="article"
+        schema={postSchema("catch-1-star-early", "A low rating alerts you while the guest is still at the table, so a manager can fix it in person instead of replying to it on Google a week later.")}
       />
 
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-20">

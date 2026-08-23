@@ -1,38 +1,19 @@
 import { Link } from "react-router";
 import { QrCode, Calendar } from "lucide-react";
 import Seo from "@/components/Seo";
+import { POSTS } from "@/lib/posts";
 
 export default function Blog() {
   // Ordered by who they're for: the two an owner comparing tools searches for
   // first, then the two that answer the objection and the "is it worth it".
   // href drives the <a> below — anything still "#" renders as plain text, which
   // is why the placeholders that used to sit here were unclickable.
-  const posts = [
-    {
-      title: "Podium Alternative for Restaurants",
-      date: "August 2026",
-      excerpt: "Podium asks for reviews by text, days later. BillTap asks at the table, while a manager can still fix the night.",
-      href: "/blog/podium-alternative"
-    },
-    {
-      title: "QR Code Bill Splitting Without Changing Your POS",
-      date: "August 2026",
-      excerpt: "No integration, no new hardware, nothing for servers to learn. It runs beside Toast or Clover, not inside them.",
-      href: "/blog/qr-without-pos-change"
-    },
-    {
-      title: "Catch a 1-Star Review Before It Gets Posted",
-      date: "August 2026",
-      excerpt: "A low rating pings you while the guest is still in the dining room \u2014 two minutes to make it right in person.",
-      href: "/blog/catch-1-star-early"
-    },
-    {
-      title: "The Math on One Lost Regular",
-      date: "August 2026",
-      excerpt: "A weekly regular is worth four figures a year. Here's what one un-caught bad night actually costs you.",
-      href: "/blog/cost-of-one-lost-regular"
-    },
-  ];
+  /**
+   * From src/lib/posts.js, which is also what each post's BlogPosting schema
+   * is built from — so the index and the markup cannot drift apart. `href` is
+   * derived rather than stored: a slug and a path are the same fact twice.
+   */
+  const posts = POSTS.map((p) => ({ ...p, href: `/blog/${p.slug}` }));
 
   return (
     <div className="min-h-screen" style={{ background: "#070b16", color: "#f2f2f4" }}>

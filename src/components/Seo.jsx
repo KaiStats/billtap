@@ -59,6 +59,30 @@ function jsonLd(id, data) {
 // zero inline <script> blocks so script-src never needs 'unsafe-inline'
 // (src/csp.test.mjs enforces it). Emitting here also reaches further: prerender
 // captures the DOM after this effect runs, so every prerendered route gets it.
+/**
+ * Who is behind this, in the markup and not only in the footer.
+ *
+ * ── Why the extra four lines ────────────────────────────────────────────────
+ *
+ * This block was name, url, logo and email — enough to identify the site and
+ * nothing that says anyone is actually here. For a solo founder with no
+ * customer logos and no third-party ratings, the credibility signals that
+ * exist are a real person and a phone that rings, and neither was being
+ * claimed anywhere a crawler reads.
+ *
+ * Every field below is already public on the site: the founder's name is in
+ * the footer of every page, and the phone number and support address are on
+ * /restaurants. This is not new information, it is the same information said
+ * in the format search engines and answer engines parse.
+ *
+ * `areaServed` is US because it genuinely is: Venmo, Cash App and Zelle are
+ * US-only rails and the support line is a US number.
+ *
+ * Still absent, deliberately: aggregateRating, review, and any award or
+ * membership. There are no customers yet, so all of them would be invented,
+ * and fabricated credibility markup is what earns a manual action rather than
+ * a ranking.
+ */
 const ORGANIZATION = {
   "@context": "https://schema.org",
   "@type": "Organization",
@@ -66,6 +90,21 @@ const ORGANIZATION = {
   url: "https://billtap.app",
   logo: "https://billtap.app/icons/icon-192.png",
   email: "hello@billtap.app",
+  telephone: "+1-702-844-0938",
+  founder: {
+    "@type": "Person",
+    name: "Kai Cogmon",
+    url: "https://billtap.app/about",
+  },
+  areaServed: { "@type": "Country", name: "US" },
+  contactPoint: {
+    "@type": "ContactPoint",
+    contactType: "sales",
+    telephone: "+1-702-844-0938",
+    email: "alerts@billtap.app",
+    areaServed: "US",
+    availableLanguage: "English",
+  },
 };
 
 export default function Seo({
