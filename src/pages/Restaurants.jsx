@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowRight, Check, X, Star, Bell, Mail, BarChart3, Smartphone,
-  Zap, ThumbsUp, Cpu, Clock, Phone, Loader2,
+  Zap, ThumbsUp, Cpu, Clock, Phone, Loader2, ExternalLink,
 } from "lucide-react";
 import Seo from "@/components/Seo";
 import { art, artSrcSet, artSizes } from "@/lib/restaurant-assets";
@@ -56,16 +57,30 @@ const PILLARS = [
   },
 ];
 
+/**
+ * The six one-line facts, as type on the ink rather than six more photographs.
+ *
+ * These used to be six image cells, each loading its own frame of hospitality
+ * photography behind a 93%-opaque scrim — six network requests and six decodes
+ * to deliver, in the end, six short strings that were already legible without
+ * them. The images were carrying no information the sentence did not: the
+ * frame behind "Works with your POS" was a card terminal on a bar.
+ *
+ * On the phone in a restaurant this page is read on, that is the difference
+ * between the facts arriving with the scroll and arriving after it. The strip
+ * images are still in the manifest and still self-hosted; they are simply not
+ * worth their weight here.
+ */
 const BULLETS = [
-  { icon: Smartphone, img: "strip-scan", title: "No app to download", desc: "Just scan and go.", alt: "A phone scanning a QR table tent on a restaurant table." },
+  { icon: Smartphone, title: "No app to download", desc: "Just scan and go." },
   // "about", because the step below already says about and a bare "in 30
   // seconds" reads as a measurement rather than a description. Nothing has
   // timed a real table yet.
-  { icon: Zap, img: "strip-split", title: "Split & pay in about 30 seconds", desc: "Fast, simple, frictionless.", alt: "Two friends splitting a paper check with their phones." },
-  { icon: ThumbsUp, img: "strip-rate", title: "Rate you on Google instantly", desc: "Good experiences get shared.", alt: "A thumb pressing a glowing phone screen." },
-  { icon: Mail, img: "strip-data", title: "You get the data & reviews", desc: "More customers. More revenue.", alt: "A phone lighting up with a notification on a bar counter." },
-  { icon: Cpu, img: "strip-pos", title: "Works with your POS", desc: "No new hardware. No disruption.", alt: "A card payment terminal on a polished bar counter." },
-  { icon: Clock, img: "strip-setup", title: "Setup in under 10 minutes", desc: "We do the heavy lifting.", alt: "A server placing a QR table tent onto a freshly set table." },
+  { icon: Zap, title: "Split & pay in about 30 seconds", desc: "Fast, simple, frictionless." },
+  { icon: ThumbsUp, title: "Rate you on Google instantly", desc: "Good experiences get shared." },
+  { icon: Mail, title: "You get the data & reviews", desc: "More customers. More revenue." },
+  { icon: Cpu, title: "Works with your POS", desc: "No new hardware. No disruption." },
+  { icon: Clock, title: "Setup in under 10 minutes", desc: "We do the heavy lifting." },
 ];
 
 const PERFECT_FOR = [
@@ -76,10 +91,53 @@ const PERFECT_FOR = [
 const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
 const WITH = ["More 5-star reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
 
-const STEPS = [
-  { n: "01", img: "step-scan", title: "Guests scan a QR on the table", desc: "No app needed.", alt: "Friends at a table, one leaning in to scan the QR table tent." },
-  { n: "02", img: "step-split", title: "They split the check", desc: "Everyone's share in about 30 seconds. You still get paid the way you always have.", alt: "Four friends laughing as they settle the bill on their phones." },
-  { n: "03", img: "step-rate", title: "They rate you", desc: "Everyone gets your Google link. A low rating pings you instantly.", alt: "A satisfied guest smiling as she rates the meal on her phone." },
+/**
+ * The questions owners actually ask — written once, rendered twice.
+ *
+ * ── Why this is a constant now ──────────────────────────────────────────────
+ *
+ * These six existed in two places: the FAQPage schema in the Seo block, and
+ * the visible list at the bottom of the page. Two copies of the same six
+ * answers, phrased slightly differently in each — the schema said "the only
+ * new step is putting a table tent out", the page said "and we send you
+ * those" — and nothing anywhere held them together.
+ *
+ * That is worse than untidy. Google's structured-data guidance is explicit
+ * that FAQPage markup must match the content visible on the page, and a
+ * mismatch is the kind of thing that costs a rich result rather than
+ * announcing itself. Editing one copy and not the other is the obvious way
+ * for that to happen, and with two copies it was one careless edit away at
+ * all times.
+ *
+ * So the visible answer is now the schema answer, by construction. Where the
+ * two wordings differed, the page's own phrasing won — it is the one a human
+ * reads, and it was the warmer of the two.
+ */
+const FAQ = [
+  {
+    q: "Does BillTap replace my POS?",
+    a: "No. BillTap runs alongside whatever you already use — Toast, Clover, Square, anything. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders.",
+  },
+  {
+    q: "What does my staff have to do differently?",
+    a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit — all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
+  },
+  {
+    q: "Where do the 5-star reviews actually go?",
+    a: "Straight to your Google Business Profile — the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
+  },
+  {
+    q: "What happens if a guest leaves a bad rating?",
+    a: "Every guest gets the same Google link — nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
+  },
+  {
+    q: "Can I cancel anytime?",
+    a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever — no contract, no cancellation fee.",
+  },
+  {
+    q: "Does BillTap handle any of the money?",
+    a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us — no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
+  },
 ];
 
 /**
@@ -111,6 +169,64 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
       className={`rst-img rst-grade ${loaded ? "is-loaded" : ""} ${className}`}
       style={/** @type {any} */ ({ "--to": to, objectPosition: position })}
     />
+  );
+}
+
+/**
+ * The name used in every mocked screen below.
+ *
+ * The reference account, not a real restaurant. Naming a real business in a
+ * product shot on a sales page is the same mistake the proof section was torn
+ * out for — see the comment above #proof — and it is worse here, because a
+ * screenshot reads as evidence rather than as an example. Kept as one constant
+ * so it cannot drift back into a real name in one frame and not the others.
+ */
+const SAMPLE_RESTAURANT = "The Test Kitchen";
+
+/**
+ * A phone-shaped frame for the product shots.
+ *
+ * ── Why these are rendered, not screenshotted ───────────────────────────────
+ *
+ * A PNG of the app is stale the day the app changes, weighs more than the
+ * markup it depicts, and cannot be read by a screen reader. These frames are
+ * the real type at the real sizes, so they cost almost nothing, stay sharp on
+ * any display, and — the part that matters — a copy change in RatingCapture
+ * that made this page wrong would be a diff somebody can see, not a picture
+ * nobody re-exports.
+ *
+ * They are labelled as illustrations in the section heading rather than
+ * presented as photographs of a live account, because there is no live account
+ * yet. That is the same standard the rest of this page is held to.
+ */
+/** @param {{ label?: any, caption?: any, children?: any, [key: string]: any }} props */
+function PhoneFrame({ label, caption, children }) {
+  return (
+    <div className="flex flex-col">
+      {/* Clamped rather than fixed: three of these stack vertically on a phone,
+          and at a fixed 250px that was most of a screen each — the section
+          meant to shorten this page would have been the longest thing on it. */}
+      <div className="mx-auto w-full" style={{ maxWidth: "clamp(186px, 56vw, 244px)" }}>
+        <div className="rounded-[2.1rem] p-2.5"
+          style={{
+            background: "#000",
+            border: "1px solid rgba(255,255,255,.16)",
+            boxShadow: "0 40px 80px -44px rgba(0,0,0,.95)",
+          }}>
+          {/* One background for all three frames. They are a set, and a screen
+              that is a shade darker than the one beside it reads as a mistake
+              rather than as a different screen. #111827 is the sheet colour
+              RatingCapture actually renders on. */}
+          <div className="rounded-[1.7rem] overflow-hidden flex flex-col"
+            style={{ background: "#111827", aspectRatio: "9 / 16" }}>
+            {children}
+          </div>
+        </div>
+      </div>
+      <p className="rst-eyebrow mt-6 text-center" style={{ color: GOLD }}>{label}</p>
+      <p className="mt-2.5 text-sm text-center leading-relaxed font-light"
+        style={{ color: "rgba(245,245,244,.6)" }}>{caption}</p>
+    </div>
   );
 }
 
@@ -285,38 +401,13 @@ export default function Restaurants() {
           {
             "@context": "https://schema.org",
             "@type": "FAQPage",
-            mainEntity: [
-              {
-                "@type": "Question",
-                name: "Does BillTap replace my POS?",
-                acceptedAnswer: { "@type": "Answer", text: "No. BillTap runs alongside whatever POS you already use \u2014 Toast, Clover, Square, or anything else. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders." },
-              },
-              {
-                "@type": "Question",
-                name: "What does my staff have to do differently?",
-                acceptedAnswer: { "@type": "Answer", text: "Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit without a server involved. The only new step is putting a table tent out." },
-              },
-              {
-                "@type": "Question",
-                name: "Where do the 5-star reviews actually go?",
-                acceptedAnswer: { "@type": "Answer", text: "Straight to your Google Business Profile. A happy guest gets a one-tap link to leave a review the moment they finish paying." },
-              },
-              {
-                "@type": "Question",
-                name: "What happens if a guest leaves a bad rating?",
-                acceptedAnswer: { "@type": "Answer", text: "Every guest gets the same Google review link \u2014 BillTap doesn't gate or hide reviews by rating. A low rating instead triggers a real-time alert to the owner while the guest is still at the table, so a manager can address it in person." },
-              },
-              {
-                "@type": "Question",
-                name: "Can I cancel anytime?",
-                acceptedAnswer: { "@type": "Answer", text: "Yes. BillTap offers a 14-day free trial, and the $149/month plan can be canceled anytime with no contract and no cancellation fee." },
-              },
-              {
-                "@type": "Question",
-                name: "Does BillTap handle any of the money?",
-                acceptedAnswer: { "@type": "Answer", text: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so each person knows their share, and tracks who has settled up with whoever is covering the bill. No money moves through BillTap, so there is no merchant account to open, no payout schedule, and nothing extra to reconcile at close." },
-              },
-            ],
+            // Built from the same FAQ constant the page renders, so the markup
+            // cannot drift from what a visitor actually reads.
+            mainEntity: FAQ.map(({ q, a }) => ({
+              "@type": "Question",
+              name: q,
+              acceptedAnswer: { "@type": "Answer", text: a },
+            })),
           },
         ]}
       />
@@ -386,6 +477,51 @@ export default function Restaurants() {
           background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23f5f5f4' stroke-opacity='.5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
           background-repeat:no-repeat; background-position:right 14px center;
         }
+
+        /*
+          The product rail. Horizontal and snapping on a phone, an ordinary
+          grid from 640px up where all three fit side by side.
+
+          scroll-padding matches the section's own gutter so a snapped frame
+          lands aligned with the heading above it rather than flush to the
+          viewport edge. The scrollbar is hidden because this rail is swiped,
+          not dragged, and a scrollbar under the frames reads as chrome — the
+          content is still reachable by keyboard and by trackpad.
+        */
+        .rst-rail { scroll-snap-type: x mandatory; scroll-padding-left: 20px; -webkit-overflow-scrolling: touch; }
+        .rst-rail > * { scroll-snap-align: start; flex: 0 0 76%; }
+        .rst-rail::-webkit-scrollbar { display: none; }
+        .rst-rail { scrollbar-width: none; }
+        @media (min-width: 640px) {
+          .rst-rail { scroll-snap-type: none; scroll-padding-left: 0; }
+          .rst-rail > * { flex: initial; }
+        }
+
+        /*
+          FAQ disclosure. The marker is drawn here rather than imported as an
+          icon because it is two borders and a rotation, and this section is
+          otherwise entirely free of JavaScript.
+
+          list-style/::-webkit-details-marker are both cleared: Safari draws
+          its own triangle from the shadow DOM and ignores the standard
+          property, so removing one without the other leaves a stray triangle
+          on exactly the browser most of these owners are holding.
+        */
+        .rst-faq { border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 14px; }
+        .rst-faq > summary {
+          cursor: pointer; list-style: none; padding: 12px 0;
+          transition: color .2s ease;
+        }
+        .rst-faq > summary::-webkit-details-marker { display: none; }
+        .rst-faq > summary:hover { color: ${GOLD}; }
+        .rst-faq > summary:focus-visible { outline: 2px solid rgba(240,180,41,.45); outline-offset: 4px; border-radius: 6px; }
+        .rst-faq-mark {
+          width: 9px; height: 9px; border-right: 2px solid rgba(240,180,41,.75);
+          border-bottom: 2px solid rgba(240,180,41,.75); transform: rotate(45deg);
+          transition: transform .25s ease;
+        }
+        .rst-faq[open] > summary .rst-faq-mark { transform: rotate(-135deg); }
+        @media (prefers-reduced-motion: reduce) { .rst-faq-mark { transition: none; } }
 
         @keyframes rst-kenburns { from { transform: scale(1.04); } to { transform: scale(1.13); } }
         .rst-kb { animation: rst-kenburns 28s ease-in-out infinite alternate; transform-origin: 62% 40%; }
@@ -518,26 +654,129 @@ export default function Restaurants() {
           ))}
         </div>
 
-        {/* Trust strip — every cell carries its own frame */}
+        {/* Trust strip — type on the ink, no frames. See BULLETS. */}
         <Reveal delay={0.1}>
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px rounded-2xl overflow-hidden"
             style={{ background: "rgba(240,180,41,.16)", border: "1px solid rgba(240,180,41,.3)" }}>
             {BULLETS.map((b) => (
-              <div key={b.title} className="rst-cell group relative overflow-hidden"
-                style={{ background: INK, minHeight: 188 }}>
-                <Img name={b.img} alt={b.alt} to={0.34}
-                  className="rst-zoom absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0" aria-hidden="true"
-                  style={{ background: "linear-gradient(180deg, rgba(11,11,13,.5) 0%, rgba(11,11,13,.93) 100%)" }} />
-                <div className="relative h-full p-5 flex flex-col justify-end">
-                  <b.icon className="w-4 h-4 mb-3" style={{ color: GOLD }} aria-hidden="true" />
-                  <p className="rst-eyebrow leading-[1.5]" style={{ color: "#f5f5f4" }}>{b.title}</p>
-                  <p className="mt-2 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>{b.desc}</p>
-                </div>
+              <div key={b.title} className="p-5 flex flex-col justify-end" style={{ background: INK, minHeight: 148 }}>
+                <b.icon className="w-4 h-4 mb-3" style={{ color: GOLD }} aria-hidden="true" />
+                <p className="rst-eyebrow leading-[1.5]" style={{ color: "#f5f5f4" }}>{b.title}</p>
+                <p className="mt-2 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>{b.desc}</p>
               </div>
             ))}
           </div>
         </Reveal>
+      </section>
+
+      {/* ── What it actually looks like ──────────────────────
+          The gap this closes: every claim above this point was a sentence over
+          a photograph of somebody in a restaurant. An owner deciding on $149 a
+          month had not, at any point on this page, been shown the product. */}
+      <section id="product" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>The actual screens</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            What your guest sees. What you get.
+          </h2>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+            Three screens, start to finish. These are the real ones, filled in with a
+            sample restaurant — there is no customer account to screenshot yet, and
+            this page is not going to invent one.
+          </p>
+        </Reveal>
+
+        {/*
+          A snap-scrolling row on a phone, three across from `sm` up.
+
+          Stacked, these three frames were about 1,400px of scroll on a 390px
+          screen — this section, added to shorten the page, was the longest
+          thing on it. Swiping sideways through them costs one frame's height
+          instead of three and is how somebody holds a phone anyway. The row is
+          a real overflow container with snap points, not a carousel widget:
+          no state, no library, no autoplay, and it degrades to a plain
+          horizontal scroll if snap is unsupported.
+        */}
+        <div className="rst-rail mt-12 flex gap-6 overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3 sm:gap-8">
+          {/* 1 — the table tent */}
+          <Reveal delay={0.05}>
+            <PhoneFrame
+              label="On the table"
+              caption="A printed tent, included. The guest scans it with their own camera — no app, no download, nothing to install.">
+              <div className="flex-1 flex flex-col items-center justify-center px-5 text-center">
+                <p className="rst-eyebrow" style={{ color: GOLD }}>Scan to split</p>
+                <div className="mt-4 p-2.5 rounded-xl" style={{ background: "#fff" }}>
+                  {/* A real code, pointing at this page — scannable off the screen. */}
+                  <QRCodeSVG value="https://billtap.app/restaurants" size={96} level="M" fgColor="#0b0b0d" />
+                </div>
+                <p className="mt-4 font-display text-[1.05rem] leading-tight" style={{ color: "#f5f5f4" }}>
+                  {SAMPLE_RESTAURANT}
+                </p>
+                <p className="mt-1.5 text-[10px] font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+                  Split the check · Pay your share
+                </p>
+              </div>
+            </PhoneFrame>
+          </Reveal>
+
+          {/* 2 — the rating screen. Mirrors RatingCapture's "rate" phase. */}
+          <Reveal delay={0.12}>
+            <PhoneFrame
+              label="After they pay"
+              caption="One tap, every guest — not just the happy ones. Nothing is gated or hidden by rating.">
+              <div className="flex-1 flex flex-col justify-center px-5 py-6 text-center">
+                <p className="text-[15px] font-black" style={{ color: "#fff" }}>
+                  How was {SAMPLE_RESTAURANT}?
+                </p>
+                <p className="mt-1.5 text-[11px]" style={{ color: "rgba(255,255,255,.55)" }}>Takes one tap.</p>
+                <div className="mt-6 flex justify-center gap-1" aria-hidden="true">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} className="w-[26px] h-[26px]"
+                      style={{ color: n <= 5 ? GOLD : "rgba(255,255,255,.22)", fill: n <= 5 ? GOLD : "transparent" }} />
+                  ))}
+                </div>
+                <div className="mt-7 py-3 rounded-2xl flex items-center justify-center gap-2"
+                  style={{ background: GOLD, color: "#1a1200" }}>
+                  <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span className="text-[12px] font-black">Review us on Google</span>
+                </div>
+                <p className="mt-4 text-[10px] leading-relaxed font-light" style={{ color: "rgba(255,255,255,.42)" }}>
+                  Every guest reaches this button, whatever they rated.
+                </p>
+              </div>
+            </PhoneFrame>
+          </Reveal>
+
+          {/* 3 — the alert. Mirrors the SMS body in worker/routes/rating-alert.js. */}
+          <Reveal delay={0.19}>
+            <PhoneFrame
+              label="On your phone, instantly"
+              caption="A low rating pages you while the guest is still sitting there — with the table number, so a manager knows where to walk.">
+              <div className="flex-1 flex flex-col justify-center px-4">
+                <div className="rounded-2xl p-3.5 backdrop-blur-md"
+                  style={{ background: "rgba(229,72,77,.13)", border: "1px solid rgba(229,72,77,.4)" }}>
+                  <div className="flex items-center gap-1.5">
+                    <Bell className="w-3 h-3" style={{ color: "#e5484d" }} aria-hidden="true" />
+                    <span className="rst-eyebrow" style={{ color: "#e5484d", fontSize: 9 }}>BillTap · now</span>
+                  </div>
+                  <p className="mt-2.5 text-[12px] font-black leading-snug" style={{ color: "#fff" }}>
+                    TABLE 12 — 2★ at {SAMPLE_RESTAURANT}
+                  </p>
+                  <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,.72)" }}>
+                    &ldquo;Waited 25 min for the mains and nobody checked on us.&rdquo;
+                  </p>
+                  <p className="mt-2 text-[10px]" style={{ color: "rgba(255,255,255,.45)" }}>
+                    Reply: guest@example.com
+                  </p>
+                </div>
+                <p className="mt-5 text-[10px] text-center leading-relaxed font-light"
+                  style={{ color: "rgba(255,255,255,.4)" }}>
+                  Text and email. Arrives before they ask for the check.
+                </p>
+              </div>
+            </PhoneFrame>
+          </Reveal>
+        </div>
       </section>
 
       {/* ── Without / With ──────────────────────────────────── */}
@@ -594,42 +833,23 @@ export default function Restaurants() {
         </div>
       </section>
 
-      {/* ── How it works ────────────────────────────────────── */}
-      <section className="relative py-14 sm:py-28" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
+      {/* ── The reassurance band ─────────────────────────────
+          What used to be here: a "How it works" heading over three photographed
+          steps — scan, split, rate — each a frame of hospitality photography
+          with a serif numeral set into it.
+
+          It went because #product above now shows those same three steps as the
+          actual screens. Running both meant telling the same story twice, the
+          second time in pictures of people rather than pictures of the product,
+          and charging the reader three more image loads for the weaker version.
+
+          The one thing those captions said that the screens do not — that the
+          restaurant still gets paid exactly the way it always has — was the
+          reassurance worth keeping, so it moved into the band copy below. */}
+      <section className="relative py-14 sm:py-24" style={{ background: "linear-gradient(180deg, #0b0b0d 0%, #131315 50%, #0b0b0d 100%)" }}>
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
-          <Reveal>
-            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Three steps</p>
-            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
-              How it works
-            </h2>
-          </Reveal>
-
-          <div className="mt-12 grid sm:grid-cols-3 gap-6 sm:gap-8">
-            {STEPS.map((s, i) => (
-              <Reveal key={s.n} delay={i * 0.1}>
-                <div className="group">
-                  <div className="relative overflow-hidden rounded-xl" style={{ aspectRatio: "3 / 2" }}>
-                    <div className="absolute inset-0" aria-hidden="true"
-                      style={{ background: "linear-gradient(150deg, rgba(240,180,41,.14), rgba(11,11,13,.9) 70%)" }} />
-                    <Img name={s.img} alt={s.alt}
-                      className="rst-zoom absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0" aria-hidden="true"
-                      style={{ background: "linear-gradient(180deg, rgba(11,11,13,0) 45%, rgba(11,11,13,.88) 100%)" }} />
-                    {/* Oversized serif numeral, set into the frame rather than above it. */}
-                    <span className="font-display absolute left-4 bottom-1 leading-none select-none"
-                      style={{ fontSize: "3.6rem", color: GOLD, opacity: .92 }} aria-hidden="true">
-                      {s.n}
-                    </span>
-                  </div>
-                  <h3 className="mt-5 font-display text-[1.35rem] leading-tight">{s.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.58)" }}>{s.desc}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
           <Reveal delay={0.3}>
-            <div className="mt-14 relative rounded-2xl overflow-hidden rst-grain"
+            <div className="relative rounded-2xl overflow-hidden rst-grain"
               style={{ background: "linear-gradient(150deg, #1b1a17 0%, #0b0b0d 70%)", border: "1px solid rgba(255,255,255,.08)", minHeight: 260 }}>
               <Img name="band" alt="" to={0.62} position="70% 50%"
                 className="absolute inset-0 w-full h-full object-cover" />
@@ -638,7 +858,8 @@ export default function Restaurants() {
               <div className="relative p-8 sm:p-12 max-w-md flex flex-col justify-center" style={{ minHeight: 260 }}>
                 <p className="font-display text-[1.9rem] leading-[1.1]">Your staff does nothing differently.</p>
                 <p className="mt-4 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.64)" }}>
-                  The table tent does the work. No new hardware, no POS change, live in minutes.
+                  The table tent does the work. No new hardware, no POS change, live in
+                  minutes — and you still get paid exactly the way you always have.
                 </p>
               </div>
             </div>
@@ -658,6 +879,36 @@ export default function Restaurants() {
               <p className="mt-5 leading-relaxed font-light" style={{ color: "rgba(245,245,244,.66)" }}>
                 Pays for itself with just one or two additional returning tables each month.
               </p>
+
+              {/*
+                The same sentence as arithmetic the reader can check, rather than
+                as a claim they have to take on faith.
+
+                Every number here is either the price or division. $4.90 is
+                149/30.4. The two-table line states its own assumption — a $75
+                check — instead of leaning on an "average check size" statistic
+                this company has not measured and could not source. And $0 is
+                the literal fact that no money passes through BillTap, which is
+                the one cost comparison on this page that needs no qualifier.
+
+                Deliberately not here: a competitor's price. Naming what Podium
+                or Ovation charge from memory, on the page that tore out its own
+                proof section for claiming things it could not stand behind,
+                would be the same failure wearing a different hat.
+              */}
+              <div className="mt-7 grid grid-cols-3 gap-px rounded-2xl overflow-hidden"
+                style={{ background: "rgba(240,180,41,.16)", border: "1px solid rgba(240,180,41,.28)" }}>
+                {[
+                  { n: "$4.90", l: "a day, flat" },
+                  { n: "2 tables", l: "of four at a $75 check covers the month" },
+                  { n: "$0", l: "of your revenue — we take no cut" },
+                ].map((s) => (
+                  <div key={s.l} className="p-4 sm:p-5" style={{ background: INK }}>
+                    <div className="font-display text-xl sm:text-2xl leading-none" style={{ color: GOLD }}>{s.n}</div>
+                    <div className="mt-2 text-[11px] leading-snug font-light" style={{ color: "rgba(245,245,244,.55)" }}>{s.l}</div>
+                  </div>
+                ))}
+              </div>
 
               <ul className="mt-8 space-y-3">
                 {/*
@@ -687,6 +938,22 @@ export default function Restaurants() {
                   </li>
                 ))}
               </ul>
+
+              {/*
+                The comparison this page was missing, and it was already
+                written. /blog/podium-alternative argues the difference on
+                mechanism — asked at the table versus texted days later, no POS
+                integration to schedule — and it was reachable only from the
+                blog index, which nobody arriving on a sales page visits. An
+                operator weighing this against the tool they have heard of is
+                the reader it was written for.
+              */}
+              <Link to="/blog/podium-alternative"
+                className="mt-7 inline-flex items-center gap-2 text-sm font-medium"
+                style={{ color: GOLD }}>
+                Comparing us against Podium?
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </Link>
 
               <hr className="rst-rule my-8" />
               <p className="rst-eyebrow" style={{ color: GOLD }}>Questions? Let's talk.</p>
@@ -874,37 +1141,37 @@ export default function Restaurants() {
           <h2 className="font-display text-3xl sm:text-4xl text-center mb-12" style={{ color: "#f5f5f4" }}>
             Questions owners actually ask
           </h2>
-          <div className="space-y-8">
-            {[
-              {
-                q: "Does BillTap replace my POS?",
-                a: "No. BillTap runs alongside whatever you already use \u2014 Toast, Clover, Square, anything. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders.",
-              },
-              {
-                q: "What does my staff have to do differently?",
-                a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit \u2014 all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
-              },
-              {
-                q: "Where do the 5-star reviews actually go?",
-                a: "Straight to your Google Business Profile \u2014 the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
-              },
-              {
-                q: "What happens if a guest leaves a bad rating?",
-                a: "Every guest gets the same Google link \u2014 nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
-              },
-              {
-                q: "Can I cancel anytime?",
-                a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever \u2014 no contract, no cancellation fee.",
-              },
-              {
-                q: "Does BillTap handle any of the money?",
-                a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us \u2014 no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
-              },
-            ].map((item) => (
-              <div key={item.q}>
-                <p className="font-semibold text-lg" style={{ color: "#f5f5f4" }}>{item.q}</p>
-                <p className="mt-2 leading-relaxed" style={{ color: "rgba(245,245,244,.64)" }}>{item.a}</p>
-              </div>
+          {/*
+            Native <details>, not an accordion component.
+
+            The comment that used to sit above this section defended a plain
+            stacked list on the grounds that an accordion would mean new state
+            and new imports for something an owner reads once. That objection
+            is real and <details> answers it exactly: it is one HTML element,
+            no useState, no library, no JavaScript at all. It keeps working
+            with JS disabled and it is keyboard- and screen-reader-accessible
+            without any aria plumbing.
+
+            What it buys is the scan. Six questions open was the tallest thing
+            on this page — an owner hunting for "does it replace my POS" had to
+            scroll past five answers he did not ask for. Closed, all six
+            questions fit in about one screen, which is how somebody actually
+            uses an FAQ.
+
+            The first is open by default so the section never reads as an inert
+            list of headings, and every answer stays in the DOM either way, so
+            the FAQPage markup above still matches the page.
+          */}
+          <div className="space-y-3">
+            {FAQ.map((item, i) => (
+              <details key={item.q} className="rst-faq group" open={i === 0}>
+                <summary className="font-semibold text-lg flex items-start justify-between gap-4"
+                  style={{ color: "#f5f5f4" }}>
+                  <span>{item.q}</span>
+                  <span className="rst-faq-mark shrink-0 mt-1" aria-hidden="true" />
+                </summary>
+                <p className="mt-3 leading-relaxed" style={{ color: "rgba(245,245,244,.64)" }}>{item.a}</p>
+              </details>
             ))}
           </div>
         </div>
