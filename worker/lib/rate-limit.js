@@ -98,6 +98,9 @@ const LIMITED = new Set([
    * table, and it is a hard ceiling on a loop.
    */
   '/api/fn/createDemoRestaurant',
+  // Same session, same allowlist, same write as createDemoRestaurant — it must
+  // not be the unmetered way to do metered work.
+  '/api/fn/extendDemoRestaurant',
 ]);
 
 /**
@@ -290,6 +293,8 @@ const COSTLY = new Set([
   // Writes a row and publishes a public page in a third party's name. Nothing
   // else in this app creates something addressed to the outside world.
   '/api/fn/createDemoRestaurant',
+  // Same write, same page, just a later clock.
+  '/api/fn/extendDemoRestaurant',
 ]);
 
 /** Which binding a path draws from. */
