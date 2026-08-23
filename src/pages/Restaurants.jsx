@@ -92,6 +92,55 @@ const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star revi
 const WITH = ["More 5-star reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
 
 /**
+ * The questions owners actually ask — written once, rendered twice.
+ *
+ * ── Why this is a constant now ──────────────────────────────────────────────
+ *
+ * These six existed in two places: the FAQPage schema in the Seo block, and
+ * the visible list at the bottom of the page. Two copies of the same six
+ * answers, phrased slightly differently in each — the schema said "the only
+ * new step is putting a table tent out", the page said "and we send you
+ * those" — and nothing anywhere held them together.
+ *
+ * That is worse than untidy. Google's structured-data guidance is explicit
+ * that FAQPage markup must match the content visible on the page, and a
+ * mismatch is the kind of thing that costs a rich result rather than
+ * announcing itself. Editing one copy and not the other is the obvious way
+ * for that to happen, and with two copies it was one careless edit away at
+ * all times.
+ *
+ * So the visible answer is now the schema answer, by construction. Where the
+ * two wordings differed, the page's own phrasing won — it is the one a human
+ * reads, and it was the warmer of the two.
+ */
+const FAQ = [
+  {
+    q: "Does BillTap replace my POS?",
+    a: "No. BillTap runs alongside whatever you already use — Toast, Clover, Square, anything. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders.",
+  },
+  {
+    q: "What does my staff have to do differently?",
+    a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit — all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
+  },
+  {
+    q: "Where do the 5-star reviews actually go?",
+    a: "Straight to your Google Business Profile — the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
+  },
+  {
+    q: "What happens if a guest leaves a bad rating?",
+    a: "Every guest gets the same Google link — nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
+  },
+  {
+    q: "Can I cancel anytime?",
+    a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever — no contract, no cancellation fee.",
+  },
+  {
+    q: "Does BillTap handle any of the money?",
+    a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us — no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
+  },
+];
+
+/**
  * Image that fades up once decoded, and removes itself on error so the
  * gradient underneath becomes the design rather than a broken box.
  */
@@ -352,38 +401,13 @@ export default function Restaurants() {
           {
             "@context": "https://schema.org",
             "@type": "FAQPage",
-            mainEntity: [
-              {
-                "@type": "Question",
-                name: "Does BillTap replace my POS?",
-                acceptedAnswer: { "@type": "Answer", text: "No. BillTap runs alongside whatever POS you already use \u2014 Toast, Clover, Square, or anything else. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders." },
-              },
-              {
-                "@type": "Question",
-                name: "What does my staff have to do differently?",
-                acceptedAnswer: { "@type": "Answer", text: "Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit without a server involved. The only new step is putting a table tent out." },
-              },
-              {
-                "@type": "Question",
-                name: "Where do the 5-star reviews actually go?",
-                acceptedAnswer: { "@type": "Answer", text: "Straight to your Google Business Profile. A happy guest gets a one-tap link to leave a review the moment they finish paying." },
-              },
-              {
-                "@type": "Question",
-                name: "What happens if a guest leaves a bad rating?",
-                acceptedAnswer: { "@type": "Answer", text: "Every guest gets the same Google review link \u2014 BillTap doesn't gate or hide reviews by rating. A low rating instead triggers a real-time alert to the owner while the guest is still at the table, so a manager can address it in person." },
-              },
-              {
-                "@type": "Question",
-                name: "Can I cancel anytime?",
-                acceptedAnswer: { "@type": "Answer", text: "Yes. BillTap offers a 14-day free trial, and the $149/month plan can be canceled anytime with no contract and no cancellation fee." },
-              },
-              {
-                "@type": "Question",
-                name: "Does BillTap handle any of the money?",
-                acceptedAnswer: { "@type": "Answer", text: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so each person knows their share, and tracks who has settled up with whoever is covering the bill. No money moves through BillTap, so there is no merchant account to open, no payout schedule, and nothing extra to reconcile at close." },
-              },
-            ],
+            // Built from the same FAQ constant the page renders, so the markup
+            // cannot drift from what a visitor actually reads.
+            mainEntity: FAQ.map(({ q, a }) => ({
+              "@type": "Question",
+              name: q,
+              acceptedAnswer: { "@type": "Answer", text: a },
+            })),
           },
         ]}
       />
@@ -472,6 +496,32 @@ export default function Restaurants() {
           .rst-rail { scroll-snap-type: none; scroll-padding-left: 0; }
           .rst-rail > * { flex: initial; }
         }
+
+        /*
+          FAQ disclosure. The marker is drawn here rather than imported as an
+          icon because it is two borders and a rotation, and this section is
+          otherwise entirely free of JavaScript.
+
+          list-style/::-webkit-details-marker are both cleared: Safari draws
+          its own triangle from the shadow DOM and ignores the standard
+          property, so removing one without the other leaves a stray triangle
+          on exactly the browser most of these owners are holding.
+        */
+        .rst-faq { border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 14px; }
+        .rst-faq > summary {
+          cursor: pointer; list-style: none; padding: 12px 0;
+          transition: color .2s ease;
+        }
+        .rst-faq > summary::-webkit-details-marker { display: none; }
+        .rst-faq > summary:hover { color: ${GOLD}; }
+        .rst-faq > summary:focus-visible { outline: 2px solid rgba(240,180,41,.45); outline-offset: 4px; border-radius: 6px; }
+        .rst-faq-mark {
+          width: 9px; height: 9px; border-right: 2px solid rgba(240,180,41,.75);
+          border-bottom: 2px solid rgba(240,180,41,.75); transform: rotate(45deg);
+          transition: transform .25s ease;
+        }
+        .rst-faq[open] > summary .rst-faq-mark { transform: rotate(-135deg); }
+        @media (prefers-reduced-motion: reduce) { .rst-faq-mark { transition: none; } }
 
         @keyframes rst-kenburns { from { transform: scale(1.04); } to { transform: scale(1.13); } }
         .rst-kb { animation: rst-kenburns 28s ease-in-out infinite alternate; transform-origin: 62% 40%; }
@@ -1091,37 +1141,37 @@ export default function Restaurants() {
           <h2 className="font-display text-3xl sm:text-4xl text-center mb-12" style={{ color: "#f5f5f4" }}>
             Questions owners actually ask
           </h2>
-          <div className="space-y-8">
-            {[
-              {
-                q: "Does BillTap replace my POS?",
-                a: "No. BillTap runs alongside whatever you already use \u2014 Toast, Clover, Square, anything. There's no integration, no new hardware, and no changes to how your kitchen or servers ring in orders.",
-              },
-              {
-                q: "What does my staff have to do differently?",
-                a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit \u2014 all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
-              },
-              {
-                q: "Where do the 5-star reviews actually go?",
-                a: "Straight to your Google Business Profile \u2014 the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
-              },
-              {
-                q: "What happens if a guest leaves a bad rating?",
-                a: "Every guest gets the same Google link \u2014 nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
-              },
-              {
-                q: "Can I cancel anytime?",
-                a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever \u2014 no contract, no cancellation fee.",
-              },
-              {
-                q: "Does BillTap handle any of the money?",
-                a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us \u2014 no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
-              },
-            ].map((item) => (
-              <div key={item.q}>
-                <p className="font-semibold text-lg" style={{ color: "#f5f5f4" }}>{item.q}</p>
-                <p className="mt-2 leading-relaxed" style={{ color: "rgba(245,245,244,.64)" }}>{item.a}</p>
-              </div>
+          {/*
+            Native <details>, not an accordion component.
+
+            The comment that used to sit above this section defended a plain
+            stacked list on the grounds that an accordion would mean new state
+            and new imports for something an owner reads once. That objection
+            is real and <details> answers it exactly: it is one HTML element,
+            no useState, no library, no JavaScript at all. It keeps working
+            with JS disabled and it is keyboard- and screen-reader-accessible
+            without any aria plumbing.
+
+            What it buys is the scan. Six questions open was the tallest thing
+            on this page — an owner hunting for "does it replace my POS" had to
+            scroll past five answers he did not ask for. Closed, all six
+            questions fit in about one screen, which is how somebody actually
+            uses an FAQ.
+
+            The first is open by default so the section never reads as an inert
+            list of headings, and every answer stays in the DOM either way, so
+            the FAQPage markup above still matches the page.
+          */}
+          <div className="space-y-3">
+            {FAQ.map((item, i) => (
+              <details key={item.q} className="rst-faq group" open={i === 0}>
+                <summary className="font-semibold text-lg flex items-start justify-between gap-4"
+                  style={{ color: "#f5f5f4" }}>
+                  <span>{item.q}</span>
+                  <span className="rst-faq-mark shrink-0 mt-1" aria-hidden="true" />
+                </summary>
+                <p className="mt-3 leading-relaxed" style={{ color: "rgba(245,245,244,.64)" }}>{item.a}</p>
+              </details>
             ))}
           </div>
         </div>
