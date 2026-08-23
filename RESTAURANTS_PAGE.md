@@ -58,21 +58,17 @@ branch where some guests do not reach `google_review_url`, that is this, again.
 | `src/pages/TableEntry.jsx` | `/r/:slug` — what the table tent points at |
 | `src/pages/RestaurantDashboard.jsx` | Stats, low-rating queue, guest list, settings, table QR |
 | `src/components/RatingCapture.jsx` | Post-payment rating, feedback, Google handoff, email capture |
-| `base44/entities/Restaurant.jsonc` | Restaurant config |
-| `base44/entities/GuestRating.jsonc` | Every rating, and whether the guest tapped through to Google |
-| `base44/entities/GuestContact.jsonc` | The guest list |
-| `base44/entities/RestaurantLead.jsonc` | Inbound sales leads |
-| `base44/functions/monthlyRestaurantReport/` | Scheduled aggregation, hands off to Cloudflare |
+| `supabase/migrations/` | The schema. `restaurants` is the config, `guest_ratings` every rating and whether the guest tapped through to Google, `guest_contacts` the guest list, `restaurant_leads` the inbound sales leads |
+| `worker/lib/db.js` | Postgres over PostgREST, behind the interface the old Base44 SDK had — `TABLES` at the top is the entity-name-to-table map |
 | `worker/routes/monthly-report.js` | Sends the month-end report via Postmark |
 | `worker/routes/rating-alert.js` | Instant low-rating alert |
 | `worker/routes/restaurant-lead.js` | New-lead alert |
 | `worker/lib/email.js` | Shared email (Postmark/Resend) + SMS (Twilio) helper |
 | `worker/routes/create-checkout.js` | Stripe Checkout session |
 | `worker/routes/verify-checkout.js` | Server-side payment confirmation at signup |
-| `worker/routes/base44-proxy.js` | Proxies /api/apps/** to Base44 |
+| `worker/routes/stripe-webhook.js` | Renewals, failed cards, cancellations |
 | `worker/index.js` | Worker entry — routes /api/*, serves ./dist |
 | `wrangler.jsonc` | Deploy config |
-| `base44/functions/stripeWebhook/` | Renewals, failed cards, cancellations |
 
 ## Deploying to Cloudflare
 
@@ -87,7 +83,7 @@ Connect to Git → `KaiStats/billtap`.
 | --- | --- |
 | Project name | `billtap` (lowercase, letters/numbers/hyphens only) |
 | Build command | `npm run build:ci` |
-| Deploy command | `npx wrangler deploy` |
+| Deploy command | `npx wrangler deploy --env=""` |
 
 **Not `npm run build`.** That is `vite build` alone: it emits a valid-looking
 `dist/` with no prerendered snapshots, so `scripts/verify-dist.mjs` refuses the
@@ -104,13 +100,18 @@ the right command there.
 build or the app ships pointing at nothing:
 
 ```
-VITE_BASE44_APP_ID         <your Base44 app id>
-VITE_BASE44_APP_BASE_URL   <your Base44 app URL>
+VITE_ENVIRONMENT           production
+VITE_SUPABASE_URL          <your Supabase project URL>
+VITE_SUPABASE_ANON_KEY     <the anon key, which is public by design>
 ```
 
-**DNS:** attach both `billtap.app` and `www.billtap.app` to the Worker. The apex
-currently has no record at all, which is why the domain does not resolve — the
-printed flyer QR depends on it.
+These used to read `VITE_BASE44_APP_ID` and `VITE_BASE44_APP_BASE_URL`. Setting
+those today ships a bundle that cannot sign anybody in.
+
+**DNS:** attach both `billtap.app` and `www.billtap.app` to the Worker — the
+routes in `wrangler.jsonc` expect all three patterns. The apex once had no
+record at all and the domain did not resolve, which the printed flyer QR
+depends on.
 
 ### How routing works
 
@@ -121,21 +122,12 @@ to `index.html`, which is what lets `/restaurants` and `/r/<slug>` survive a col
 visit.
 
 Both parts matter. Without `run_worker_first`, the SPA fallback would answer
-`/api/*` with `index.html` and every API call — including the Base44 data layer
-the whole app runs on — would return HTML instead of JSON.
+`/api/*` with `index.html` and every API call — including `/api/fn/*`, which the
+whole app runs on — would return HTML instead of JSON.
 
-### Why /api/apps/** is proxied
-
-`src/api/base44Client.js` builds the SDK with `serverUrl: ''`, so every entity,
-auth and function call is issued **same-origin** as `/api/apps/<appId>/...`. That
-works when Base44 serves the app itself. Served from Cloudflare there is no such
-route, so without `worker/routes/base44-proxy.js` every read and write in the app
-— the consumer bill-splitter included — would 404.
-
-Proxying rather than repointing the SDK at `https://base44.app` keeps requests
-same-origin, so nothing depends on Base44's CORS policy for the `billtap.app`
-origin and cookie auth keeps working. Set `BASE44_API_ORIGIN` if your Base44 API
-lives somewhere other than `https://base44.app`.
+There used to be a proxy here forwarding `/api/apps/**` to Base44, because the
+SDK issued every read and write same-origin under that prefix. The SDK is gone;
+the app talks to its own Worker, which talks to Postgres.
 
 ### First smoke test after deploying
 
@@ -155,8 +147,9 @@ did — that is the endpoint rejecting an empty body, which is correct.
 
 | Variable | Required | Default |
 | --- | --- | --- |
-| `BASE44_APP_ID` | for rating alerts | — |
-| `BASE44_MASTER_KEY` | for rating alerts | — |
+| `DATA_BACKEND` | yes | — (`supabase`, set in `wrangler.jsonc`) |
+| `SUPABASE_URL` | yes | — |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | — |
 | `POSTMARK_SERVER_TOKEN` | yes* | — |
 | `POSTMARK_MESSAGE_STREAM` | no | `outbound` |
 | `RESEND_API_KEY` | yes* | — |
@@ -169,22 +162,25 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `STRIPE_SECRET_KEY` | for billing | — |
 | `STRIPE_PRICE_ID` | for billing | — |
 | `PUBLIC_BASE_URL` | no | request origin |
+| `STRIPE_WEBHOOK_SECRET` | for billing | — |
 | `REPORT_WEBHOOK_SECRET` | for reports | — |
+| `GEMINI_API_KEY` | for receipt scanning | — |
+| `QR_SIGNING_SECRET` | for table QR tokens | — |
+| `DEMO_OPERATOR_EMAILS` | to create demo pages | — (empty denies everyone) |
 
-Base44 also needs `STRIPE_WEBHOOK_SECRET` for the subscription webhook.
-
-**The two `BASE44_*` values are runtime secrets, not build variables.**
-`/api/rating-alert` uses them to look the rating up server-side and derive the
+**`SUPABASE_SERVICE_ROLE_KEY` is a runtime secret, not a build variable.**
+`/api/rating-alert` uses it to look the rating up server-side and derive the
 restaurant — that lookup is what stops the endpoint being an open mail relay.
-Without them every low-rating alert returns 500 and nobody is paged, and nothing
+Without it every low-rating alert returns 500 and nobody is paged, and nothing
 tells you: `RatingCapture` fires the request best-effort and never reads the
 response. Check the Worker log for `rating-alert: cannot page the operator` if
-alerts go quiet. `VITE_BASE44_APP_ID` is also accepted for the app id, since
-that is the name the Worker originally read.
+alerts go quiet.
 
 Never prefix a secret with `VITE_`. Vite inlines every `VITE_*` variable into
-the client bundle at build time, so a `VITE_BASE44_MASTER_KEY` would ship the
-master key to every visitor.
+the client bundle at build time, so a `VITE_SUPABASE_SERVICE_ROLE_KEY` would
+ship a key that bypasses row-level security to every visitor.
+`scripts/check-env.mjs` fails the build if the anon and service-role keys are
+confused.
 
 \* One email provider is required, not both. Postmark wins when its token is
 present — that account owns `billtap.app`, so mail comes from
@@ -195,19 +191,17 @@ SMS is dormant until all three Twilio values are set; operators then get a text
 *and* an email on every low rating. An operator who leaves the phone field blank
 gets email only. Billing endpoints return 503 until the Stripe pair is set.
 
-**Base44** (scheduling only): `REPORT_WEBHOOK_URL`
-(`https://billtap.app/api/monthly-report`) and `REPORT_WEBHOOK_SECRET`, matching
-the Cloudflare value. Schedule `monthlyRestaurantReport` for the 1st.
+`/api/monthly-report` is triggered by a POST carrying `X-Report-Secret`, not by
+one of the Worker's own crons. Those three — `0 9`, `30 9` and `0 10` in
+`wrangler.jsonc` — are the nightly backup, the retention pass and the billing
+reconcile, and `worker/index.test.mjs` checks each cron string against the
+constant that dispatches it, because a typo means one job silently never runs
+while another runs twice.
 
-### No mail leaves Base44
+### All mail leaves from Cloudflare
 
-`monthlyRestaurantReport` aggregates the numbers — the one step that needs data
-access — and POSTs them to `/api/monthly-report`, which sends through Postmark.
-Base44 holds no mail credentials and talks to no mail provider. Alerts, lead
-notifications and reports all leave from Cloudflare as `alerts@billtap.app`.
-
-The aggregation reads via `base44.asServiceRole` — a scheduled run has no
-signed-in user, so user-scoped reads would come back empty.
+Alerts, lead notifications and reports go out from the Worker as
+`alerts@billtap.app`. There is one mail path and one sender.
 
 **Sender:** Postmark owns `billtap.app`, so alerts and reports come from
 `alerts@billtap.app`. Falling back to Resend means sending from `grandeza.io`,
@@ -230,22 +224,23 @@ data.
 `/api/create-checkout` opens a Stripe Checkout session for the $149/mo price and
 returns its URL; card details never touch this app. On return, the dashboard
 calls `/api/verify-checkout`, which asks Stripe directly whether the session
-paid, then writes `plan: "active"` through the SDK as the signed-in owner.
+paid and then writes `plan: "active"` itself, with the service role. Both halves
+happen server-side, so the only route to an active plan is a real payment.
 
 Set `STRIPE_PRICE_ID` to a **recurring** $149/month price, not a one-off.
 
 ### Keeping state honest after signup
 
-`verify-checkout` only ever runs once. `base44/functions/stripeWebhook` handles
+`verify-checkout` only ever runs once. `worker/routes/stripe-webhook.js` handles
 everything after: renewals, failed cards and cancellations.
 
-Point Stripe at `https://<your-app-domain>/functions/stripeWebhook` and subscribe
-to `customer.subscription.updated`, `customer.subscription.deleted`,
+Point Stripe at `https://billtap.app/api/stripe-webhook` and subscribe to
+`customer.subscription.updated`, `customer.subscription.deleted`,
 `invoice.payment_failed` and `invoice.payment_succeeded`. Set
-`STRIPE_WEBHOOK_SECRET` (the `whsec_…` value) in Base44.
+`STRIPE_WEBHOOK_SECRET` (the `whsec_…` value) with `wrangler secret put`; the
+handler refuses every delivery without it rather than trusting an unsigned one.
 
-It lives in Base44 because it writes data, which Base44 still owns; it sends no
-mail. Signatures are verified against the **raw** body before parsing — parsing
+Signatures are verified against the **raw** body before parsing — parsing
 first would re-serialise the bytes and break the HMAC. Replays outside a
 5-minute window are rejected, and multiple `v1` signatures are accepted so a
 signing-secret rotation doesn't drop events. Data errors return 500 so Stripe
@@ -254,9 +249,10 @@ retries rather than silently dropping a cancellation.
 Plan states: `trial` → `active` → `past_due` (payment failed, service continues)
 → `cancelled`. The dashboard renders all four.
 
-**Remaining caveat:** `verify-checkout` decides payment server-side, but the
-signup plan write happens client-side, so an owner could set their own row to
-`active` through the SDK. The webhook corrects it on the next Stripe event.
+The client-side plan write that used to sit alongside this is gone. It let an
+owner set their own row to `active` through the SDK without paying, and the
+webhook only corrected it on the next Stripe event — which, for a subscription
+that was never created, never came.
 
 ## Not built: POS integration
 
@@ -290,14 +286,12 @@ changes — the CSP already allows `img-src 'self'`.
 
 ## Do not put Cloudflare code in a top-level functions/
 
-Base44's repo sync claims that path. It moved every file from `functions/` into
-`base44/functions/<name>/entry.ts` on its own — renaming `.js` to `.ts` and
-nesting each in a folder — which broke every import in `worker/index.js` and
-registered Cloudflare handlers as Base44 Deno functions.
+Base44's repo sync used to claim that path, and it moved every file from
+`functions/` into `base44/functions/<name>/entry.ts` on its own — renaming `.js`
+to `.ts` and nesting each in a folder — which broke every import in
+`worker/index.js`. `base44/` no longer exists in this repository, so if the sync
+is still connected anywhere it has nothing here to move; the layout it forced is
+worth keeping either way.
 
 Cloudflare code lives under `worker/`: `worker/index.js` for routing,
-`worker/routes/` for handlers, `worker/lib/` for shared helpers. Base44 leaves
-that alone.
-
-Base44 also commits to `main` unprompted — it has applied RLS rules and migrated
-workflows. Pull before branching.
+`worker/routes/` for handlers, `worker/lib/` for shared helpers.

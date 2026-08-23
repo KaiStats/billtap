@@ -136,7 +136,6 @@ function analyticsAt(pathname) {
    * so without this the file throws ReferenceError on the one path where it is
    * supposed to succeed — and the test would be reporting on its own harness.
    */
-  // eslint-disable-next-line no-new-func
   new Function('sandbox', `with (sandbox) { ${src} }`)(win);
   return { loaded, pixel: loaded.some((u) => /facebook/.test(u)), ga: loaded.some((u) => /googletagmanager/.test(u)) };
 }

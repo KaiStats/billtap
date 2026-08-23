@@ -753,7 +753,6 @@ test('a junk ticket in the body is ignored rather than stored or refused', async
   // not fail either — the diner did nothing wrong and their split must go
   // through.
   for (const ticket of ['TABLE 14', 42, [], { table: 42 }, { table: '   ' }]) {
-    // eslint-disable-next-line no-await-in-loop
     await withStub({ user: null }, async (s) => {
       const res = await HANDLERS.createSession({
         env: ENV,

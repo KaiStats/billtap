@@ -39,7 +39,6 @@ export function startScanTimer() {
       const phases = Object.fromEntries(marks.map((m) => [m.phase, m.ms]));
 
       if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
         console.table([{ total_ms: total, ...phases, ...flatten(detail) }]);
       }
 

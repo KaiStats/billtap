@@ -9,7 +9,6 @@ const GOLD = "#f0b429";
 const LEAD = { color: "rgba(245,245,244,.80)", fontSize: "1.125rem", lineHeight: 1.7, marginBottom: "1.5rem" };
 const P = { color: "rgba(245,245,244,.68)", lineHeight: 1.75, marginBottom: "1rem" };
 const H2 = { color: "#f5f5f4", fontSize: "1.6rem", fontWeight: 600, marginTop: "2.5rem", marginBottom: ".75rem" };
-const H3 = { color: "#f5f5f4", fontSize: "1.1rem", fontWeight: 600, marginTop: "1.75rem", marginBottom: ".5rem" };
 
 export default function BlogPost04CostOfOneLostRegular() {
   return (

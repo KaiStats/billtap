@@ -43,7 +43,6 @@ function SessionHostComponent() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentHandle, setPaymentHandle] = useState("");
   const [qrToken, setQrToken] = useState(null);
-  const [qrTokenExpiry, setQrTokenExpiry] = useState(null);
   const [showSplitConfig, setShowSplitConfig] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [customSplitData, setCustomSplitData] = useState(null);
@@ -67,12 +66,16 @@ function SessionHostComponent() {
     if (res.data?.qr_token) {
       setQrToken(res.data.qr_token);
       const expiry = Date.now() + 25 * 60 * 1000; // refresh before 30-min expiry
-      // Mirrored into a ref as well as state. The refresh interval below reads
-      // the ref, so it can check freshness without taking a dependency on a
-      // value this function sets — which is what made the effect re-run and
-      // re-fire itself.
+      /**
+       * A ref, and only a ref.
+       *
+       * The refresh interval below reads this to check freshness without
+       * taking a dependency on a value this function sets — which is what
+       * made the effect re-run and re-fire itself. It was mirrored into state
+       * as well, and nothing ever read that state: it bought a re-render
+       * every twenty-five minutes and changed nothing on screen.
+       */
       qrTokenExpiryRef.current = expiry;
-      setQrTokenExpiry(expiry);
     }
   }, [sessionId]);
 

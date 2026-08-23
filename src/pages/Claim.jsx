@@ -545,9 +545,14 @@ export default function Claim() {
     setShowPaymentModal(true);
   };
 
-  // Derived state — must be above all early returns (Rules of Hooks)
-  const items = session?.items || [];
-  const participants = session?.participants || [];
+  // Derived state — must be above all early returns (Rules of Hooks).
+  //
+  // These two are memoised on the array identity rather than written as plain
+  // `|| []` fallbacks: every `useMemo` below depends on them, and a fresh `[]`
+  // on each render would invalidate all of them on every render, which is the
+  // opposite of what those memos are for.
+  const items = useMemo(() => session?.items || [], [session?.items]);
+  const participants = useMemo(() => session?.participants || [], [session?.participants]);
   const splitMode = session?.split_mode || "itemized";
   const isExpired = session?.expires_at && session.expires_at < Date.now();
 

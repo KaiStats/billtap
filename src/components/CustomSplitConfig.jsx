@@ -14,7 +14,6 @@ export default function CustomSplitConfig({ participants, totalAmount, onChange 
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
   const [isValid, setIsValid] = useState(false);
-  const [finalAmounts, setFinalAmounts] = useState({});
 
   // Initialize values when participants change
   useEffect(() => {
@@ -86,7 +85,13 @@ export default function CustomSplitConfig({ participants, totalAmount, onChange 
 
     setError(calculatedError);
     setIsValid(valid);
-    setFinalAmounts(calculatedAmounts);
+    /**
+     * `calculatedAmounts` is handed straight to the parent and not stored.
+     *
+     * It used to also go into a `finalAmounts` state that nothing ever read --
+     * so every recalculation, which is every keystroke in this form, queued a
+     * re-render whose only effect was to run the same arithmetic again.
+     */
     onChange({ subMode, isValid: valid, finalAmounts: calculatedAmounts });
   }, [subMode, values, participants, totalAmount, onChange]);
 

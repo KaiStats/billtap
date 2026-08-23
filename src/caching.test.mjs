@@ -82,7 +82,6 @@ function makeEnvironment({ network }) {
     return network(abs(request));
   };
 
-  // eslint-disable-next-line no-new-func
   new Function('self', 'caches', 'fetch', 'Response', 'URL', swSource)(
     self, caches, fetchStub, Response, URL,
   );
