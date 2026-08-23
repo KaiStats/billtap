@@ -422,7 +422,20 @@ export default function Landing() {
   const proFeatures = [
     "Everything in Free",
     "Your running tab — every bill still settling, across all your meals, in one place",
-    "Unlimited party size",
+    /**
+     * Fifty, not "unlimited".
+     *
+     * MAX_PARTY in worker/routes/functions.js is a hard 50 and always has
+     * been — joinSession answers `session_full` at fifty-one. Its comment says
+     * outright that the copy is the thing that should move, not the number,
+     * and the note directly above this list already said "Pro goes to fifty"
+     * while the bullet underneath it said unlimited.
+     *
+     * Fifty is past any real table, so nothing is lost by saying it, and a Pro
+     * subscriber who booked a party of sixty on the strength of the word
+     * "unlimited" is a refund and a bad review rather than a support ticket.
+     */
+    "Up to 50 people per split — five times the free limit",
   ];
 
   const [proBusy, setProBusy] = useState(false);
@@ -513,7 +526,7 @@ export default function Landing() {
 
   const faqs = [
     { q: "Do I need to download an app?", a: "No. BillTap works in any mobile browser. Guests join by scanning a QR code — no download, no account required." },
-    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($3.99/mo) adds your running tab \u2014 every bill still settling in one place \u2014 and unlimited party size." },
+    { q: "Is BillTap really free?", a: "Yes. The free plan covers unlimited splits, up to 10 people per session, all 3 split modes, AI receipt scanning, and settlement via payment links — no credit card required. Pro ($3.99/mo) adds your running tab \u2014 every bill still settling in one place \u2014 and raises the limit to 50 people per split." },
     { q: "How does the QR code work?", a: "The host generates a unique QR code after scanning the receipt. Guests scan it to join the split instantly. Tokens refresh every 25 minutes for security." },
     { q: "What payment apps are supported?", a: "Venmo, Cash App, and Zelle. Guests tap their preferred method and pay in one tap. Hosts see who's paid in real time." },
     { q: "Can I split custom amounts?", a: "Yes. Custom split mode lets you assign percentages, fixed amounts, or shares. Configure it after guests join from the Session Host screen." },
@@ -525,10 +538,82 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
+      {/*
+        The highest-authority URL on the domain carried no structured data at
+        all — no application, no price, and no FAQ markup despite six real
+        questions rendered further down this page.
+
+        The FAQ entities are derived from `faqs` rather than retyped, so the
+        markup and the visible page cannot drift apart. Google penalises
+        FAQPage markup that does not match on-page content, and a hand-copied
+        second list is exactly how that happens six months from now.
+
+        Both tiers are real and both are stated: Free is genuinely $0, and Pro
+        is a live Stripe subscription at $3.99/month — priced with
+        UnitPriceSpecification for the same reason the restaurant page is, so
+        a crawler cannot read a recurring charge as a one-off.
+
+        No aggregateRating, no review. There are no customers yet, so any
+        number there would be fabricated — and invented review markup is what
+        earns a manual action.
+      */}
       <Seo
         path="/"
         title="BillTap — Split the Bill in 30 Seconds, No App"
         description="Scan the receipt, share a QR code, everyone claims their items and pays their exact share. No app, no accounts, no math, no IOUs."
+        schema={[
+          {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "BillTap",
+            applicationCategory: "FinanceApplication",
+            operatingSystem: "Web",
+            url: "https://billtap.app",
+            description:
+              "Photograph a restaurant receipt, share a QR code, and everyone at the table claims what they ordered and pays their exact share. No app download and no account.",
+            offers: [
+              {
+                "@type": "Offer",
+                name: "Free",
+                price: "0",
+                priceCurrency: "USD",
+                availability: "https://schema.org/InStock",
+                description:
+                  "Unlimited bill splits for up to 10 people per split, all three split modes, receipt scanning and QR sharing. No credit card.",
+              },
+              {
+                "@type": "Offer",
+                name: "Pro",
+                price: "3.99",
+                priceCurrency: "USD",
+                availability: "https://schema.org/InStock",
+                url: "https://billtap.app/#pricing",
+                description:
+                  "$3.99 per month after a 14-day free trial. Adds a running tab across meals and raises the limit to 50 people per split.",
+                priceSpecification: {
+                  "@type": "UnitPriceSpecification",
+                  price: "3.99",
+                  priceCurrency: "USD",
+                  unitCode: "MON",
+                  unitText: "month",
+                  billingDuration: 1,
+                  billingIncrement: 1,
+                },
+                seller: { "@type": "Organization", name: "BillTap", url: "https://billtap.app" },
+                areaServed: { "@type": "Country", name: "US" },
+              },
+            ],
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: faqs.map((faq) => ({
+              "@type": "Question",
+              name: faq.q,
+              acceptedAnswer: { "@type": "Answer", text: faq.a },
+            })),
+          },
+        ]}
       />
       <style>{`
         .lp-img { display:block; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .5s var(--ease-out); }
@@ -833,6 +918,19 @@ export default function Landing() {
                 <p className="text-center text-xs mt-3" style={{ color: "#e5484d" }}>{proError}</p>
               )}
               <p className="text-center text-xs mt-3 text-muted-foreground">14-day free trial · Then {billingInterval === "annual" ? "$29/yr" : "$3.99/mo"}</p>
+              {/*
+                Naming the processor, because it is the one trust mark this
+                page has actually earned.
+
+                An audit of this site listed "no visible payment processor"
+                alongside the missing logo wall and the missing SOC 2 badge.
+                Two of those cannot be fixed without inventing customers. This
+                one is simply true and was going unsaid: checkout is Stripe,
+                and no card number has ever reached this app.
+              */}
+              <p className="text-center text-xs mt-1.5 text-muted-foreground">
+                Payments by Stripe · Card details never touch BillTap
+              </p>
             </div>
           </div>
 
@@ -849,13 +947,45 @@ export default function Landing() {
             <Wash name="celebrate" opacity={0.14} position="top" />
             <div className="lp-scrim" style={{ background: "linear-gradient(180deg, rgba(12,18,32,0.5) 0%, rgba(12,18,32,0.92) 60%, #0c1220 100%)" }} />
             <div className="relative">
-              <h3 className="font-display text-xl font-semibold">Pro features coming soon</h3>
-              <p className="text-sm text-muted-foreground mt-2 mb-5 max-w-lg">
-                We're watching how people use BillTap. When we see what you actually need, we'll build it. Tell us what would make BillTap worth paying for.
+              {/*
+                This card used to read "Pro features coming soon" and offer a
+                waitlist — directly underneath a working Stripe checkout button
+                for Pro.
+
+                That contradiction was the worst credibility problem on the
+                page. An outside audit of this site concluded the product was
+                unfinished and the Pro tier unreleased, on the strength of this
+                card alone, while the button eighteen lines above it was taking
+                real money.
+
+                So it says what actually shipped instead. Everything listed
+                below is live in production today and can be checked by anyone
+                reading this — which is the version of "built in public" that
+                is worth anything.
+              */}
+              <h3 className="font-display text-xl font-semibold">Shipped this week</h3>
+              <p className="text-sm text-muted-foreground mt-2 mb-4 max-w-lg">
+                Built in public means telling you what changed, not just that something did.
+              </p>
+              <ul className="space-y-2.5 mb-6 max-w-lg">
+                {[
+                  "Share a plate. Two people tap the same nachos and it splits between them — it used to go entirely to whoever was quickest.",
+                  "See what fairness saved you. Your share now shows what an even split would have cost instead.",
+                  "Rate a restaurant without splitting anything. One tap from the table tent, no receipt required.",
+                  "Hosts settle everyone who paid in one tap, instead of one tap each.",
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-3">
+                    <Check className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" aria-hidden="true" />
+                    <span className="text-sm text-foreground/90">{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-muted-foreground mb-4 max-w-lg">
+                Want to hear when the next one lands? Leave an email. That is the only thing it is used for.
               </p>
               {waitlistStatus === "done" ? (
                 <div className="flex items-center gap-2 text-sm font-medium text-primary">
-                  <Check className="w-4 h-4" /> You're on the list! We'll email you when Pro launches. No spam ever.
+                  <Check className="w-4 h-4" /> You&apos;re on the list. You&apos;ll hear from us when something ships — nothing else.
                 </div>
               ) : (
                 <>
@@ -876,10 +1006,10 @@ export default function Landing() {
                       onClick={handleWaitlist}
                       disabled={waitlistStatus === "loading"}
                       aria-busy={waitlistStatus === "loading"}
-                      aria-label="Join the Pro waitlist"
+                      aria-label="Get an email when something new ships"
                       className="press px-5 h-11 rounded-xl font-semibold text-sm bg-primary text-primary-foreground shadow-glow transition hover:brightness-110 whitespace-nowrap disabled:opacity-60"
                     >
-                      {waitlistStatus === "loading" ? "Adding…" : "Join the waitlist"}
+                      {waitlistStatus === "loading" ? "Adding…" : "Keep me posted"}
                     </button>
                   </div>
                   {waitlistStatus === "error" && (
@@ -887,7 +1017,7 @@ export default function Landing() {
                       That didn&apos;t go through. Please try again, or email hello@billtap.app and we&apos;ll add you by hand.
                     </p>
                   )}
-                  <p className="text-xs mt-3 text-muted-foreground">No spam. One email when Pro launches. Unsubscribe anytime.</p>
+                  <p className="text-xs mt-3 text-muted-foreground">No spam, no drip sequence. An email when something ships. Unsubscribe anytime.</p>
                 </>
               )}
             </div>

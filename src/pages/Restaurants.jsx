@@ -218,11 +218,68 @@ export default function Restaurants() {
             operatingSystem: "Web",
             description: "Guest bill-splitting that captures Google reviews and customer contact info at the moment of payment, with a real-time alert to owners on low ratings.",
             url: "https://billtap.app/restaurants",
+            /**
+             * The price is per month, and the markup did not say so.
+             *
+             * ── What a crawler read before ──────────────────────────────────
+             *
+             * `price: "149"` with no unit is a one-time purchase. Google has
+             * no way to know this is a subscription, so a rich result could
+             * present BillTap as a $149 product rather than $149/month — which
+             * is both wrong and, for an operator comparing it against Podium's
+             * monthly pricing, wrong in the direction that loses the click.
+             *
+             * UnitPriceSpecification with unitCode "MON" (the UN/CEFACT code
+             * for month) plus billingDuration/billingIncrement is the
+             * standard way to state a recurring charge. `price` is kept on the
+             * Offer itself because consumers that ignore priceSpecification
+             * still need a number.
+             *
+             * ── The trial is deliberately not a second $0 price ─────────────
+             *
+             * A zero-priced UnitPriceSpecification for the 14 days would be
+             * defensible markup and a bad idea: it invites a rich result
+             * reading "$0", which is a promise this product does not make past
+             * two weeks. `eligibleDuration` was previously carrying the trial
+             * and that is a misuse — it describes how long the *offer* stays
+             * open, not how long it is free. The trial belongs in the offer
+             * description, where it cannot be rendered as the price.
+             *
+             * ── What is NOT here, on purpose ────────────────────────────────
+             *
+             * No aggregateRating and no review. Schema.org will happily accept
+             * both, an audit of this site flagged the absence of ratings, and
+             * BillTap has no customers yet — so any number there would be
+             * invented. Fabricated review markup is also precisely what earns
+             * a Google manual action. It goes in when a real restaurant says a
+             * real thing.
+             */
             offers: {
               "@type": "Offer",
               price: "149",
               priceCurrency: "USD",
-              eligibleDuration: { "@type": "QuantitativeValue", value: "14", unitCode: "DAY" },
+              url: "https://billtap.app/restaurants",
+              availability: "https://schema.org/InStock",
+              description:
+                "$149 per month after a 14-day free trial. No card required to start, no contract, cancel anytime.",
+              priceSpecification: {
+                "@type": "UnitPriceSpecification",
+                price: "149.00",
+                priceCurrency: "USD",
+                unitCode: "MON",
+                unitText: "month",
+                billingDuration: 1,
+                billingIncrement: 1,
+              },
+              seller: {
+                "@type": "Organization",
+                name: "BillTap",
+                url: "https://billtap.app",
+              },
+              // Venmo, Cash App and Zelle are US-only rails and the phone
+              // number is a US line, so the service genuinely is US-only.
+              // Saying so keeps it out of results it cannot serve.
+              areaServed: { "@type": "Country", name: "US" },
             },
           },
           {
@@ -603,8 +660,26 @@ export default function Restaurants() {
               </p>
 
               <ul className="mt-8 space-y-3">
+                {/*
+                  Two additions, both simply true and both previously unsaid.
+
+                  "Every guest can rate you" is what shipped this week: the
+                  review prompt used to open only at the end of a completed
+                  bill split, so a solo diner, a business lunch on one card or
+                  anyone in a hurry never reached the thing this $149 buys. It
+                  is now one tap from the table tent, no receipt required \u2014
+                  which is the single largest change to what an operator gets
+                  for the money.
+
+                  "Billing by Stripe" is the trust mark this page has earned
+                  and was not claiming. An outside audit listed "no visible
+                  payment processor" next to the missing logo wall; that one
+                  is fixable without inventing a customer.
+                */}
                 {["14-day free trial", "Cancel anytime", "Printed QR table tents included",
+                  "Every guest can rate you in one tap \u2014 no bill split required",
                   "Unlimited tables and covers", "Setup in under 10 minutes",
+                  "Billing by Stripe \u2014 card details never touch BillTap",
                   "No merchant account \u2014 your money never passes through us"].map((f) => (
                   <li key={f} className="flex items-start gap-3">
                     <Check className="w-4 h-4 mt-1 flex-shrink-0" style={{ color: GOLD }} aria-hidden="true" />
