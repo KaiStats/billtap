@@ -227,7 +227,7 @@ async function extendCall(body, { env = ENV, signedIn = true, audited = [] } = {
   return { res, json: await res.clone().json(), audited };
 }
 
-test('extending pushes a nearly-dead demo back out to a week, keeping its slug', async () => {
+test('extending pushes a nearly-dead demo back out to a full term, keeping its slug', async () => {
   const demo = {
     id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq',
     owner_id: KAI, demo: true, demo_expires_at: Date.now() + 60000,
@@ -242,8 +242,8 @@ test('extending pushes a nearly-dead demo back out to a week, keeping its slug',
     const row = tables.restaurants[0];
     assert.equal(row.slug, 'hr-a7f3kq', 'the URL already handed over keeps working');
     assert.ok(
-      row.demo_expires_at >= before + 168 * 3600000 && row.demo_expires_at <= after + 168 * 3600000,
-      `demo_expires_at was ${row.demo_expires_at}, not ~168h out`,
+      row.demo_expires_at >= before + 24 * 3600000 && row.demo_expires_at <= after + 24 * 3600000,
+      `demo_expires_at was ${row.demo_expires_at}, not ~24h out`,
     );
     assert.equal(json.slug, 'hr-a7f3kq');
     assert.equal(json.expires_at, row.demo_expires_at);
@@ -308,7 +308,7 @@ test('extending with a missing or blank slug is refused before any lookup', asyn
 
 // ── What gets written ───────────────────────────────────────────────────────
 
-test('the created row is a demo on its own 168-hour (one week) clock', async () => {
+test('the created row is a demo on its own 24-hour clock', async () => {
   await withStub({}, async ({ tables }) => {
     const before = Date.now();
     const { res, json } = await create({ name: '  Herb and Rye  ' });
@@ -320,8 +320,8 @@ test('the created row is a demo on its own 168-hour (one week) clock', async () 
     assert.equal(row.name, 'Herb and Rye', 'trimmed');
     assert.equal(row.demo, true);
     assert.ok(
-      row.demo_expires_at >= before + 168 * 3600000 && row.demo_expires_at <= after + 168 * 3600000,
-      `demo_expires_at was ${row.demo_expires_at}, not ~168h out`,
+      row.demo_expires_at >= before + 24 * 3600000 && row.demo_expires_at <= after + 24 * 3600000,
+      `demo_expires_at was ${row.demo_expires_at}, not ~24h out`,
     );
     // Not also on a fourteen-day trial. The demo arm in entitlement.js answers
     // first regardless, so this is the row telling the truth rather than the
@@ -337,14 +337,14 @@ test('the created row is a demo on its own 168-hour (one week) clock', async () 
 
 // ── How long a demo lives ────────────────────────────────────────────────────
 
-test('demoTtlHours falls back to a week on anything that is not a usable number', () => {
+test('demoTtlHours falls back to a day on anything that is not a usable number', () => {
   for (const raw of [undefined, '', '   ', 'not-a-number', '0', '-5', 0, -5, null]) {
-    assert.equal(demoTtlHours({ DEMO_TTL_HOURS: raw }), 168, `DEMO_TTL_HOURS=${JSON.stringify(raw)} must fall back to 168`);
+    assert.equal(demoTtlHours({ DEMO_TTL_HOURS: raw }), 24, `DEMO_TTL_HOURS=${JSON.stringify(raw)} must fall back to 24`);
   }
 });
 
 test('demoTtlHours reads a configured value, floored and clamped', () => {
-  assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '24' }), 24, 'old behaviour is still reachable');
+  assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '168' }), 168, 'a week is still reachable without a deploy');
   assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '72.9' }), 72, 'floored, not rounded');
   assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '100000' }), 720, 'clamped to the month ceiling');
 });
