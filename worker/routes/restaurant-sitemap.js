@@ -29,14 +29,16 @@
  *
  * `reference_account` exists to keep a row off the billing clock — see
  * migration 0023. It says nothing about whether that restaurant agreed to be
- * published, and the one row carrying it is Mariposa, which the comment in
- * src/pages/Restaurants.jsx describes exactly: "Mariposa is not a customer.
- * They are a prospect who has not said yes." A fabricated claim that they were
- * a customer was already removed from the marketing page once, on the grounds
- * that the owner can read it and would be right to walk.
+ * published. The row this was written for belonged to a prospect who had not
+ * said yes, and a fabricated claim that they were a customer had already been
+ * removed from the marketing page once, on the grounds that the owner can read
+ * it and would be right to walk. That row has since been renamed to a
+ * placeholder and its slug randomised, so nothing in the database carries a
+ * real business's name today — but the next reference account will, and the
+ * rule has to hold before anyone remembers to check.
  *
- * Listing them here would make the same claim again, in a file addressed to
- * Google, and get a page bearing their name into search results. Every
+ * Listing one here makes that claim again, in a file addressed to Google, and
+ * gets a page bearing a real business's name into search results. Every
  * protection the demo path has — an unguessable slug, a noindex, deletion
  * within a day — is bypassed by a reference row simply because `demo` is
  * false. So the filter is entitlement AND being an actual customer, and those

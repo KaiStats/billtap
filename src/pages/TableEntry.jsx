@@ -187,7 +187,7 @@ export default function TableEntry() {
         no share image.
 
         That is not an abstract ranking problem, it is a live one every time a
-        guest sends the link: `billtap.app/r/mariposa` pasted into a text, a
+        guest sends the link: `billtap.app/r/<slug>` pasted into a text, a
         group chat or a Facebook post unfurled as a bare URL with no name and
         no picture. The restaurant is paying $149 a month for a link that
         looks broken when it travels.

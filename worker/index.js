@@ -149,8 +149,8 @@ const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
  * already exists because capitalised paths reached this app in the wild, and a
  * printed card is read by more things than a browser — a QR decoder, an OCR, a
  * person typing it off a flyer, an SMS client that title-cases what it thinks
- * is a sentence. `/F/Mariposa` used to 404 outright, and getting past that only
- * to hand `/r/Mariposa` to a slug lookup that is byte-exact would have moved
+ * is a sentence. `/F/Slug` used to 404 outright, and getting past that only
+ * to hand `/r/Slug` to a slug lookup that is byte-exact would have moved
  * the dead end rather than removed it: slugify() guarantees every stored slug is
  * lowercase, so anything else cannot match a row.
  */

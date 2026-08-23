@@ -34,7 +34,7 @@ Disallow: /new
 # What the disallow actually cost:
 #
 #   Every social crawler respects this file. So a guest texting
-#   billtap.app/r/mariposa, or posting it, got a bare URL with no name and no
+#   billtap.app/r/<slug>, or posting it, got a bare URL with no name and no
 #   image — the restaurant paying $149 a month had a link that looked broken
 #   the moment it travelled.
 #
