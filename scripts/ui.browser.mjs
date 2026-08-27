@@ -2334,6 +2334,101 @@ test("a real restaurant's table page stays indexable", async () => {
   } finally { await context.close(); }
 });
 
+// ── The room that never presents a check ────────────────────────────────────
+//
+// A counter-service place takes the money before the food, so "I've paid" —
+// the event the rating flow has always hung off — happens there before the
+// first bite. The trigger moves to the guest's own scan of a code on the cup,
+// the bag or the number tent, and it has to land on the question rather than
+// on a button that photographs a bill. See migration 0026.
+
+/** Mariposa, with the same review link, taking the money at a counter. */
+const COUNTER = { ...RESTAURANT, service_style: 'counter' };
+
+test('the rating link opens on the stars, not on a bill', async () => {
+  const { context, page } = await phone({ restaurant: RESTAURANT });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Mariposa' }).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: '5 stars' }).waitFor({ timeout: 10000 });
+
+    // Not a button, and not the first thing. Somebody holding a coffee has no
+    // check to split, and leading with one tells them the code was not for them.
+    assert.equal(await page.getByRole('button', { name: 'Start the split' }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('one tap records the rating, with no bill invented for a visit that had none', async () => {
+  const { context, page, created, ratingCalls } = await phone({ restaurant: RESTAURANT });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+
+    // The Google handoff, which means the star was submitted and the guest was
+    // not asked a second time on the way.
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 15000 });
+
+    assert.equal(created.length, 1, 'one session, opened by the tap');
+    assert.equal(created[0].kind, 'rating_only');
+    assert.equal(created[0].total_amount, 0, 'a counter visit carries no check to invent');
+    assert.equal(created[0].restaurant_slug, 'mariposa');
+
+    const rated = ratingCalls.filter((c) => c.action === 'rate');
+    assert.equal(rated.length, 1, 'submitted once, not once per render');
+    assert.equal(rated[0].stars, 5, 'and it is the star the guest actually tapped');
+  } finally { await context.close(); }
+});
+
+test('an unhappy guest at a counter pages the manager, with nobody to tell in the room', async () => {
+  // The half worth more here than at a table. A dining room has a server who
+  // comes back to ask how everything is; a counter has nobody, so this is the
+  // only way the operator hears it before it is public.
+  const { context, page, alertCalls } = await phone({ restaurant: COUNTER });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '2 stars' }).click({ timeout: 15000 });
+
+    await page.getByRole('heading', { name: /What went wrong/i }).waitFor({ timeout: 15000 });
+
+    // And the link is still theirs — the gate stayed gone. Skipping the
+    // question lands on the same handoff every guest gets.
+    await page.getByRole('button', { name: 'Skip' }).click();
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 10000 });
+
+    // Asserted here rather than at the heading, because the page is fired and
+    // not awaited on purpose — the guest's next screen must never wait on an
+    // email. It went out on the tap, before this guest typed or skipped
+    // anything, which is the guest this product exists to catch.
+    assert.ok(alertCalls.length >= 1, 'the manager was paged without the guest saying a word');
+    assert.equal(alertCalls[0].rating_id, 'rat_test_1', 'named the rating, not the restaurant');
+  } finally { await context.close(); }
+});
+
+test('a counter restaurant gets the rating screen from a plain scan too', async () => {
+  // They have no table tent to reprint and no check to present. A bare scan of
+  // their link opening on "Start the split" is the product telling their guests
+  // it is for somebody else.
+  const { context, page } = await phone({ restaurant: COUNTER });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).waitFor({ timeout: 15000 });
+    assert.equal(await page.getByRole('button', { name: 'Start the split' }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('a table-service tent still opens on the split it was printed for', async () => {
+  // The conservative direction, and the one every card already on a table
+  // depends on: no style set, or 'table', means nothing about that page moves.
+  const { context, page } = await phone({ restaurant: RESTAURANT });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Start the split' }).waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Rate your visit' }).waitFor({ timeout: 10000 });
+    // The star row belongs to the rating screen, not to this one.
+    assert.equal(await page.getByRole('button', { name: '5 stars' }).count(), 0);
+  } finally { await context.close(); }
+});
+
 // ── Waving away the restaurant question ─────────────────────────────────────
 
 test('dismissing "is this <restaurant>?" does not strand the split', async () => {

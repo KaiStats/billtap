@@ -274,6 +274,23 @@ const AuthenticatedApp = () => {
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/r/:slug" element={<TableEntry />} />
             {/*
+              The pay-first entrance, and the same screen.
+
+              A counter-service room takes the money before the food, so the
+              moment this product hangs everything off — "I've paid" — happens
+              there before the first bite. The code goes on the cup, the bag,
+              the number tent or the receipt footer instead, and it has to open
+              on the question rather than on a button that photographs a bill.
+
+              A path rather than a query string because it is printed, read
+              aloud, and typed off a sticker by people who are not looking at a
+              keyboard. It is available to every restaurant, not only the ones
+              set to counter service: a dining room with a takeout window needs
+              the split tent on the tables and this on the bags, and no single
+              setting on the row describes both halves of that building.
+            */}
+            <Route path="/r/:slug/rate" element={<TableEntry rateFirst />} />
+            {/*
               The prefix a batch of printed cards used by mistake.
 
               The edge handles this with a 301 — see PRINT_PREFIX_REDIRECT in

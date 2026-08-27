@@ -9,12 +9,49 @@ const GOLD = "#f0b429";
 
 /**
  * /r/:slug — what the printed table tent points at.
+ * /r/:slug/rate — what the sticker on the cup, the bag or the number tent
+ * points at, in a room that took the money before the food.
  *
  * Restaurant-branded entry to the split flow. The restaurant is remembered for
  * the rest of the visit so the post-payment rating screen knows whose Google
  * listing to route a happy guest to.
+ *
+ * ── The room this screen was written for, and the one it was not ───────────
+ *
+ * Everything in this product hangs off one bill, presented at the end, by a
+ * server. That is a real restaurant and it is not most of them. Counter
+ * service, coffee, fast casual, bakeries, delis, taquerias, food trucks,
+ * breweries, pickup windows: the guest pays before they eat, carries their own
+ * food, and leaves without anybody ever asking how it was.
+ *
+ * Those rooms cannot use the trigger this app is built on, and not because of
+ * a missing feature. At a table, "you have paid" and "you have finished" are
+ * the same moment, so hanging the rating off payment is free and correct. At a
+ * counter they are opposite ends of the visit — payment happens before the
+ * first bite — so the same trigger asks a guest to rate a meal they have not
+ * eaten yet. Wiring the split flow into a taqueria would produce ratings of
+ * the queue.
+ *
+ * So the trigger moves. It stops being an event the app can observe and
+ * becomes the guest's own scan of a code placed where finishing happens: the
+ * number tent on their table, the cup, the bag, the receipt footer, the
+ * sticker over the bus tub by the door. That is what `rateFirst` renders — the
+ * question itself, five stars, first thing, no bill anywhere near it.
+ *
+ * ── Why the same screen and the same component ────────────────────────────
+ *
+ * Because the alert is the product. A second rating flow written for counters
+ * would drift from this one, and the half that drifts is always the half
+ * nobody is watching: the page to the manager. Both entrances create the same
+ * `rating_only` session and open the same `RatingCapture`, which means a
+ * one-star guest at a coffee counter reaches the operator's phone by exactly
+ * the code path a one-star guest at table nine does.
+ *
+ * @param {{ rateFirst?: boolean }} props `rateFirst` when the path asked for
+ *   it — /r/:slug/rate. A restaurant set to counter service gets the same
+ *   screen from a bare scan; see `ratingFirst` below.
  */
-export default function TableEntry() {
+export default function TableEntry({ rateFirst = false }) {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [restaurant, setRestaurant] = useState(null);
@@ -22,6 +59,16 @@ export default function TableEntry() {
   // The rating session, once one exists. Every guest can open one — see below.
   const [ratingSession, setRatingSession] = useState(null);
   const [ratingBusy, setRatingBusy] = useState(false);
+  /**
+   * The star tapped on this page, before there was a session to record it on.
+   *
+   * Only the rating-first screen sets it. The guest answers the question the
+   * moment they land, and the session has to exist before the answer can be
+   * stored — so the number waits here across that round trip and is handed to
+   * RatingCapture, which submits it as though it had been tapped there.
+   * Asking again on the next screen would be the same question twice.
+   */
+  const [pickedStars, setPickedStars] = useState(0);
 
   /**
    * Jump straight to the rating, skipping the split.
@@ -65,10 +112,20 @@ export default function TableEntry() {
    * when it is above zero — so the manager gets "somebody rated you two stars"
    * without a fabricated $62.40 attached to it. The demo keeps its plausible
    * number, because there the number is the point.
+   *
+   * ── Two callers now, and `stars` is the only difference ───────────────────
+   *
+   * The tent button calls this with nothing and the rating screen opens on its
+   * own star row, as it always has. The pay-first screen calls it with the
+   * star the guest already tapped, which is then handed to RatingCapture so
+   * they are not asked the same question twice. Everything between — the
+   * session, the threshold, the page to the manager, the Google handoff — is
+   * one path either way.
    */
-  async function startRating() {
+  async function startRating(stars = 0) {
     if (ratingBusy) return;
     setRatingBusy(true);
+    setPickedStars(stars);
     try {
       const res = await invoke("createSession", {
         title: restaurant.demo
@@ -84,9 +141,14 @@ export default function TableEntry() {
       });
       const id = res?.data?.session?.id;
       if (id) setRatingSession(id);
+      // A 200 with no session id is not a session. Clearing the star puts the
+      // row back to untouched rather than leaving a guest looking at four
+      // gold stars that recorded nothing.
+      else setPickedStars(0);
     } catch {
       // The button stays; tapping again retries. An error banner over a guest
       // who was trying to do the restaurant a favour is worse than a second tap.
+      setPickedStars(0);
     } finally {
       setRatingBusy(false);
     }
@@ -150,8 +212,15 @@ export default function TableEntry() {
       <div className="min-h-screen flex items-center justify-center px-6 text-center" style={{ background: "#0a0e1a", color: "#fff" }}>
         <div>
           <h1 className="text-2xl font-black">This code isn't active</h1>
+          {/*
+            The path is known even when the slug is not, and the two rooms have
+            different staff. "Ask your server" is a dead end in a place that
+            has none, said to somebody standing at a counter holding a coffee.
+          */}
           <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
-            Ask your server to split the check the usual way.
+            {rateFirst
+              ? "Mention it at the counter — they'll want to know."
+              : "Ask your server to split the check the usual way."}
           </p>
           <button onClick={() => navigate("/")} className="mt-7 px-6 py-3 rounded-2xl font-bold"
             style={{ background: "rgba(255,255,255,.08)", color: "#fff" }}>
@@ -161,6 +230,26 @@ export default function TableEntry() {
       </div>
     );
   }
+
+  /**
+   * Whether this scan opens on the question instead of on the check.
+   *
+   * Two ways in, and they are not the same claim.
+   *
+   * The path is the explicit one and wins outright: /r/<slug>/rate is printed
+   * on an object — a cup, a bag, a number tent, a receipt footer — and what is
+   * printed cannot be changed later from a settings screen. Every restaurant
+   * has it, including a table-service dining room that wants the rating
+   * sticker on its takeout bags, because no single flag on the row describes
+   * both halves of a building with a counter and a dining room.
+   *
+   * `service_style` is the default for a bare scan of /r/<slug>, and it exists
+   * because a counter-service place has no table tent to reprint: their guests
+   * arrive at this page from a code that was never about splitting anything,
+   * and leading them with "Start the split" reads as "this is not for you".
+   * Migration 0026 has the rest of the argument.
+   */
+  const ratingFirst = rateFirst || restaurant.service_style === "counter";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#0a0e1a", color: "#fff" }}>
@@ -222,16 +311,31 @@ export default function TableEntry() {
         before the field existed. When the answer is unknown the safe
         direction is not to index.
       */}
+      {/*
+        ── Two entrances, two descriptions, one canonical page ──────────────
+
+        `path` is the path actually being viewed, so the rating link a guest
+        texts a friend unfurls as itself rather than as a page about splitting
+        a check they were never shown. The title follows: "Split the check at
+        Blue Bottle" is wrong twice over on a card printed for a coffee bar —
+        wrong about what the screen does, and wrong about what the business is.
+      */}
       <Seo
-        path={`/r/${slug}`}
-        title={`${restaurant.name} — Split the check | BillTap`}
-        description={`Split the check at ${restaurant.name}. Everyone scans, claims what they ordered, and pays their exact share — no app and no account.`}
+        path={ratingFirst ? `/r/${slug}/rate` : `/r/${slug}`}
+        title={ratingFirst
+          ? `${restaurant.name} — How was it? | BillTap`
+          : `${restaurant.name} — Split the check | BillTap`}
+        description={ratingFirst
+          ? `Tell ${restaurant.name} how your visit went. One tap, no app and no account — and if something was wrong, the manager hears about it while you are still there.`
+          : `Split the check at ${restaurant.name}. Everyone scans, claims what they ordered, and pays their exact share — no app and no account.`}
         noindex={restaurant.noindex ?? !!restaurant.demo}
         schema={(restaurant.noindex ?? restaurant.demo) ? null : [{
           "@context": "https://schema.org",
           "@type": "Restaurant",
           name: restaurant.name,
-          url: `https://billtap.app/r/${slug}`,
+          // The page being described, so `url` and the canonical above cannot
+          // disagree about which of the two entrances this is.
+          url: `https://billtap.app${ratingFirst ? `/r/${slug}/rate` : `/r/${slug}`}`,
           ...(restaurant.google_review_url
             ? { sameAs: [restaurant.google_review_url] }
             : {}),
@@ -243,56 +347,138 @@ export default function TableEntry() {
           <span className="font-black text-2xl" style={{ color: "#1a1200" }}>B</span>
         </div>
 
-        {/*
-          "Split the check at" told a guest with nothing to split that this
-          card was not for them, which is most tables. Both things the tent
-          can do are named now, in the order they are most often wanted.
-        */}
         <p className="text-xs uppercase tracking-[0.2em]" style={{ color: GOLD }}>You&apos;re at</p>
         <h1 className="mt-2 text-3xl font-black">{restaurant.name}</h1>
-        <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
-          Split the check, or just tell them how it went. No app to download.
-        </p>
 
-        <button
-          onClick={() => navigate("/new-receipt")}
-          className="mt-9 w-full py-4 rounded-2xl font-black flex items-center justify-center gap-2"
-          style={{ background: GOLD, color: "#1a1200" }}
-        >
-          <Camera className="w-4 h-4" />
-          Start the split
-        </button>
+        {ratingFirst ? (
+          /*
+            ── The pay-first screen ─────────────────────────────────────────
 
-        <button
-          onClick={() => navigate("/claim")}
-          className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
-          style={{ background: "rgba(255,255,255,.07)", color: "#fff" }}
-        >
-          <Users className="w-4 h-4" />
-          Join a split already started
-        </button>
+            No button in front of the question. The guest is standing up,
+            holding a cup or a bag, and every tap between the scan and the
+            first star is a share of them that never gets there — which is the
+            same argument the demo shortcut has always made, made for a room
+            where it is not a shortcut but the only path there is.
 
-        {/*
-          Shown to every guest, not only on a demo page. The reasoning is in
-          startRating above: this is the one tap that reaches the alert and the
-          Google review link, and gating it behind a completed bill split meant
-          most tables never reached either.
-        */}
-        <button
-          onClick={startRating}
-          disabled={ratingBusy}
-          className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-          style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
-        >
-          {ratingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-          Rate your visit
-        </button>
+            A tap here creates the rating_only session (no bill, no invented
+            total) and hands the star straight to RatingCapture, so the guest
+            answers once. From there it is the ordinary machinery: at or below
+            the operator's threshold they are asked what went wrong and the
+            manager is paged while they are still in the building, and every
+            guest reaches the same Google handoff.
+
+            That page is worth more here than at a table, not less. A dining
+            room has a server who comes back to ask how everything is; a
+            counter has nobody, so an unhappy guest walks out silently and the
+            first the operator hears of it is a review that is already public.
+          */
+          <>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
+              How was it? One tap — no app, no account.
+            </p>
+
+            <div className="mt-8 flex justify-center gap-1.5">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => startRating(n)}
+                  disabled={ratingBusy}
+                  aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                  className="p-2 transition-transform hover:scale-110 active:scale-95 disabled:opacity-50"
+                >
+                  <Star
+                    className="w-10 h-10"
+                    style={{
+                      color: pickedStars >= n ? GOLD : "rgba(255,255,255,.22)",
+                      fill: pickedStars >= n ? GOLD : "transparent",
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {ratingBusy ? (
+              <div className="mt-5 flex items-center justify-center gap-2 text-sm" style={{ color: "rgba(255,255,255,.5)" }}>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                One moment
+              </div>
+            ) : null}
+
+            {/*
+              Kept, and kept small. Somebody at a counter did pay already — but
+              one of them paid for four people, and chasing three friends for
+              money afterwards is the same problem this app was built for,
+              arriving at a different point in the meal. It is nobody's first
+              reason for scanning a cup, so it does not get to be the first
+              thing on the screen.
+            */}
+            <button
+              onClick={() => navigate("/new-receipt")}
+              className="mt-8 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
+              style={{ background: "rgba(255,255,255,.07)", color: "#fff" }}
+            >
+              <Camera className="w-4 h-4" />
+              Split a receipt with friends
+            </button>
+          </>
+        ) : (
+          /*
+            "Split the check at" told a guest with nothing to split that this
+            card was not for them, which is most tables. Both things the tent
+            can do are named now, in the order they are most often wanted.
+          */
+          <>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
+              Split the check, or just tell them how it went. No app to download.
+            </p>
+
+            <button
+              onClick={() => navigate("/new-receipt")}
+              className="mt-9 w-full py-4 rounded-2xl font-black flex items-center justify-center gap-2"
+              style={{ background: GOLD, color: "#1a1200" }}
+            >
+              <Camera className="w-4 h-4" />
+              Start the split
+            </button>
+
+            <button
+              onClick={() => navigate("/claim")}
+              className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
+              style={{ background: "rgba(255,255,255,.07)", color: "#fff" }}
+            >
+              <Users className="w-4 h-4" />
+              Join a split already started
+            </button>
+
+            {/*
+              Shown to every guest, not only on a demo page. The reasoning is in
+              startRating above: this is the one tap that reaches the alert and the
+              Google review link, and gating it behind a completed bill split meant
+              most tables never reached either.
+            */}
+            <button
+              onClick={() => startRating()}
+              disabled={ratingBusy}
+              className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
+            >
+              {ratingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+              Rate your visit
+            </button>
+          </>
+        )}
 
         {ratingSession ? (
           <RatingCapture
             restaurantId={restaurant.id}
             sessionId={ratingSession}
-            onDismiss={() => setRatingSession(null)}
+            /*
+              Zero from the tent button, which opens on the star row as it
+              always has. A number only ever comes from the screen above, where
+              the guest has already answered.
+            */
+            initialStars={pickedStars}
+            onDismiss={() => { setRatingSession(null); setPickedStars(0); }}
           />
         ) : null}
 

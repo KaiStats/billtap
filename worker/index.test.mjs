@@ -135,6 +135,18 @@ test('per-table QR deep links boot the SPA', async () => {
   assert.equal((await get('/r/rosewood-table-4')).status, 200);
 });
 
+test('the pay-first rating link boots the SPA, and reports itself as real', async () => {
+  // The address on a coffee cup at a counter-service place, where there is no
+  // check to split and no "I've paid" for the rating to hang off. An unlisted
+  // path still renders — the assets binding falls back to the shell — while
+  // answering 404, which is what every link preview and every crawler would
+  // then repeat about a code printed a thousand times.
+  assert.equal((await get('/r/rosewood-table-4/rate')).status, 200);
+  // And the shape stays tight: one extra segment, not a wildcard under /r/.
+  assert.equal((await get('/r/rosewood-table-4/rate/extra')).status, 404);
+  assert.equal((await get('/r/rosewood-table-4/anything-else')).status, 404);
+});
+
 test('static files pass through untouched', async () => {
   for (const path of ['/robots.txt', '/sitemap.xml', '/assets/app-abc123.js', '/icons/icon-512.png', '/offline.html']) {
     assert.equal((await get(path)).status, 200, path);

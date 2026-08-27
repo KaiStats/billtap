@@ -399,6 +399,70 @@ test('a threshold outside one to four is refused, and four is stored', async () 
   });
 });
 
+// ── Which room this is ──────────────────────────────────────────────────────
+//
+// A pay-first counter takes the money before the food, so "you have paid" —
+// the event the whole rating flow hangs off — happens there before the first
+// bite. Migration 0026 has the long version. These pin the column that tells
+// the two rooms apart, because a wrong value is a guest shown a screen written
+// for somebody else's dining room.
+
+test('a restaurant can say it takes the money at the counter', async () => {
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
+    const { res, json, audited } = await save({ service_style: 'counter' });
+    assert.equal(res.status, 200);
+    assert.equal(json.restaurant.service_style, 'counter');
+    assert.equal(tables.restaurants[0].service_style, 'counter');
+    assert.deepEqual(safeDetail(audited[0].detail), { fields: 'service_style' });
+  });
+});
+
+test('a style nobody renders is refused rather than defaulted', async () => {
+  // Unlike Session.kind, which defaults an unknown value because callers older
+  // than the column exist, this is only ever sent by our own settings form. A
+  // third spelling is a bug, and storing it would put a guest in front of a
+  // branch that does not exist.
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async ({ tables }) => {
+    for (const bad of ['drive-through', 'TABLES', 'counter service', 42, {}, 'buffet']) {
+      const { res } = await save({ service_style: bad });
+      assert.equal(res.status, 400, `${JSON.stringify(bad)} should be refused`);
+    }
+    assert.equal(tables.restaurants[0].service_style, undefined, 'and none of them landed');
+  });
+});
+
+test('a row written before the column reads as table service, both sides of the wall', async () => {
+  // The conservative direction, and the only safe one: every tent already
+  // printed says "split the check", so a row with no style must keep opening
+  // on the screen those cards were printed for.
+  await withStub({ restaurants: [TEST_KITCHEN()] }, async () => {
+    const owner = await (await HANDLERS.getRestaurantDashboardData({
+      env: ENV, request: request(), audit: async () => {},
+    })).json();
+    assert.equal(owner.restaurant.service_style, 'table');
+
+    const guest = await (await HANDLERS.getPublicRestaurant({
+      env: ENV, body: { slug: 'test-kitchen' },
+    })).json();
+    assert.equal(guest.restaurant.service_style, 'table');
+  });
+});
+
+test('the guest and the operator read the same style off the same row', async () => {
+  // The divergence ratingThreshold() exists to prevent, one column over: an
+  // operator printing a counter sticker whose guests land on the split screen.
+  await withStub({ restaurants: [{ ...TEST_KITCHEN(), service_style: 'counter' }] }, async () => {
+    const owner = await (await HANDLERS.getRestaurantDashboardData({
+      env: ENV, request: request(), audit: async () => {},
+    })).json();
+    const guest = await (await HANDLERS.getPublicRestaurant({
+      env: ENV, body: { slug: 'test-kitchen' },
+    })).json();
+    assert.equal(owner.restaurant.service_style, 'counter');
+    assert.equal(guest.restaurant.service_style, 'counter');
+  });
+});
+
 // ── The review link ─────────────────────────────────────────────────────────
 
 test('a review link that is not Google over https is refused', async () => {
@@ -486,7 +550,8 @@ test('the dashboard read returns the row the settings form populates from', asyn
       'alert_email', 'alert_phone', 'current_period_end',
       'google_baseline_at', 'google_rating', 'google_rating_start',
       'google_review_count', 'google_review_count_start', 'google_review_url', 'google_reviews_at',
-      'id', 'name', 'plan', 'rating_threshold', 'reference_account', 'slug', 'trial_ends_at',
+      'id', 'name', 'plan', 'rating_threshold', 'reference_account', 'service_style',
+      'slug', 'trial_ends_at',
     ]);
   });
 });

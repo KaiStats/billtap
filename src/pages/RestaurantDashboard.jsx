@@ -36,7 +36,12 @@ export default function RestaurantDashboard() {
   // rating_threshold three, matching DEFAULT_RATING_THRESHOLD in
   // worker/routes/functions.js. A form that opens on the wrong number quietly
   // saves it the first time an operator presses Save for any other reason.
-  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3, google_review_count: "", google_rating: "" });
+  // service_style 'table', matching DEFAULT_SERVICE_STYLE in
+  // worker/routes/functions.js and the column default in migration 0026. A
+  // form that opens on the wrong one quietly saves it the first time an
+  // operator presses Save for any other reason — and this one decides which
+  // screen their guests land on.
+  const [form, setForm] = useState({ name: "", google_review_url: "", alert_email: "", alert_phone: "", rating_threshold: 3, google_review_count: "", google_rating: "", service_style: "table" });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
@@ -65,6 +70,7 @@ export default function RestaurantDashboard() {
           alert_email: r.alert_email || "",
           alert_phone: r.alert_phone || "",
           rating_threshold: r.rating_threshold ?? 3,
+          service_style: r.service_style || "table",
           // Blank rather than 0 when unset: a zero in these boxes reads as a
           // real reading of zero reviews, which is a different claim.
           google_review_count: r.google_review_count ?? "",
@@ -298,6 +304,7 @@ export default function RestaurantDashboard() {
         alert_email: form.alert_email.trim(),
         alert_phone: form.alert_phone.trim(),
         rating_threshold: Number(form.rating_threshold),
+        service_style: form.service_style,
         /**
          * Omitted when blank, never sent as zero.
          *
@@ -395,6 +402,44 @@ export default function RestaurantDashboard() {
   }
 
   const tableUrl = `${window.location.origin}/r/${restaurant.slug}`;
+  /**
+   * The code for a room that never presents a check.
+   *
+   * Every restaurant gets it, whichever style they are set to. A dining room
+   * with a takeout window wants the tent on the tables and this on the bags,
+   * and one flag on the row cannot describe both halves of that building —
+   * see the note on `ratingFirst` in src/pages/TableEntry.jsx.
+   */
+  const ratingUrl = `${tableUrl}/rate`;
+  const counter = restaurant.service_style === "counter";
+
+  /**
+   * The two codes, in the order this room needs them.
+   *
+   * The placement lines are the whole training, and they are the part an
+   * operator gets wrong on their own. At a table the app can watch for the
+   * moment a guest is finished, because they mark their share paid. At a
+   * counter there is no such moment to observe, so the code has to already be
+   * sitting on whatever they are holding when they get there. Put it at the
+   * register instead and you collect ratings of the queue.
+   */
+  const codes = [
+    {
+      key: "rating",
+      url: ratingUrl,
+      label: "Rating code",
+      where: "Put it where the meal ends: the order-number tent, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. It opens straight on the stars — no bill, no app, nothing to type.",
+    },
+    {
+      key: "tent",
+      url: tableUrl,
+      label: "Table tent code",
+      where: "Split the check, join a split, or rate. This is the one printed on the tents.",
+    },
+  ];
+  // An operator should not have to scroll past a card for somebody else's kind
+  // of restaurant to reach the one they are about to send to the printer.
+  if (!counter) codes.reverse();
 
   return (
     <div className="min-h-screen px-5 py-10 sm:py-14" style={{ background: "#0a0e1a", color: "#fff" }}>
@@ -609,28 +654,54 @@ export default function RestaurantDashboard() {
           </div>
         </section>
 
-        {/* Table QR + settings */}
+        {/* The codes + settings */}
         <section className="mt-12 grid lg:grid-cols-2 gap-6">
+          {/*
+            ── Two codes, and the order they are printed in matters ─────────
+
+            The tent code opens on the check. The rating code opens on the
+            question. Which one an operator needs first is not a preference,
+            it is a fact about their room: a place that takes the money before
+            the food has no check to present, so a tent that leads with "Start
+            the split" is a card their guests are right to ignore.
+
+            Both are always shown. A dining room with a takeout window needs
+            the tent on the tables and the rating sticker on the bags, and the
+            style setting below only decides which of the two a bare scan of
+            /r/<slug> opens on.
+
+            Where each one goes is in `codes` above, and it is the half an
+            operator gets wrong on their own.
+          */}
           <div className="p-6 rounded-2xl" style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
             <h2 className="text-lg font-bold flex items-center gap-2">
-              <Link2 className="w-4 h-4" style={{ color: GOLD }} /> Your table QR
+              <Link2 className="w-4 h-4" style={{ color: GOLD }} /> Your codes
             </h2>
             <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
-              This is what goes on the table tents.
+              {counter
+                ? "You take the money first, so the rating code is the one that matters. Print it big."
+                : "The tent goes on the tables. The rating code is for anything a guest carries out."}
             </p>
-            <div className="mt-5 flex items-center gap-5">
-              <div className="p-3 rounded-xl bg-white">
-                <QRCodeSVG value={tableUrl} size={132} level="M" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs break-all" style={{ color: "rgba(255,255,255,.6)" }}>{tableUrl}</p>
-                <button
-                  onClick={() => navigator.clipboard?.writeText(tableUrl)}
-                  className="mt-3 text-sm font-semibold px-4 py-2 rounded-full"
-                  style={{ background: "rgba(255,255,255,.08)" }}>
-                  Copy link
-                </button>
-              </div>
+
+            <div className="mt-5 space-y-5">
+              {codes.map(({ key, url, label, where }) => (
+                <div key={key} className="flex items-start gap-5">
+                  <div className="p-3 rounded-xl bg-white shrink-0">
+                    <QRCodeSVG value={url} size={112} level="M" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold">{label}</p>
+                    <p className="mt-1 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,.5)" }}>{where}</p>
+                    <p className="mt-2 text-xs break-all" style={{ color: "rgba(255,255,255,.6)" }}>{url}</p>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(url)}
+                      className="mt-3 text-sm font-semibold px-4 py-2 rounded-full"
+                      style={{ background: "rgba(255,255,255,.08)" }}>
+                      Copy link
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -639,6 +710,34 @@ export default function RestaurantDashboard() {
               <TrendingUp className="w-4 h-4" style={{ color: "#00c896" }} /> Settings
             </h2>
             <div className="mt-5 space-y-4">
+              {/*
+                The one setting that changes what a guest sees before they have
+                done anything.
+
+                Asked as a question about the room rather than as a mode,
+                because that is the fact the operator has and "counter service"
+                is a phrase they may or may not use about themselves. What it
+                controls is stated plainly underneath: the default screen for a
+                bare scan, and nothing else. The rating code above works at
+                every restaurant either way, which is what keeps this from
+                being a switch anybody can lose reviews by getting wrong.
+              */}
+              <div>
+                <label htmlFor="ss" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>
+                  How do guests pay?
+                </label>
+                <select id="ss" className={field} style={fieldStyle} value={form.service_style}
+                  onChange={(e) => setForm({ ...form, service_style: e.target.value })}>
+                  <option value="table" style={{ background: "#0a0e1a" }}>We bring the check at the end</option>
+                  <option value="counter" style={{ background: "#0a0e1a" }}>They pay at the counter first</option>
+                </select>
+                <p className="mt-1.5 text-xs" style={{ color: "rgba(255,255,255,.4)" }}>
+                  Sets which screen a plain scan of your link opens on. Pay-first rooms
+                  get the stars straight away — there is no check to split, and asking at
+                  the register would be asking about a meal nobody has eaten yet.
+                </p>
+              </div>
+
               <div>
                 <label htmlFor="g" className="block text-xs mb-2" style={{ color: "rgba(255,255,255,.6)" }}>
                   Google review link

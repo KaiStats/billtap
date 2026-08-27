@@ -161,6 +161,43 @@ export function ratingThreshold(value) {
 }
 
 /**
+ * The two rooms this product knows how to be in.
+ *
+ * 'table'   — a check arrives at the end. Paying and finishing are the same
+ *             moment, so the rating hangs off "I've paid" and always has.
+ * 'counter' — the money is taken before the food. Paying happens *before the
+ *             first bite*, so that same trigger would be asking a guest to
+ *             rate a meal they have not eaten.
+ *
+ * Exported because the client renders off it, the settings form writes it, and
+ * a third spelling invented in any one of those places is a guest shown a
+ * screen no branch knows about. See migration 0026.
+ */
+export const SERVICE_STYLES = new Set(['table', 'counter']);
+
+/** The default when a row predates the column, or carries something odd. */
+export const DEFAULT_SERVICE_STYLE = 'table';
+
+/**
+ * The style a stored row actually means.
+ *
+ * One reading, for the reason ratingThreshold() is one: the guest's screen and
+ * the operator's settings form both ask this question, and a row that reads
+ * 'counter' on one and 'table' on the other is an operator printing a sticker
+ * for a screen their guests will never see.
+ *
+ * Anything unrecognised — null on a row written before 0026, a value from a
+ * database that skipped the check constraint — is 'table'. That is the
+ * conservative direction: the split flow stays reachable and a tent already on
+ * a table keeps working. The opposite default would silently hide the split
+ * button from every restaurant that has one printed.
+ */
+export function serviceStyle(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return SERVICE_STYLES.has(raw) ? raw : DEFAULT_SERVICE_STYLE;
+}
+
+/**
  * The three printed ticket fields as session columns, or nothing at all.
  *
  * Shares ticketFrom() with worker/routes/scan-receipt.js on purpose. The scan
@@ -482,6 +519,30 @@ export function restaurantPatch(body, { creating = false } = {}) {
     fields.push('rating_threshold');
   }
 
+  /**
+   * Whether this room presents a check, or takes the money at a counter first.
+   *
+   * A closed set, like `kind` on a session and for the same reason: this
+   * decides which screen a guest is shown, and a value no branch renders is a
+   * guest staring at a blank card holding somebody else's phone. Anything
+   * unrecognised is refused rather than defaulted, because unlike `kind` this
+   * one is only ever sent by our own settings form — a body carrying something
+   * else is a bug worth surfacing, not a legacy caller worth tolerating.
+   *
+   * See migration 0026 for why it exists at all. The short version: at a
+   * pay-first counter, "you have paid" happens before the first bite, so the
+   * moment this product hangs everything off does not mean there what it means
+   * in a dining room.
+   */
+  if (has('service_style')) {
+    const style = clean(body.service_style, 16).toLowerCase();
+    if (!SERVICE_STYLES.has(style)) {
+      return { error: 'Service style has to be either table or counter.' };
+    }
+    patch.service_style = style;
+    fields.push('service_style');
+  }
+
   return { patch, fields };
 }
 
@@ -503,6 +564,10 @@ export function ownerView(r) {
     alert_email: r.alert_email ?? null,
     alert_phone: r.alert_phone ?? null,
     rating_threshold: ratingThreshold(r.rating_threshold),
+    // Which of the two rooms this is, so the dashboard prints the right QR and
+    // the settings form opens on what is actually stored. Through the same
+    // function the guest's screen reads it with — see serviceStyle().
+    service_style: serviceStyle(r.service_style),
     plan: r.plan ?? 'trial',
     trial_ends_at: r.trial_ends_at ?? null,
     current_period_end: r.current_period_end ?? null,
@@ -1367,6 +1432,21 @@ const HANDLERS = {
         // settings screen is the number that decides whether their phone rings.
         rating_threshold: ratingThreshold(r.rating_threshold),
         /**
+         * Which screen a bare scan of /r/<slug> should open on.
+         *
+         * Guest-visible because the guest's phone is what renders it, and the
+         * SPA has no other way to know: the Worker serves the same shell for
+         * every slug. It discloses nothing an operator has not printed on
+         * their own furniture — whether you pay at a counter is visible from
+         * the doorway.
+         *
+         * Only the default. /r/<slug>/rate opens rating-first at every
+         * restaurant regardless, because a table-service dining room with a
+         * takeout window needs both codes and neither style describes the whole
+         * building. See migration 0026.
+         */
+        service_style: serviceStyle(r.service_style),
+        /**
          * Whether this page is a sales demo, so the client can tell a crawler
          * not to index it.
          *
@@ -1924,14 +2004,38 @@ const HANDLERS = {
     }
 
     /**
-     * Guest splits one restaurant may start in an hour.
+     * Guest sessions one restaurant may open in an hour, per kind.
      *
-     * Named rather than left inline so the number is findable. It is the only
-     * capacity ceiling in the product, and a venue busy enough to reach it
-     * legitimately is a venue whose diners are being turned away — which is why
+     * Named rather than left inline so the numbers are findable. This is the
+     * only capacity ceiling in the product, and a venue busy enough to reach it
+     * legitimately is a venue whose guests are being turned away — which is why
      * reaching it is logged.
+     *
+     * ── Why the two kinds are counted separately ──────────────────────────
+     *
+     * They were one number over one pool, which would have broken the
+     * pay-first room before it had a chance to work. A rating-only row is
+     * opened by a guest who scanned a sticker (migration 0026): at a
+     * counter-service place that is every guest, not the fraction of tables
+     * that split a check, and a lunch rush is measured in hundreds an hour.
+     * One shared cap of 100 would stop a busy coffee shop collecting reviews
+     * part-way through every lunch — and refuse them with "too many splits in
+     * progress", to a guest who had not split anything, at a restaurant that
+     * never presents a check.
+     *
+     * Worse, it coupled the two: a rush of ratings would lock out the split
+     * flow at a restaurant running both, and a lock-out on the split flow is a
+     * table that cannot pay.
+     *
+     * A rating row is also much cheaper than a split — no items, no
+     * participants, no polling for the length of a meal, one guest_ratings row
+     * at the end — so the ceiling that fits a split is the wrong ceiling for
+     * it. 600 an hour is ten a minute sustained, past what any single room
+     * produces and still a wall in front of a script. The per-address limiter
+     * in worker/lib/rate-limit.js is the first wall regardless; this is the
+     * per-restaurant one behind it.
      */
-    const GUEST_SESSIONS_PER_HOUR = 100;
+    const GUEST_SESSIONS_PER_HOUR = { split: 100, rating_only: 600 };
 
     /**
      * Guests are rate-limited per restaurant rather than per account. Skipping
@@ -1963,17 +2067,22 @@ const HANDLERS = {
     if (!user && restaurantId) {
       try {
         const since = Date.now() - 60 * 60 * 1000;
+        const cap = GUEST_SESSIONS_PER_HOUR[kind];
         const recent = svc.queryOperators
           ? await svc.entity('Session').filter(
-              { restaurant_id: restaurantId, created_date: { gte: new Date(since).toISOString() } },
-              { select: 'id,created_date', limit: 101 },
+              { restaurant_id: restaurantId, kind, created_date: { gte: new Date(since).toISOString() } },
+              { select: 'id,created_date,kind', limit: cap + 1 },
             )
           : await svc.entity('Session').filter({ restaurant_id: restaurantId });
         const inWindow = recent.filter((s) => {
+          // A row written before migration 0024 carries no kind and meant
+          // 'split'. Reading it as anything else would count a year of old
+          // bills against a counter's rating ceiling.
+          if ((s.kind || 'split') !== kind) return false;
           const t = new Date(s.created_date).getTime();
           return !Number.isNaN(t) && t >= since;
         });
-        if (inWindow.length >= GUEST_SESSIONS_PER_HOUR) {
+        if (inWindow.length >= cap) {
           /**
            * Logged, because this is the one refusal in the product a restaurant
            * can reach by being busy.
@@ -1989,10 +2098,25 @@ const HANDLERS = {
           console.warn(JSON.stringify({
             guest_session_cap: true,
             restaurant_id: restaurantId,
+            kind,
             in_window: inWindow.length,
-            cap: GUEST_SESSIONS_PER_HOUR,
+            cap,
           }));
-          return json({ error: 'This restaurant has too many splits in progress. Try again shortly.' }, 429);
+          /**
+           * Two sentences, because one of them was a lie in the other room.
+           *
+           * "Too many splits in progress" is accurate at a table waiting on a
+           * check and nonsense to somebody holding a coffee who tapped a star
+           * — they split nothing, and the restaurant they are standing in has
+           * never presented a bill in its life. A refusal a guest cannot make
+           * sense of is a guest who decides the code is broken and tells their
+           * friends so.
+           */
+          return json({
+            error: kind === 'rating_only'
+              ? 'We have taken a lot of ratings here in the last hour. Try again shortly.'
+              : 'This restaurant has too many splits in progress. Try again shortly.',
+          }, 429);
         }
       } catch (e) {
         // A failed count must not block a paying restaurant's diners.

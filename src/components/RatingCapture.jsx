@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Star, Loader2, Check, ExternalLink } from "lucide-react";
 import { invoke } from "@/api/functions";
 
@@ -71,10 +71,25 @@ async function fireRatingAlert(ratingId) {
  * there. Being asked what went wrong is what a good manager does before handing
  * you the comment card; it is not a reason to take the comment card away.
  *
+ * ── initialStars: the star that was already tapped ─────────────────────────
+ *
+ * At a table, this component opens after a guest marks their share paid and
+ * the first thing they see is the star row. At a pay-first counter there is no
+ * "I've paid" — the guest scanned a sticker on the cup — so the star row is on
+ * the page they landed on, and by the time this opens they have already
+ * answered. Asking again would be the same question twice, and the second
+ * asking is where people put the phone down.
+ *
+ * So the caller passes what they tapped and this submits it once, on mount,
+ * exactly as though it had been tapped here. One path, not two: the alert, the
+ * threshold and the Google handoff are all the same code either way, which is
+ * the property worth protecting — a second rating flow written for counters
+ * would drift from this one and the half that drifted would be the alert.
+ *
  * Renders nothing unless the session belongs to a restaurant.
  */
-export default /** @param {{ restaurantId?: any, sessionId?: any, onDismiss?: any, [key: string]: any }} props */
-function RatingCapture({ restaurantId, sessionId, onDismiss }) {
+export default /** @param {{ restaurantId?: any, sessionId?: any, onDismiss?: any, initialStars?: any, [key: string]: any }} props */
+function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0 }) {
   const [restaurant, setRestaurant] = useState(null);
   const [stars, setStars] = useState(0);
   const [hover, setHover] = useState(0);
@@ -107,8 +122,6 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     return () => { alive = false; };
   }, [restaurantId]);
 
-  if (!restaurant) return null;
-
   // Three, matching DEFAULT_RATING_THRESHOLD in worker/routes/functions.js.
   //
   // One job now: at or below this, the guest is asked what went wrong and the
@@ -116,7 +129,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
   // everyone is, on the review screen below. When this number and the server's
   // disagree, an operator is not paged about a complaint this screen showed the
   // guest making, which is why both readings go through ratingThreshold.
-  const alertAt = restaurant.rating_threshold ?? 3;
+  const alertAt = restaurant?.rating_threshold ?? 3;
 
   /** Record the star count immediately — before we know if they'll finish. */
   const pickStars = async (value) => {
@@ -167,9 +180,35 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     setPhase(needsManager ? "feedback" : "review");
 
     if (typeof window.gtag === "function") {
-      window.gtag("event", "guest_rating", { stars: value, restaurant: restaurant.name });
+      window.gtag("event", "guest_rating", { stars: value, restaurant: restaurant?.name });
     }
   };
+
+  /**
+   * Submit the star the guest already tapped, once, and never again.
+   *
+   * Guarded by a ref rather than by state because the guard has to hold within
+   * a single render pass: pickStars sets state, which re-runs this effect
+   * before `stars` has settled, and a second submission is a second row in the
+   * operator's queue and a second alert to their phone about one guest.
+   *
+   * Waits for `restaurant`, because pickStars reads the alert threshold off it
+   * to decide whether anybody gets paged — running before it lands would send
+   * a two-star guest down the happy path and page nobody, which is the exact
+   * guest this product exists to catch.
+   */
+  const submitted = useRef(false);
+  useEffect(() => {
+    if (!restaurant || !initialStars || submitted.current) return;
+    submitted.current = true;
+    void pickStars(initialStars);
+    // pickStars is redefined every render and listing it would re-run this on
+    // every keystroke in the feedback box; the ref above is what makes once
+    // mean once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurant, initialStars]);
+
+  if (!restaurant) return null;
 
   /**
    * Hand the email, and optionally the comment, to the server in one call.
@@ -230,7 +269,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     // twice in one sitting.
     if (!sentFeedback) void saveContact();
     void reportRouted();
-    if (restaurant.google_review_url) {
+    if (restaurant?.google_review_url) {
       window.open(restaurant.google_review_url, "_blank", "noopener,noreferrer");
     }
     setPhase("done");
@@ -264,7 +303,24 @@ function RatingCapture({ restaurantId, sessionId, onDismiss }) {
     <div className={wrap} style={{ background: "rgba(4,8,16,.72)", backdropFilter: "blur(6px)" }}>
       <div className={sheet} style={sheetStyle} role="dialog" aria-modal="true" aria-label="Rate your visit">
 
-        {phase === "rate" && (
+        {/*
+          The guest who already answered does not get asked again, not even for
+          the half-second the submit is in flight.
+
+          Without this, a star tapped on the pay-first page opens this sheet on
+          the star row — the same question, blank, while the write lands. A
+          person who taps it again is not being difficult, they are answering
+          what is on the screen; `busy` swallows the second tap, so what they
+          get for it is a screen that ignored them. Better to show the work.
+        */}
+        {phase === "rate" && initialStars ? (
+          <div className="py-10 flex items-center justify-center gap-2 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Thanks — one moment
+          </div>
+        ) : null}
+
+        {phase === "rate" && !initialStars && (
           <>
             <h2 className="text-xl font-black text-white text-center">
               How was {restaurant.name}?

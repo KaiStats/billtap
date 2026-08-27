@@ -502,6 +502,94 @@ test('a rating-only session cannot be pointed at a restaurant by its caller', as
   });
 });
 
+// ── The per-restaurant hourly ceiling ───────────────────────────────────────
+//
+// One number over one pool used to cover both kinds, which broke the pay-first
+// room before it could work: a counter-service place collects a rating from
+// every guest rather than from the fraction of tables that split a check, so a
+// lunch rush is hundreds an hour against a cap of a hundred. The two are
+// counted separately now — see GUEST_SESSIONS_PER_HOUR in createSession.
+
+const anHourOf = (kind, n, restaurantId = 'r1') =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `s_${kind}_${i}`,
+    restaurant_id: restaurantId,
+    kind,
+    created_date: new Date(Date.now() - 60 * 1000).toISOString(),
+  }));
+
+test('a hundred splits an hour is the ceiling, and it is still the ceiling', async () => {
+  await withStub({
+    entities: { Restaurant: [{ id: 'r1', slug: 'joes' }], Session: anHourOf('split', 100) },
+  }, async ({ env }) => {
+    const res = await create(env, req(), { title: 'Table 4', items: [], restaurant_slug: 'joes' });
+    assert.equal(res.status, 429);
+    assert.match((await body(res)).error, /splits in progress/);
+  });
+});
+
+test('a rush of ratings does not close the split flow, and never has a bill to blame', async () => {
+  // The coupling that made the shared pool wrong twice over: at a restaurant
+  // running both, a busy hour of ratings would refuse a table that needed to
+  // pay — and refuse it with a sentence about splits nobody had started.
+  await withStub({
+    entities: { Restaurant: [{ id: 'r1', slug: 'joes' }], Session: anHourOf('rating_only', 200) },
+  }, async ({ env }) => {
+    const split = await create(env, req(), { title: 'Table 4', items: [], restaurant_slug: 'joes' });
+    assert.equal(split.status, 200, 'a table can still split a check');
+
+    const rating = await create(env, req(), {
+      title: 'Rating', restaurant_slug: 'joes', kind: 'rating_only', total_amount: 0,
+    });
+    assert.equal(rating.status, 200, 'and a counter is nowhere near its own ceiling at 200');
+  });
+});
+
+test('the lunch rush a counter actually has is not refused', async () => {
+  // 599 in the window, which no shared cap of a hundred survives. A coffee shop
+  // stopping collecting reviews at 11:40 every day is the failure this pins.
+  await withStub({
+    entities: { Restaurant: [{ id: 'r1', slug: 'joes' }], Session: anHourOf('rating_only', 599) },
+  }, async ({ env }) => {
+    const res = await create(env, req(), {
+      title: 'Rating', restaurant_slug: 'joes', kind: 'rating_only', total_amount: 0,
+    });
+    assert.equal(res.status, 200);
+  });
+});
+
+test('a rating refused at the ceiling is not told it split something', async () => {
+  await withStub({
+    entities: { Restaurant: [{ id: 'r1', slug: 'joes' }], Session: anHourOf('rating_only', 600) },
+  }, async ({ env }) => {
+    const res = await create(env, req(), {
+      title: 'Rating', restaurant_slug: 'joes', kind: 'rating_only', total_amount: 0,
+    });
+    assert.equal(res.status, 429);
+    const { error } = await body(res);
+    assert.match(error, /ratings/);
+    assert.doesNotMatch(error, /split/i, 'a guest holding a coffee split nothing');
+  });
+});
+
+test('a session written before the kind column counts as the split it was', async () => {
+  // Migration 0024 defaults the column, but a row read back without it must not
+  // be counted against a ceiling it was never near — a year of old bills would
+  // otherwise close the rating flow on day one.
+  const legacy = anHourOf('split', 100).map(({ kind, ...row }) => row);
+  await withStub({
+    entities: { Restaurant: [{ id: 'r1', slug: 'joes' }], Session: legacy },
+  }, async ({ env }) => {
+    const rating = await create(env, req(), {
+      title: 'Rating', restaurant_slug: 'joes', kind: 'rating_only', total_amount: 0,
+    });
+    assert.equal(rating.status, 200, 'old bills are not ratings');
+
+    const split = await create(env, req(), { title: 'Table 4', items: [], restaurant_slug: 'joes' });
+    assert.equal(split.status, 429, 'and they are still splits');
+  });
+});
+
 test('a title is required and whitespace does not count as one', async () => {
   await withStub({ users: { [HOST_COOKIE]: HOST } }, async ({ env }) => {
     assert.equal((await create(env, req(HOST_COOKIE), { items: [] })).status, 400);
@@ -1252,7 +1340,7 @@ test('an unknown restaurant is a 404', async () => {
   });
 });
 
-test('the public lookup returns seven fields and withholds the rest', async () => {
+test('the public lookup returns eight fields and withholds the rest', async () => {
   const full = {
     id: 'r1', name: "Joe's", slug: 'joes',
     google_review_url: 'https://g.page/joes', rating_threshold: 4,
@@ -1267,8 +1355,13 @@ test('the public lookup returns seven fields and withholds the rest', async () =
     // to be something the response says. It discloses nothing — see the comment
     // on the field itself. `noindex` joined for the same reason and covers a
     // second case demo alone missed.
+    // `service_style` joined with migration 0026, and for the same reason as
+    // `demo`: this response is the only thing the SPA knows about the row, and
+    // it decides which of the two screens a bare scan opens on — a check to
+    // split, or the one question a pay-first counter can ask.
     assert.deepEqual(Object.keys(restaurant).sort(),
-      ['demo', 'google_review_url', 'id', 'name', 'noindex', 'rating_threshold', 'slug']);
+      ['demo', 'google_review_url', 'id', 'name', 'noindex', 'rating_threshold',
+        'service_style', 'slug']);
     for (const secret of ['alert_email', 'alert_phone', 'owner_id', 'stripe_customer_id', 'stripe_subscription_id']) {
       assert.equal(restaurant[secret], undefined, `${secret} must not be public`);
     }
