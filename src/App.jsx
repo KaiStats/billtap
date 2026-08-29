@@ -7,7 +7,6 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
 import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
@@ -75,43 +74,25 @@ const PageLoader = () => (
   </div>
 );
 
-/** @param {{ children?: any, direction?: any, [key: string]: any }} props */
-const AnimatedPage = ({ children, direction }) => {
-  /**
-   * src/index.css has honoured `prefers-reduced-motion: reduce` since it was
-   * written — but only for CSS animations and transitions. Every page transition
-   * in this app is a framer-motion transform driven from JavaScript, which that
-   * media query cannot touch. So a diner who has switched motion off at the OS
-   * level, often because movement makes them ill, was still getting a 30px
-   * horizontal slide on every single navigation.
-   *
-   * useReducedMotion() reads the same media query and stays subscribed to it.
-   * Reduced means no travel — the cross-fade stays, because an instantaneous
-   * swap loses the "this is a new screen" cue that the movement was there to
-   * give, and a pure opacity change is not what the setting is asking to remove.
-   */
-  const reduceMotion = useReducedMotion();
-
-  const xIn = direction === "back" ? -30 : direction === "tab" ? 0 : 30;
-  const xOut = direction === "back" ? 30 : direction === "tab" ? 0 : -30;
-  const opacityOnly = direction === "tab" || reduceMotion;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: opacityOnly ? 0 : xIn }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: opacityOnly ? 0 : xOut }}
-      transition={{
-        duration: direction === "tab" ? 0.15 : 0.2,
-        ease: "easeInOut",
-        when: "beforeChildren",
-      }}
-      className="w-full"
-    >
-      {children}
-    </motion.div>
-  );
-};
+/**
+ * The page transition, as three CSS classes rather than an animation library.
+ *
+ * See "Page transitions" in src/index.css for why: framer-motion was imported
+ * at this module's scope, so it was eager and modulepreloaded, and a guest
+ * scanning a table tent downloaded 39.4 kB of it for a transition that route
+ * does not even use.
+ *
+ * `direction` picks the keyframe. The reduced-motion case now lives with the
+ * keyframes instead of being re-derived here through useReducedMotion(), which
+ * is the whole reason CSS is the right home for this.
+ *
+ * @param {{ children?: any, direction?: any, [key: string]: any }} props
+ */
+const AnimatedPage = ({ children, direction }) => (
+  <div className="w-full page-enter" data-direction={direction || "forward"}>
+    {children}
+  </div>
+);
 
 /**
  * Routes that genuinely cannot render before we know who the user is. Everything
@@ -218,7 +199,6 @@ const AuthenticatedApp = () => {
       </a>
       <main id="main-content" tabIndex={-1} className="w-full">
       <Suspense fallback={<PageLoader />}>
-        <AnimatePresence mode="wait" onExitComplete={() => null}>
           <Routes location={location} key={location.pathname}>
             {/* Public routes */}
             <Route path="/" element={<AnimatedPage direction={direction}><Landing /></AnimatedPage>} />
@@ -339,7 +319,6 @@ const AuthenticatedApp = () => {
 
             <Route path="*" element={<PageNotFound />} />
           </Routes>
-        </AnimatePresence>
       </Suspense>
       </main>
       <BottomNav />

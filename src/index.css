@@ -738,3 +738,58 @@ button, a, [role="button"], [role="checkbox"], .item-claim {
   }
   @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 }
+
+/* ── Page transitions ────────────────────────────────────────────────────────
+ *
+ * These were a framer-motion <motion.div> inside an <AnimatePresence>, and
+ * moving them to CSS took the whole 39.4 kB (gzipped) animation library off
+ * the path a guest walks.
+ *
+ * That guest never saw the animation. /r/<slug> is not wrapped in
+ * AnimatedPage — a table tent opens one screen and stays on it — but the
+ * import sat at App.jsx's module scope, so framer-motion was eager, was
+ * modulepreloaded, and was 20% of everything a diner downloaded before they
+ * could look at their bill. On restaurant wifi that is the difference people
+ * describe as "the QR thing is slow".
+ *
+ * CSS is also the better home on the merits. The comment this replaces
+ * explained that index.css has honoured prefers-reduced-motion since it was
+ * written, but only for CSS — every page transition here was a JavaScript
+ * transform the media query could not touch, so it had to be re-implemented
+ * with useReducedMotion(). A CSS animation is covered by the media query for
+ * free, which is what the block at the bottom of this file adjusts rather than
+ * re-invents.
+ *
+ * The exit animation is gone with AnimatePresence. mode="wait" held the
+ * incoming page until the outgoing one finished, so every navigation cost
+ * 0.2s out plus 0.2s in. Dropping the half nobody is looking at makes
+ * navigation land twice as fast.
+ */
+@keyframes page-in-forward { from { opacity: 0; transform: translate3d(30px, 0, 0); }  to { opacity: 1; transform: none; } }
+@keyframes page-in-back    { from { opacity: 0; transform: translate3d(-30px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes page-in-fade    { from { opacity: 0; }                                      to { opacity: 1; } }
+
+.page-enter { animation: page-in-forward 0.2s var(--ease-in-out, ease-in-out) both; }
+.page-enter[data-direction="back"] { animation-name: page-in-back; }
+/* A tab switch never travelled: moving sideways between peers reads as a
+   mis-swipe rather than as depth. */
+.page-enter[data-direction="tab"] { animation-name: page-in-fade; animation-duration: 0.15s; }
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * The global rule at the top of this file collapses every animation to
+   * 0.01ms, which here would be an instantaneous swap — and that is not what
+   * the setting is asking for. Somebody who turns motion off, often because
+   * movement makes them ill, is asking for the travel to stop, not for the
+   * "this is a new screen" cue to disappear. So: no movement, real cross-fade.
+   *
+   * A class selector outranks the `*` the global rule uses, so this wins at
+   * the same !important level.
+   */
+  .page-enter,
+  .page-enter[data-direction="back"],
+  .page-enter[data-direction="tab"] {
+    animation-name: page-in-fade !important;
+    animation-duration: 0.2s !important;
+  }
+}
