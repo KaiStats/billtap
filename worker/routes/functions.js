@@ -587,11 +587,48 @@ async function reserveSlug(svc, name) {
 /**
  * How long a demo page lives.
  *
- * Longer than any sales call and shorter than anyone's memory of one. A page
- * carrying a stranger's business name that outlives the conversation it was
- * made for is not a demo any more.
+ * ── Back to a day, deliberately ─────────────────────────────────────────────
+ *
+ * This was briefly a week, on the argument that "let me show my partner" is
+ * the commonest good outcome at a door and the partner is in on Tuesday. That
+ * is true, and it is not worth what it costs.
+ *
+ * What it costs is a standing list of live public pages carrying the names of
+ * businesses that agreed to nothing. Every day of life is another day each of
+ * those pages can be found, indexed, or stumbled on by the owner whose name is
+ * on it — and seven of them at a time rather than one. The original note here
+ * had it right: a page carrying a stranger's business name that outlives the
+ * conversation it was made for is not a demo any more.
+ *
+ * The Tuesday case does not need a longer default, because it now has an
+ * explicit answer. extendDemoRestaurant pushes a live demo's clock out on
+ * demand, without changing its slug, so the operator extends the one demo a
+ * prospect actually asked to keep. That is strictly better than extending
+ * every demo he has ever made on the chance that one of them mattered: the
+ * pages that no one asked about expire tonight, which is the whole point.
  */
-const DEMO_HOURS = 24;
+const DEMO_HOURS_DEFAULT = 24;
+
+/** Floor on a configured DEMO_TTL_HOURS. Below this it is not a demo window. */
+const DEMO_HOURS_MIN = 1;
+
+/** Ceiling on a configured DEMO_TTL_HOURS. Above this it is not a demo any more. */
+const DEMO_HOURS_MAX = 720;
+
+/**
+ * How many hours a demo lives, from env, clamped and never throwing.
+ *
+ * This runs mid-sales-call. A bad or absent DEMO_TTL_HOURS binding must
+ * produce a sane demo, not a 500 in front of a prospect — so unset, empty,
+ * non-numeric, zero and negative all fall back to the default rather than
+ * erroring.
+ */
+export function demoTtlHours(env) {
+  const raw = env?.DEMO_TTL_HOURS;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n <= 0) return DEMO_HOURS_DEFAULT;
+  return Math.min(DEMO_HOURS_MAX, Math.max(DEMO_HOURS_MIN, n));
+}
 
 /** Longest restaurant name a demo will accept. Plenty for any real sign. */
 const DEMO_NAME_MAX = 120;
@@ -2963,7 +3000,7 @@ const HANDLERS = {
     }
 
     const now = Date.now();
-    const expiresAt = now + DEMO_HOURS * 60 * 60 * 1000;
+    const expiresAt = now + demoTtlHours(env) * 60 * 60 * 1000;
 
     const row = await svc.entity('Restaurant').create({
       name: parsed.name,
@@ -3029,6 +3066,66 @@ const HANDLERS = {
     });
 
     return json(demoView(row, origin));
+  },
+
+  /**
+   * Push a demo's clock back out, without moving its slug.
+   *
+   * The prospect wrote the URL down, or scanned a QR that is still on his
+   * phone. Extending has to be the same page staying alive, not a new one —
+   * regenerating the slug here would silently 404 the exact link that was
+   * handed over.
+   *
+   * Available any time a demo is up, not just when it is nearly dead: the
+   * operator learns he needs this the moment a prospect says "come back
+   * Tuesday", which can be day one of a demo's life.
+   *
+   * ── Same allowlist, same failure shape as create ────────────────────────
+   *
+   * This moves a clock on a page bearing a real business's name, so it gets
+   * the same authorization as creating one: the DEMO_OPERATOR_EMAILS allowlist,
+   * failing closed. On top of that it requires the row to be the caller's own
+   * demo — `demo === true` and `owner_id === user.id` — so this can never be
+   * used to move a paying restaurant's billing clock, and never to touch
+   * somebody else's demo. Every way that check can fail answers with the same
+   * 404, so the reply never tells a caller which slugs exist, whether one is a
+   * demo, or whether it belongs to somebody else.
+   */
+  async extendDemoRestaurant({ env, request, body, audit = NO_AUDIT }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+    if (!isDemoOperator(env, user)) return json({ error: 'Not allowed' }, 403);
+
+    const slug = typeof body?.slug === 'string' ? body.slug.trim() : '';
+    if (!slug) return json({ error: 'Missing slug' }, 400);
+
+    const svc = serviceRole(env);
+    const rows = await svc.entity('Restaurant').filter(
+      { slug },
+      { select: 'id,slug,name,owner_id,demo,demo_expires_at' },
+    );
+    const row = rows[0];
+
+    // One answer for "no such slug", "not a demo" and "not yours" — see the
+    // header above for why.
+    const NOT_FOUND = json({ error: 'No such demo' }, 404);
+    if (!row || row.demo !== true || row.owner_id !== user.id) return NOT_FOUND;
+
+    const expiresAt = Date.now() + demoTtlHours(env) * 60 * 60 * 1000;
+    const updated = await svc.entity('Restaurant').update(row.id, {
+      demo_expires_at: expiresAt,
+    });
+
+    const origin = env.PUBLIC_BASE_URL || new URL(request.url).origin;
+
+    await audit({
+      action: ACTIONS.DEMO_CREATED,
+      restaurantId: row.id,
+      actorUserId: user.id,
+      detail: { slug, extended: true, expires_at: expiresAt },
+    });
+
+    return json(demoView(updated ?? { ...row, demo_expires_at: expiresAt }, origin));
   },
 
   /**

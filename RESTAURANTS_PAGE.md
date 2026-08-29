@@ -167,6 +167,24 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `GEMINI_API_KEY` | for receipt scanning | — |
 | `QR_SIGNING_SECRET` | for table QR tokens | — |
 | `DEMO_OPERATOR_EMAILS` | to create demo pages | — (empty denies everyone) |
+| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) |
+
+**`DEMO_TTL_HOURS` is short on purpose.** A demo publishes a live page carrying
+a real business's name, for a business that has agreed to nothing, so every
+extra hour is another hour that page can be found or stumbled on by the owner
+whose name is on it. A day is the default because the page should not outlive
+the conversation it was made for.
+
+The "come back Tuesday" case is handled by extending the one demo that matters
+rather than by keeping them all alive: `extendDemoRestaurant` pushes a live
+demo's clock out on demand **without changing its slug**, so the URL already
+handed over keeps working. Everything nobody asked about still expires tonight,
+and `sweepExpiredDemos` hard-deletes it — row, ratings and contacts — on the
+nightly retention pass.
+
+Anything unset, empty, non-numeric, zero or negative falls back to 24 rather
+than erroring: this code runs mid-sales-call, and a bad binding must not be
+what stops a demo being created in front of a prospect.
 
 **`SUPABASE_SERVICE_ROLE_KEY` is a runtime secret, not a build variable.**
 `/api/rating-alert` uses it to look the rating up server-side and derive the
@@ -264,25 +282,42 @@ import would need those in hand first.
 
 ## Imagery
 
-Hero and detail images were generated with Higgsfield (Nano Banana 2) and point
-at Higgsfield's CDN, with CSS gradient fallbacks beneath so a dead URL degrades
-rather than breaks.
+Generated with Higgsfield (Nano Banana 2) to one brief — warm tungsten
+hospitality photography, deep blacks, amber highlights keyed to the page's gold.
+Every frame is deliberately text-free, because rendered lettering is the tell
+that gives generated imagery away; all the type lives in the DOM.
 
-**Self-host them before this page carries real traffic** — the CDN is Higgsfield's,
-not yours, and those URLs can disappear without notice. Two commands and a
-one-line edit:
+**These are already self-hosted.** `SELF_HOSTED = true` in
+`src/lib/restaurant-assets.js`, and the re-encoded WebP ladder is committed
+under `public/img/restaurants/`. Nothing on the page fetches Higgsfield's CDN
+at runtime, so a dead CDN URL costs nothing.
+
+This section used to say the opposite and tell you to self-host before taking
+real traffic. That was true when it was written and has not been since — the
+work was done in `scripts/fetch-art.mjs` and the flag flipped. It is corrected
+here because a doc that describes shipped work as outstanding sends the next
+person to fix something that is not broken.
+
+To regenerate the ladder after changing `ART_MANIFEST`:
 
 ```bash
-mkdir -p public/img
-curl -o public/img/restaurants-hero.png \
-  "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5/hf_20260729_145319_1db26e63-a913-47d4-af26-0c55a6a8ae7e.png"
-curl -o public/img/restaurants-detail.png \
-  "https://d8j0ntlcm91z4.cloudfront.net/user_3F5ssCqR5J7p1iLhp9GPzJjUxk5/hf_20260729_145616_4a63691c-b043-4ed2-9e77-a054b53fbdb5.png"
+node scripts/fetch-art.mjs   # downloads each original once, re-encodes to WebP
 ```
 
-Then in `src/lib/restaurant-assets.js` replace the two exported URLs with
-`/img/restaurants-hero.png` and `/img/restaurants-detail.png`. Nothing else
-changes — the CSP already allows `img-src 'self'`.
+`scripts/verify-dist.mjs` scans the built output for every `/img/` and `/video/`
+URL it references and fails the build if one is missing, so a dropped file is a
+red build rather than a page of bare gradients.
+
+### The product frames are not images
+
+The `#product` section on `/restaurants` — the three phone mockups showing the
+table tent, the rating screen and the operator's alert — is rendered markup, not
+screenshots. It costs no image requests, stays sharp at any density, and a copy
+change in `RatingCapture.jsx` that made it wrong shows up as a diff rather than
+as a stale PNG nobody re-exports. The restaurant name in those frames comes from
+one constant, `SAMPLE_RESTAURANT`, and must stay a non-real business — see the
+comment above `#proof` for why naming a real one is the mistake that section was
+torn out for.
 
 ## Do not put Cloudflare code in a top-level functions/
 

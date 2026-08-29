@@ -41,6 +41,7 @@ export default function NewDemo() {
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
   const [demos, setDemos] = useState([]);
+  const [extending, setExtending] = useState(null);
   // Re-rendered once a minute so the countdowns are not frozen at whatever they
   // said when the screen opened — this page stays up between stops.
   const [, setTick] = useState(0);
@@ -63,6 +64,25 @@ export default function NewDemo() {
   }
 
   useEffect(() => { refresh(); }, []);
+
+  /** Pushes one demo's clock back out, in place — the slug never changes. */
+  async function extend(slug) {
+    if (extending) return;
+    setExtending(slug);
+    try {
+      const res = await invoke("extendDemoRestaurant", { slug });
+      const updated = res?.data || null;
+      if (updated) {
+        setCreated((c) => (c?.slug === slug ? { ...c, ...updated } : c));
+      }
+      await refresh();
+    } catch {
+      // Not surfaced. Worst case the button is tapped again — extending twice
+      // just resets the same clock to the same week out.
+    } finally {
+      setExtending(null);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -121,7 +141,9 @@ export default function NewDemo() {
           <p className="mt-4 text-sm" style={{ color: "#e5484d" }}>{error}</p>
         ) : null}
 
-        {created ? <DemoCard demo={created} highlight /> : null}
+        {created ? (
+          <DemoCard demo={created} highlight onExtend={extend} extending={extending === created.slug} />
+        ) : null}
 
         {demos.length ? (
           <div className="mt-9">
@@ -130,7 +152,9 @@ export default function NewDemo() {
             </p>
             {demos
               .filter((d) => d.slug !== created?.slug)
-              .map((d) => <DemoCard key={d.slug} demo={d} />)}
+              .map((d) => (
+                <DemoCard key={d.slug} demo={d} onExtend={extend} extending={extending === d.slug} />
+              ))}
           </div>
         ) : null}
       </div>
@@ -141,9 +165,9 @@ export default function NewDemo() {
 /**
  * How long is left, in the units somebody standing at a table thinks in.
  *
- * Minutes under an hour, because "0 hours" on a demo that still has forty
- * minutes in it reads as dead, and the whole reason this countdown is on the
- * screen is so he knows the page in his hand is still live.
+ * Minutes under an hour, hours under a day, days once a demo lives a week —
+ * "163h" is not a unit anyone standing at a table thinks in, and "6d 4h left"
+ * is a lot easier to trust than one long number.
  */
 function timeLeft(expiresAt) {
   if (!expiresAt) return "no expiry";
@@ -152,11 +176,38 @@ function timeLeft(expiresAt) {
   const minutes = Math.ceil(ms / 60000);
   if (minutes < 60) return `${minutes} min left`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m left`;
+  if (hours < 24) return `${hours}h ${minutes % 60}m left`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours ? `${days}d ${remHours}h left` : `${days}d left`;
 }
 
-/** @param {{ demo: any, highlight?: boolean }} props */
-function DemoCard({ demo, highlight = false }) {
+/**
+ * Under three hours left — the point where the countdown turns gold.
+ *
+ * This was 24 hours, which was defensible only while demos lived a week. With
+ * the default back at a day it made every demo urgent from the moment it was
+ * created: gold on creation, gold until it died, which is the same as having
+ * no warning at all. A signal that is always on is not a signal.
+ *
+ * Three hours is a fixed threshold rather than a fraction of the term because
+ * the browser is not told the term — DEMO_TTL_HOURS lives on the server and
+ * can change without a deploy. It reads correctly at either end of that range:
+ * the last eighth of a one-day demo, and genuinely the last moments of a
+ * one-week one. What it means is "extend this now if the prospect still cares",
+ * and that is true whenever it fires.
+ */
+const EXPIRING_SOON_MS = 3 * 3600000;
+
+function expiringSoon(expiresAt) {
+  if (!expiresAt) return false;
+  const ms = Number(expiresAt) - Date.now();
+  return ms > 0 && ms < EXPIRING_SOON_MS;
+}
+
+/** @param {{ demo: any, highlight?: boolean, onExtend?: (slug: string) => void, extending?: boolean }} props */
+function DemoCard({ demo, highlight = false, onExtend, extending = false }) {
+  const soon = expiringSoon(demo.expires_at);
   return (
     <div
       className="mt-5 p-5 rounded-3xl text-center"
@@ -185,9 +236,32 @@ function DemoCard({ demo, highlight = false }) {
         {demo.url.replace(/^https?:\/\//, "")}
       </a>
 
-      <p className="mt-2 text-xs" style={{ color: "rgba(255,255,255,.45)" }}>
+      <p className="mt-2 text-xs" style={{ color: soon ? GOLD : "rgba(255,255,255,.45)" }}>
         {timeLeft(demo.expires_at)}
       </p>
+
+      {onExtend ? (
+        <button
+          type="button"
+          onClick={() => onExtend(demo.slug)}
+          disabled={extending}
+          className="mt-3 text-xs font-bold underline disabled:opacity-50"
+          style={{ color: GOLD }}
+        >
+          {/*
+            "Extend", not "Extend another week".
+
+            How long an extension buys is DEMO_TTL_HOURS on the server, which
+            the browser is never told and which can be changed without a
+            deploy. A button naming a specific term was a promise this screen
+            has no way to keep — it said "another week" while the default was a
+            day, which is the kind of small lie an operator only discovers in
+            front of a prospect. The countdown directly above updates the
+            moment this returns, so the honest answer is on screen anyway.
+          */}
+          {extending ? "Extending…" : "Extend"}
+        </button>
+      ) : null}
     </div>
   );
 }

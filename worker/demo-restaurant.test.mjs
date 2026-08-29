@@ -24,7 +24,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HANDLERS, demoName, demoOperators, isDemoOperator } from './routes/functions.js';
+import { HANDLERS, demoName, demoOperators, isDemoOperator, demoTtlHours } from './routes/functions.js';
 import { ACTIONS } from './lib/audit.js';
 import { LIMITED, COSTLY, isLimited } from './lib/rate-limit.js';
 import { sweepExpiredDemos } from './routes/retention.js';
@@ -201,6 +201,111 @@ test('the endpoint is metered, and from the costly budget', () => {
   assert.ok(COSTLY.has('/api/fn/createDemoRestaurant'));
 });
 
+test('extend is metered on the same allowlist and the same costly budget', () => {
+  // Same session, same write — it must not be the unmetered way to do metered
+  // work.
+  assert.ok(isLimited('/api/fn/extendDemoRestaurant'));
+  assert.ok(LIMITED.has('/api/fn/extendDemoRestaurant'));
+  assert.ok(COSTLY.has('/api/fn/extendDemoRestaurant'));
+});
+
+// ── Extending a live demo without moving its slug ───────────────────────────
+
+const extendRequest = (signedIn = true) =>
+  new Request('https://billtap.app/api/fn/extendDemoRestaurant', {
+    method: 'POST',
+    headers: signedIn ? { Authorization: 'Bearer operator-token' } : {},
+  });
+
+async function extendCall(body, { env = ENV, signedIn = true, audited = [] } = {}) {
+  const res = await HANDLERS.extendDemoRestaurant({
+    env,
+    request: extendRequest(signedIn),
+    body,
+    audit: async (entry) => { audited.push(entry); },
+  });
+  return { res, json: await res.clone().json(), audited };
+}
+
+test('extending pushes a nearly-dead demo back out to a full term, keeping its slug', async () => {
+  const demo = {
+    id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq',
+    owner_id: KAI, demo: true, demo_expires_at: Date.now() + 60000,
+  };
+  await withStub({ restaurants: [demo] }, async ({ tables }) => {
+    const before = Date.now();
+    const { res, json, audited } = await extendCall({ slug: 'hr-a7f3kq' });
+    const after = Date.now();
+
+    assert.equal(res.status, 200);
+    assert.equal(tables.restaurants.length, 1, 'no second row');
+    const row = tables.restaurants[0];
+    assert.equal(row.slug, 'hr-a7f3kq', 'the URL already handed over keeps working');
+    assert.ok(
+      row.demo_expires_at >= before + 24 * 3600000 && row.demo_expires_at <= after + 24 * 3600000,
+      `demo_expires_at was ${row.demo_expires_at}, not ~24h out`,
+    );
+    assert.equal(json.slug, 'hr-a7f3kq');
+    assert.equal(json.expires_at, row.demo_expires_at);
+
+    const entry = audited.find((e) => e.action === ACTIONS.DEMO_CREATED && e.detail?.extended);
+    assert.ok(entry, 'an extension is audited too');
+    assert.equal(entry.detail.slug, 'hr-a7f3kq');
+    assert.equal(entry.detail.expires_at, row.demo_expires_at);
+  });
+});
+
+test('extending is refused for a caller not on the allowlist', async () => {
+  const demo = { id: 'r_demo', name: 'Herb and Rye', slug: 'hr-a7f3kq', owner_id: 'user_stranger', demo: true, demo_expires_at: Date.now() + 60000 };
+  const stranger = { id: 'user_stranger', email: 'someone@gmail.example' };
+  await withStub({ restaurants: [demo], user: stranger }, async ({ tables }) => {
+    const { res } = await extendCall({ slug: 'hr-a7f3kq' });
+    assert.equal(res.status, 403);
+    assert.equal(tables.restaurants[0].demo_expires_at, demo.demo_expires_at, 'clock did not move');
+  });
+});
+
+test('extending a paying restaurant is refused, and its clock does not move', async () => {
+  // demo === true is the requirement that stops this ever being used to move a
+  // paying restaurant's billing clock.
+  const real = { id: 'r_real', name: 'Test Kitchen', slug: 'test-kitchen', owner_id: KAI, demo: false, current_period_end: 1000 };
+  let refusalBody;
+  await withStub({ restaurants: [real] }, async ({ tables }) => {
+    const { res, json } = await extendCall({ slug: 'test-kitchen' });
+    assert.equal(res.status, 404);
+    assert.equal(tables.restaurants[0].current_period_end, 1000, 'a paying restaurant is never touched');
+    refusalBody = json;
+  });
+
+  // Byte-identical to the missing-slug refusal, so the reply never tells a
+  // caller which of the two it is looking at.
+  await withStub({ restaurants: [] }, async () => {
+    const { json } = await extendCall({ slug: 'no-such-slug' });
+    assert.deepEqual(json, refusalBody);
+  });
+});
+
+test("extending another operator's demo is refused, identically to a missing slug", async () => {
+  const other = { id: 'r_other', name: 'Someone Else', slug: 'x-eeeeee', owner_id: 'user_other', demo: true, demo_expires_at: Date.now() + 60000 };
+  await withStub({ restaurants: [other] }, async ({ tables }) => {
+    const { res, json: notYours } = await extendCall({ slug: 'x-eeeeee' });
+    assert.equal(res.status, 404);
+    assert.equal(tables.restaurants[0].demo_expires_at, other.demo_expires_at, 'clock did not move');
+
+    const { json: missing } = await extendCall({ slug: 'nope' });
+    assert.deepEqual(notYours, missing, 'not-yours and not-found read identically');
+  });
+});
+
+test('extending with a missing or blank slug is refused before any lookup', async () => {
+  await withStub({}, async ({ tables }) => {
+    assert.equal((await extendCall({})).res.status, 400, 'no slug at all');
+    const { res } = await extendCall({ slug: '   ' });
+    assert.equal(res.status, 400, 'blank');
+    assert.equal(tables.restaurants.length, 0);
+  });
+});
+
 // ── What gets written ───────────────────────────────────────────────────────
 
 test('the created row is a demo on its own 24-hour clock', async () => {
@@ -227,6 +332,33 @@ test('the created row is a demo on its own 24-hour clock', async () => {
     assert.equal(json.name, 'Herb and Rye');
     assert.equal(json.url, `https://billtap.app/r/${row.slug}`);
     assert.equal(json.expires_at, row.demo_expires_at);
+  });
+});
+
+// ── How long a demo lives ────────────────────────────────────────────────────
+
+test('demoTtlHours falls back to a day on anything that is not a usable number', () => {
+  for (const raw of [undefined, '', '   ', 'not-a-number', '0', '-5', 0, -5, null]) {
+    assert.equal(demoTtlHours({ DEMO_TTL_HOURS: raw }), 24, `DEMO_TTL_HOURS=${JSON.stringify(raw)} must fall back to 24`);
+  }
+});
+
+test('demoTtlHours reads a configured value, floored and clamped', () => {
+  assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '168' }), 168, 'a week is still reachable without a deploy');
+  assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '72.9' }), 72, 'floored, not rounded');
+  assert.equal(demoTtlHours({ DEMO_TTL_HOURS: '100000' }), 720, 'clamped to the month ceiling');
+});
+
+test('a configured DEMO_TTL_HOURS changes what a new demo is stamped with', async () => {
+  await withStub({}, async ({ tables }) => {
+    const before = Date.now();
+    await create({ name: 'Herb and Rye' }, { env: { ...ENV, DEMO_TTL_HOURS: '48' } });
+    const after = Date.now();
+    const row = tables.restaurants[0];
+    assert.ok(
+      row.demo_expires_at >= before + 48 * 3600000 && row.demo_expires_at <= after + 48 * 3600000,
+      `demo_expires_at was ${row.demo_expires_at}, not ~48h out`,
+    );
   });
 });
 
