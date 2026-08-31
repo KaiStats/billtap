@@ -138,13 +138,19 @@
   </url>
   <url>
     <loc>https://billtap.app/terms</loc>
-    <lastmod>2026-07-30</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://billtap.app/security</loc>
     <lastmod>2026-08-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://billtap.app/promises</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

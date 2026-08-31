@@ -29,6 +29,7 @@ const IconGenerator = lazy(() => import('@/pages/IconGenerator'));
 const Privacy     = lazy(() => import('@/pages/Privacy'));
 const Terms       = lazy(() => import('@/pages/Terms'));
 const Security    = lazy(() => import('@/pages/Security'));
+const Promises    = lazy(() => import('@/pages/Promises'));
 const Claim       = lazy(() => import('@/pages/Claim'));
 const NewReceipt  = lazy(() => import('@/pages/NewReceipt'));
 const Dashboard   = lazy(() => import('@/pages/Dashboard'));
@@ -205,6 +206,7 @@ const AuthenticatedApp = () => {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/security" element={<Security />} />
+            <Route path="/promises" element={<Promises />} />
             <Route path="/icon-generator" element={<IconGenerator />} />
             <Route path="/about" element={<About />} />
             <Route path="/blog" element={<Blog />} />

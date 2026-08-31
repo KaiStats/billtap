@@ -202,6 +202,7 @@ export const PRERENDERED = {
   '/privacy': '/privacy.html',
   '/terms': '/terms.html',
   '/security': '/security.html',
+  '/promises': '/promises.html',
 };
 
 /**

@@ -343,6 +343,7 @@ const Security = () => (
       <footer className="pt-4 border-t border-slate-200 text-sm text-slate-500 space-x-4">
         <Link className="underline" to="/privacy">Privacy Policy</Link>
         <Link className="underline" to="/terms">Terms of Service</Link>
+        <Link className="underline" to="/promises">Promises</Link>
         <Link className="underline" to="/">Home</Link>
       </footer>
     </div>

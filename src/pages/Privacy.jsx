@@ -1,4 +1,5 @@
 import Seo from "@/components/Seo";
+import { Link } from "react-router";
 const Section = ({ title, children }) => (
   <section className="space-y-3">
     <h2 className="text-xl font-bold text-foreground">{title}</h2>
@@ -176,6 +177,12 @@ const Privacy = () => (
             <p>Response time: within 45 days of verified request</p>
           </div>
         </Section>
+
+        <footer className="pt-4 border-t border-border text-sm space-x-4">
+          <Link className="hover:underline text-primary" to="/terms">Terms of Service</Link>
+          <Link className="hover:underline text-primary" to="/security">Security</Link>
+          <Link className="hover:underline text-primary" to="/promises">Promises</Link>
+        </footer>
 
       </div>
     </div>

@@ -1128,6 +1128,7 @@ export default function Landing() {
               <Link to="/terms" className="text-sm text-muted-foreground transition-colors hover:text-primary">Terms</Link>
               <Link to="/privacy" className="text-sm text-muted-foreground transition-colors hover:text-primary">Privacy</Link>
               <Link to="/security" className="text-sm text-muted-foreground transition-colors hover:text-primary">Security</Link>
+              <Link to="/promises" className="text-sm text-muted-foreground transition-colors hover:text-primary">Promises</Link>
             </div>
           </div>
         </div>

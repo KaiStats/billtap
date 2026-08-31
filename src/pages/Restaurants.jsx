@@ -1189,6 +1189,8 @@ export default function Restaurants() {
               <Link to="/" style={{ color: "rgba(245,245,244,.58)" }}>Consumer app</Link>
               <Link to="/privacy" style={{ color: "rgba(245,245,244,.58)" }}>Privacy</Link>
               <Link to="/terms" style={{ color: "rgba(245,245,244,.58)" }}>Terms</Link>
+              <Link to="/security" style={{ color: "rgba(245,245,244,.58)" }}>Security</Link>
+              <Link to="/promises" style={{ color: "rgba(245,245,244,.58)" }}>Promises</Link>
             </div>
           </div>
         </div>
