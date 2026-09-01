@@ -1,9 +1,12 @@
 /**
  * POST /api/rating-alert
  *
- * Pages the operator the moment a guest leaves a low rating, while that guest
- * is still in the building. Lookup the rating by ID to validate ownership and
- * fetch the restaurant's contact info server-side, preventing spam.
+ * Pages the operator the moment a guest leaves a low rating — usually while
+ * that guest is still in the building, though not always: /r/<slug>/rate never
+ * expires, so the same alert carries a scan made from home hours later, and
+ * `onSite` below is what decides which of those two the copy may claim. Lookup
+ * the rating by ID to validate ownership and fetch the restaurant's contact
+ * info server-side, preventing spam.
  *
  * Requires: rating_id (UUID of the GuestRating record)
  * Bindings: BASE44_APP_ID (or VITE_BASE44_APP_ID) and BASE44_MASTER_KEY for the
@@ -191,7 +194,7 @@ export async function onRequestPost({ request, env }) {
       try {
         const sessions = await svc.entity('Session').filter(
           { id: rating.session_id },
-          { select: 'id,total_amount,participants,image_url,ticket_table,ticket_server,ticket_number' },
+          { select: 'id,kind,created_date,total_amount,participants,image_url,ticket_table,ticket_server,ticket_number' },
         );
         const session = sessions[0];
         if (session) {
@@ -212,6 +215,16 @@ export async function onRequestPost({ request, env }) {
             server: session.ticket_server || null,
             number: session.ticket_number || null,
             receipt: receiptLink(env, session.image_url),
+            /**
+             * Not for the manager to read — for `onSite` below to reason with.
+             *
+             * A split row is a bill somebody photographed at a table, so the
+             * moment it was opened is the moment that visit started. A
+             * rating_only row is opened by the star tap itself and says
+             * nothing about where the guest is standing.
+             */
+            kind: session.kind || 'split',
+            openedAt: Date.parse(session.created_date),
           };
         }
       } catch (error) {
@@ -224,6 +237,44 @@ export async function onRequestPost({ request, env }) {
     const guestEmail = clean(rating.guest_email || '', 200).toLowerCase();
     const alertPhone = clean(restaurant.alert_phone || '', 40);
 
+    /**
+     * Whether this alert may claim the guest is still in the building.
+     *
+     * It used to claim it unconditionally — the headline read "Unhappy guest —
+     * still on site" for every page sent. That was true when the only way to
+     * rate was to finish a split at a table, and it stopped being true the day
+     * /r/<slug>/rate went on cups and receipt footers: the link never expires,
+     * so a guest can scan it from their sofa at nine at night and the manager
+     * gets told to go find them in a dining room that closed an hour ago. A
+     * manager who walks the floor twice on a promise the alert made up stops
+     * believing the alert, and this alert is the product.
+     *
+     * ── Why session age, and only for a split ─────────────────────────────
+     *
+     * A split row is opened when a guest photographs the check, so it is
+     * anchored to a real, observed moment inside the visit: a rating landing
+     * shortly after it happened while they were sitting there. Three hours is
+     * past the length of any meal that ends in a check being split, so beyond
+     * it the anchor has stopped meaning anything.
+     *
+     * A rating_only row carries no such anchor. It is created by the star tap
+     * itself (see startRating in src/pages/TableEntry.jsx), so the gap is
+     * always near zero whether the guest is at the bus tub or at home — the
+     * counter room simply does not know, and this is where the old claim was
+     * most confidently wrong. Not knowing is not the same as knowing they
+     * left, so the copy below says "may have left" rather than swapping one
+     * invented certainty for another.
+     */
+    const ratedAt = Number(rating.created_at) || Date.now();
+    const VISIT_MS = 3 * 60 * 60 * 1000;
+    const onSite = Boolean(
+      check
+      && check.kind === 'split'
+      && Number.isFinite(check.openedAt)
+      && ratedAt - check.openedAt >= 0
+      && ratedAt - check.openedAt < VISIT_MS,
+    );
+
     const when = new Date().toLocaleString('en-US', {
       timeZone: env.RESTAURANT_TZ || 'America/Los_Angeles',
       dateStyle: 'medium',
@@ -234,7 +285,7 @@ export async function onRequestPost({ request, env }) {
       <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px">
         <div style="background:#111827;border-radius:12px;padding:20px;margin-bottom:18px">
           <p style="margin:0 0 6px;color:#f0b429;font-size:12px;letter-spacing:.12em;text-transform:uppercase">
-            Unhappy guest — still on site
+            ${onSite ? 'Unhappy guest — still on site' : 'Unhappy guest — they may have left'}
           </p>
           <p style="margin:0;color:#fff;font-size:26px;font-weight:700">
             ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}
@@ -265,8 +316,11 @@ export async function onRequestPost({ request, env }) {
           ? `<blockquote style="margin:14px 0;padding:12px 16px;background:#f9fafb;border-left:3px solid #f0b429;font-size:14px;line-height:1.55">${esc(comment)}</blockquote>`
           : `<p style="margin:14px 0;color:#888;font-size:14px">No comment left.</p>`}
         ${guestEmail
-          ? `<p style="margin:14px 0 0;font-size:14px">Guest: <a href="mailto:${encodeURIComponent(guestEmail)}" style="color:#00a67a">${esc(guestEmail)}</a> — reaching out now is usually what saves it.</p>`
+          ? `<p style="margin:14px 0 0;font-size:14px">Guest: <a href="mailto:${encodeURIComponent(guestEmail)}" style="color:#00a67a">${esc(guestEmail)}</a> — ${onSite ? 'reaching out now is usually what saves it' : 'a reply tonight is usually what saves it'}.</p>`
           : `<p style="margin:14px 0 0;color:#888;font-size:14px">Guest left no email.</p>`}
+        ${onSite
+          ? ''
+          : `<p style="margin:14px 0 0;color:#888;font-size:13px">This one may have rated after leaving — the code works long after the visit. Answer it rather than walking the floor.</p>`}
       </div>`;
 
     /** The same detail in the plain-text part, which is what a watch shows. */
@@ -282,6 +336,7 @@ export async function onRequestPost({ request, env }) {
 
     const text = [
       `${stars}/5 — ${restaurantName} (${when})`,
+      onSite ? '\nStill on site.' : '\nMay have rated after leaving.',
       checkLine,
       comment ? `\n"${comment}"` : '\nNo comment left.',
       guestEmail ? `\nGuest: ${guestEmail}` : '\nNo guest email.',
