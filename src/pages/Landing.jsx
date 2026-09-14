@@ -1217,27 +1217,27 @@ export default function Landing() {
             </div>
             <div>
               <h4 className="mono font-semibold text-xs mb-4 uppercase tracking-[0.18em] text-muted-foreground/80">Product</h4>
-              <ul className="space-y-3">
+              <ul>
                 {[...navLinks, { label: "FAQ", href: "#faq" }].map(l => (
-                  <li key={l.label}><a href={l.href} className="text-sm text-muted-foreground transition-colors hover:text-primary">{l.label}</a></li>
+                  <li key={l.label}><a href={l.href} className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">{l.label}</a></li>
                 ))}
               </ul>
             </div>
             <div>
               <h4 className="mono font-semibold text-xs mb-4 uppercase tracking-[0.18em] text-muted-foreground/80">Company</h4>
-              <ul className="space-y-3">
-                <li><Link to="/about" className="text-sm text-muted-foreground transition-colors hover:text-primary">About</Link></li>
-                <li><Link to="/blog" className="text-sm text-muted-foreground transition-colors hover:text-primary">Blog</Link></li>
-                <li><a href="https://billtap.app" className="text-sm text-muted-foreground transition-colors hover:text-primary">billtap.app</a></li>
+              <ul>
+                <li><Link to="/about" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">About</Link></li>
+                <li><Link to="/blog" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Blog</Link></li>
+                <li><a href="https://billtap.app" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">billtap.app</a></li>
               </ul>
             </div>
           </div>
           <div className="pt-8 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">© 2026 BillTap. Built in public by Kai Cogmon.</p>
             <div className="flex items-center gap-6">
-              <Link to="/terms" className="text-sm text-muted-foreground transition-colors hover:text-primary">Terms</Link>
-              <Link to="/privacy" className="text-sm text-muted-foreground transition-colors hover:text-primary">Privacy</Link>
-              <Link to="/security" className="text-sm text-muted-foreground transition-colors hover:text-primary">Security</Link>
+              <Link to="/terms" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Terms</Link>
+              <Link to="/privacy" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Privacy</Link>
+              <Link to="/security" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Security</Link>
             </div>
           </div>
         </div>
