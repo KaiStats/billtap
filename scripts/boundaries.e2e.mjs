@@ -27,6 +27,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { chromiumPath } from './chromium-path.mjs';
 
 const DIST = resolve(import.meta.dirname, '../dist');
 const PHONE = { width: 390, height: 844 };
@@ -90,7 +91,7 @@ before(async () => {
   httpServer = server;
   base = `http://127.0.0.1:${port}`;
   browser = await chromium.launch({
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
+    executablePath: chromiumPath(),
   });
 });
 
