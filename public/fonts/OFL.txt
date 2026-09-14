@@ -1,0 +1,22 @@
+The font files in this directory are redistributed under the
+SIL Open Font License, Version 1.1, which permits self-hosting,
+redistribution and embedding.
+
+  Inter            — Copyright (c) The Inter Project Authors
+                     https://github.com/rsms/inter
+  Inter Tight      — Copyright (c) The Inter Project Authors
+                     https://github.com/rsms/inter
+  JetBrains Mono   — Copyright (c) JetBrains s.r.o.
+                     https://github.com/JetBrains/JetBrainsMono
+  Instrument Serif — Copyright (c) Instrument
+                     https://github.com/Instrument/instrument-serif
+
+Full licence text: https://openfontlicense.org/open-font-license-official-text/
+
+Files are the latin-subset woff2 builds served by Google Fonts, retrieved
+from fonts.gstatic.com. Inter, Inter Tight and JetBrains Mono are variable
+fonts covering the weight ranges declared in src/index.css.
+
+Under OFL 1.1 these files may be redistributed provided they are not sold
+on their own, and the Reserved Font Names are not used on modified versions.
+Neither applies here: they are served unmodified as part of the application.

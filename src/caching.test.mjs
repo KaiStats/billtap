@@ -16,7 +16,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -326,15 +326,20 @@ function parseHeaders(text) {
 
 const rules = parseHeaders(headersFile);
 
-test('every root-level script index.html loads has a cache rule', () => {
-  // /analytics.js and /fonts.js were split out of inline <script> blocks to get
-  // 'unsafe-inline' out of the CSP, and in moving they landed at the root of
-  // public/ where none of the directory rules match. So they fell back to
-  // Cloudflare's `max-age=0, must-revalidate` default — a blocking conditional
-  // request each, on the critical path, on every page load.
+test('every root-level asset index.html loads has a cache rule', () => {
+  // /analytics.js was split out of an inline <script> to get 'unsafe-inline'
+  // out of the CSP, and in moving it landed at the root of public/ where none
+  // of the directory rules match. So it fell back to Cloudflare's
+  // `max-age=0, must-revalidate` default — a blocking conditional request, on
+  // the critical path, on every page load.
+  //
+  // /fonts.js used to be the second one. It is gone: the fonts are self-hosted
+  // under /fonts/ now, so the rule that has to exist is the directory's. The
+  // count assertion that used to read `>= 2` is dropped rather than lowered —
+  // pinning a number here only ever meant this test failed the next time a root
+  // script was legitimately added or removed, which is exactly what happened.
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   const roots = [...html.matchAll(/(?:src|href)="(\/[\w.-]+\.(?:js|css))"/g)].map((m) => m[1]);
-  assert.ok(roots.length >= 2, `expected root-level scripts in index.html, found ${roots}`);
 
   for (const path of roots) {
     assert.ok(rules.has(path), `${path} matches no rule in public/_headers`);
@@ -343,6 +348,30 @@ test('every root-level script index.html loads has a cache rule', () => {
       `${path} has a rule but it does not actually cache anything`,
     );
   }
+});
+
+test('every self-hosted font is covered by a caching rule and actually exists', () => {
+  // The fonts moved from fonts.gstatic.com to this origin, which means their
+  // delivery is now this repo's problem: uncached they are ~163 kB re-fetched
+  // on every view, and a face declared in CSS but missing from public/ fails
+  // the way the Google dependency used to — silently, in the fallback.
+  const css = readFileSync(join(ROOT, 'src/index.css'), 'utf8');
+  const refs = [...css.matchAll(/url\('(\/fonts\/[^']+\.woff2)'\)/g)].map((m) => m[1]);
+  assert.ok(refs.length >= 3, `expected self-hosted @font-face rules, found ${refs.length}`);
+
+  for (const ref of refs) {
+    assert.ok(
+      existsSync(join(ROOT, 'public', ref)),
+      `${ref} is declared in src/index.css but no such file is in public/`,
+    );
+  }
+  // rules is keyed by the literal section name in _headers, not by a path that
+  // would match it, so this asks for the glob itself.
+  assert.ok(rules.has('/fonts/*'), '/fonts/* matches no rule in public/_headers');
+  assert.ok(
+    rules.get('/fonts/*').some((h) => /max-age=[1-9]/.test(h)),
+    '/fonts/* has a rule but does not actually cache anything',
+  );
 });
 
 test('immutable is claimed only where the filename carries a content hash', () => {
@@ -383,7 +412,11 @@ test('the root scripts are not proxied through the Worker', () => {
   const directives = wrangler.replace(/(^|\s)\/\/.*$/gm, '$1');
   const block = directives.slice(directives.indexOf('"run_worker_first"'));
   const list = block.slice(0, block.indexOf(']') + 1);
-  for (const path of ['/analytics.js', '/fonts.js']) {
+  // /fonts.js is gone; /fonts/* replaces it, and matters more — five files
+  // rather than one, each otherwise a billable invocation in front of a static
+  // binary, and a response returned through a Worker is not one the asset cache
+  // answers from the edge on its own.
+  for (const path of ['/analytics.js', '/fonts/*']) {
     assert.ok(list.includes(`"!${path}"`), `${path} still runs the Worker on every page view`);
   }
 });

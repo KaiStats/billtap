@@ -48,7 +48,7 @@
       embed later is a decision somebody makes, not something that quietly
       starts working.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <!--
       X-XSS-Protection was here, set to "1; mode=block".
@@ -81,50 +81,37 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!--
-      Fonts for the whole app in one request.
+      Fonts, served by this origin.
 
-      These used to live in @import rules inside each page's <style> block, which
-      meant the browser could not even discover them until React had mounted and
-      painted — the worst possible time for the font that renders the headline.
-      Declared here they start downloading alongside the JS.
+      They used to come from fonts.googleapis.com: a preconnect pair, a CSS
+      request to googleapis, then woff2 binaries from gstatic — two third-party
+      origins and two serial round trips standing between the visitor and the
+      face every headline on the site is designed in. The async dance below
+      (preload + /fonts.js promoting it to a stylesheet) existed because doing
+      it as a plain stylesheet turned a 376ms first paint into 13s whenever
+      that origin was slow. It solved the blocking, but not the dependency:
+      behind a corporate proxy or an egress filter the CSS never arrives and
+      the entire design silently renders in Arial, forever.
 
-      Listing every family costs one small CSS file; the woff2 binaries are only
-      fetched for families a page actually uses, so pages on Space Grotesk pay
-      nothing for Instrument Serif.
-    -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!--
-      Loaded async, not as a plain stylesheet. A render-blocking stylesheet on a
-      third-party origin means the page cannot paint at all when that origin is
-      slow, firewalled or unreachable — measured here as a 376ms first paint
-      becoming 13s. preload fetches it at high priority without blocking, the
-      onload promotes it to a stylesheet, and display=swap paints the fallback
-      face immediately either way. <noscript> covers scripting-off clients.
-    -->
-    <link
-      rel="preload"
-      as="style"
-      data-fonts
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-    />
-    <!--
-      The onload="this.rel='stylesheet'" that used to sit on the link above is
-      an inline event handler, and a CSP without script-src 'unsafe-inline'
-      blocks those exactly as it blocks inline <script>. Dropping that token —
-      the point of moving the analytics tags to /analytics.js — would have
-      stopped the fonts being applied at all, silently: the preload still
-      fetches, the page still renders, every headline just falls back forever.
+      Self-hosted, the fonts are as reliable as the bundle, and /assets-grade
+      caching applies (see public/_headers). @font-face lives in src/index.css
+      with the full reasoning; Space Grotesk was dropped there because nothing
+      references it.
 
-      public/fonts.js does the same job from a file this origin serves.
+      Only Inter and Inter Tight are preloaded. They set the body and the
+      headline, so they are needed at first paint on every route. JetBrains
+      Mono sets numerals inside the hero receipt and Instrument Serif is
+      /restaurants only — both load from the stylesheet on their own, rather
+      than competing with the bundle for bandwidth on pages that never show
+      them.
+
+      crossorigin is required on both, and is not decoration: fonts are fetched
+      in CORS mode, so a preload without it is treated as a different request
+      than the one @font-face makes, downloads the file twice, and warns in the
+      console about a preloaded resource that went unused.
     -->
-    <script defer src="/fonts.js"></script>
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-      />
-    </noscript>
+    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-tight.woff2" as="font" type="font/woff2" crossorigin />
 
     <!--
       There was a `<link rel="preconnect" crossorigin>` to a Higgsfield
@@ -141,7 +128,7 @@
       tells that third party the page was loaded.
 
       Nothing is preconnected in its place, deliberately. Everything the first
-      paint needs — the shell, the bundles, /fonts.js, the art — is same-origin,
+      paint needs — the shell, the bundles, /fonts/, the art — is same-origin,
       and that connection is already open by the time this line is parsed.
       src/caching.test.mjs keeps it that way.
     -->

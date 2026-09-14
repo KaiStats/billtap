@@ -237,11 +237,19 @@ function SplitReceipt() {
           </div>
           {/* your total — ticks up as the split lands */}
           <div className="mx-3 mb-3 rounded-xl bg-primary/[0.08] ring-hairline px-4 py-3 flex items-end justify-between">
-            <div>
+            {/*
+              min-w-0 on the label column and shrink-0 on the figure.
+
+              Without them the flex row let the caption wrap, and "Venmo" landed
+              on its own line hard against the total — the one number the hero
+              exists to show, with a loose word beside it. The figure now keeps
+              its width and the caption takes what is left on one line.
+            */}
+            <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Your share</p>
-              <p className="text-xs text-muted-foreground">2 items · settle with Venmo</p>
+              <p className="text-xs text-muted-foreground truncate">2 items · via Venmo</p>
             </div>
-            <p ref={totalRef} className="mono text-2xl font-semibold text-primary tabular-nums leading-none">${total.toFixed(2)}</p>
+            <p ref={totalRef} className="mono text-2xl font-semibold text-primary tabular-nums leading-none shrink-0 ml-3">${total.toFixed(2)}</p>
           </div>
         </div>
       </div>
@@ -688,7 +696,15 @@ export default function Landing() {
                 <button data-no-constraint onClick={handleSplitNow} className="press sheen inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold text-base rounded-xl px-7 h-14 shadow-glow transition hover:brightness-110">
                   Scan a receipt <ArrowRight className="w-4 h-4" />
                 </button>
-                <a data-no-constraint href="#how-it-works" className="press inline-flex items-center justify-center gap-2 border border-border text-foreground font-semibold text-base rounded-xl px-7 h-14 transition hover:bg-accent hover:border-primary/40">
+                {/*
+                  Secondary, and drawn that way at every width. Stacked on a
+                  phone it was the same height, weight and full width as the
+                  primary — two slabs of equal authority, which is the shape of
+                  a page that has not decided what it wants you to do. It keeps
+                  the outline from sm: up where the two sit side by side and the
+                  size difference alone no longer separates them.
+                */}
+                <a data-no-constraint href="#how-it-works" className="press inline-flex items-center justify-center gap-2 text-muted-foreground font-medium text-base rounded-xl px-7 h-12 transition hover:text-foreground hover:bg-accent sm:h-14 sm:font-semibold sm:text-foreground sm:border sm:border-border sm:hover:border-primary/40">
                   See how it works
                 </a>
               </div>
@@ -702,17 +718,36 @@ export default function Landing() {
               </div>
               {/*
                 The doubts that were only answered further down the page, moved
-                up beside the first action. Who pays (nobody, to split), where
-                it works (US), and what happens to the photo — the three things
-                a first-time visitor stalls on, in plain words rather than in a
-                FAQ they have to scroll to find.
+                up beside the first action: what happens to the receipt photo,
+                who touches the card, and whether a card is needed at all.
+
+                Drawn as a hairline-ruled row rather than a bordered card. As a
+                card it was a second boxed object in a viewport that already has
+                one — the receipt — and the two competed at the same weight,
+                which made the hero read as two panels instead of one statement
+                and its evidence. The rule above it is the same hairline the
+                ledger uses, so this reads as a footnote to the claim rather
+                than a component someone added later.
+
+                Vertical dividers only from sm: up (divide-x at the breakpoint),
+                because at 375px these stack and a left border on a stacked row
+                is a stray mark.
               */}
-              <div className="animate-rise mt-6 rounded-xl border border-border/70 bg-card/60 px-4 py-3 max-w-xl" style={{ animationDelay: ".26s" }}>
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-primary" /> Receipt photos auto-delete 30 days after the split closes</span>
-                  <span className="inline-flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-primary" /> We never touch your card — you pay through Venmo, Cash App or Zelle</span>
-                  <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-primary" /> No credit card to start · US payment apps</span>
-                </div>
+              <div className="animate-rise mt-7 pt-5 border-t border-border/60 max-w-xl" style={{ animationDelay: ".26s" }}>
+                <dl className="grid gap-4 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border/60">
+                  {[
+                    { icon: Lock, k: "Receipt photos", v: "Auto-delete after 30 days" },
+                    { icon: CreditCard, k: "Your card", v: "Never touched — Venmo, Cash App, Zelle" },
+                    { icon: Shield, k: "To start", v: "No card, no account" },
+                  ].map(({ icon: Icon, k, v }, i) => (
+                    <div key={k} className={i === 0 ? "sm:pr-5" : i === 1 ? "sm:px-5" : "sm:pl-5"}>
+                      <dt className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <Icon className="w-3 h-3 text-primary" aria-hidden="true" /> {k}
+                      </dt>
+                      <dd className="text-xs text-foreground/80 mt-1.5 leading-snug">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
               {/*
                 The one line on this page aimed at an owner instead of a diner —
@@ -726,9 +761,22 @@ export default function Landing() {
                 here and in the nav; a diner no longer has to decide which of
                 two offers is theirs before scrolling.
               */}
-              <p className="animate-rise text-xs text-muted-foreground mt-6" style={{ animationDelay: ".30s" }}>
+              <p className="animate-rise text-xs text-muted-foreground mt-7" style={{ animationDelay: ".30s" }}>
                 Restaurant owner?{" "}
-                <Link to="/restaurants" className="underline underline-offset-2 transition-colors hover:text-foreground">See BillTap for restaurants</Link>
+                {/*
+                  text-muted-foreground is load-bearing. Demoting this link in
+                  the previous commit dropped the colour class along with the
+                  teal, which left an <a> with no colour of its own — so it
+                  inherited the user agent's, and rendered violet once visited.
+                  A default-styled link in the first viewport of an otherwise
+                  hand-built page is the single cheapest-looking thing on it.
+                */}
+                <Link
+                  to="/restaurants"
+                  className="text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-primary focus-visible:text-foreground"
+                >
+                  See BillTap for restaurants
+                </Link>
               </p>
             </div>
             {/* Right: the split, already done */}
