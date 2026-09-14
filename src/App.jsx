@@ -1,5 +1,4 @@
 import { useEffect, lazy, Suspense } from 'react';
-import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
 import { BrowserRouter as Router, Route, Routes, useLocation, Navigate, useParams } from 'react-router';
@@ -10,13 +9,43 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import BottomNav from '@/components/BottomNav';
 import ThemeProvider from '@/components/ThemeProvider';
 import { TabNavigationProvider, useTabNav } from '@/lib/TabNavigationContext';
-import MutationErrorToast from '@/components/MutationErrorToast';
-import AuthLoadingSkeleton from '@/components/AuthLoadingSkeleton';
-import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import EnvironmentBadge from '@/components/EnvironmentBadge';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { handleDeepLink } from '@/lib/deepLinking';
+
+/*
+ * ── The shadcn chunk, kept off the entry ──────────────────────────────────
+ *
+ * These four were static imports, and between them they were the only reason
+ * the entry chunk contained tailwind-merge — 97 kB of raw source, 44% of the
+ * entry, downloaded and parsed by every visitor to every page.
+ *
+ * None of them paints anything on a normal page view. MutationErrorToast
+ * returns null unconditionally (it exists to hold an event listener),
+ * PWAInstallPrompt returns null until `beforeinstallprompt` fires, Toaster
+ * renders an empty container until something dispatches a toast, and
+ * AuthLoadingSkeleton only mounts on the routes in AUTH_GATED_ROUTES. The
+ * landing page renders all four as nothing, and paid 97 kB for the privilege.
+ *
+ * Lazily loaded they land in one shared chunk, because all four reach
+ * tailwind-merge through cn(). That chunk is fetched when a toast is first
+ * needed or a gated route is first visited, which is after the marketing
+ * pages are done with it.
+ *
+ * They are NOT rewritten to drop cn(): Skeleton merges "rounded-md" against a
+ * caller's "rounded", which is exactly the conflict twMerge exists to resolve.
+ * Swapping it for clsx would change what renders. The dependency is real; only
+ * its position on the critical path was wrong.
+ *
+ * The toast store is module-level state in use-toast.jsx, and both the
+ * dispatcher and Toaster resolve to the same chunk, so a toast fired before
+ * the chunk lands is still in the store when Toaster mounts and renders.
+ */
+const Toaster = lazy(() => import('@/components/ui/toaster').then(m => ({ default: m.Toaster })));
+const MutationErrorToast = lazy(() => import('@/components/MutationErrorToast'));
+const AuthLoadingSkeleton = lazy(() => import('@/components/AuthLoadingSkeleton'));
+const PWAInstallPrompt = lazy(() => import('@/components/PWAInstallPrompt'));
 
 const Home        = lazy(() => import('@/pages/Home'));
 const Landing     = lazy(() => import('@/pages/Landing'));
@@ -159,7 +188,7 @@ const AuthenticatedApp = () => {
   // SessionHost each check the flag themselves. This is belt-and-braces that
   // only ever charged the pages which do not need it.
   if ((isLoadingPublicSettings || isLoadingAuth) && AUTH_GATED_ROUTES.has(location.pathname)) {
-    return <AuthLoadingSkeleton />;
+    return <Suspense fallback={null}><AuthLoadingSkeleton /></Suspense>;
   }
 
   if (authError?.type === 'user_not_registered') {
@@ -322,7 +351,9 @@ const AuthenticatedApp = () => {
       </Suspense>
       </main>
       <BottomNav />
-      <PWAInstallPrompt />
+      <Suspense fallback={null}>
+        <PWAInstallPrompt />
+      </Suspense>
       {/* Renders nothing in production. Everywhere else it is the only thing on
           screen that distinguishes a test bill from a real restaurant's. */}
       <EnvironmentBadge />
@@ -340,8 +371,10 @@ function App() {
               <AuthenticatedApp />
             </TabNavigationProvider>
           </Router>
-          <MutationErrorToast />
-          <Toaster />
+          <Suspense fallback={null}>
+            <MutationErrorToast />
+            <Toaster />
+          </Suspense>
         </QueryClientProvider>
       </AuthProvider>
     </ThemeProvider>
