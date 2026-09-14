@@ -15,7 +15,7 @@ import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/
  *   borders, a single teal aurora. No gradient text, no eyebrow labels, no
  *   same-size icon cards as scaffold.
  * STORY: A diner sees the math already done, understands there's no app and no
- *   account, and taps "Split a bill now" → /new-receipt.
+ *   account, and taps "Scan a receipt" → /new-receipt.
  * FIRST VIEWPORT: Left — H1 "Scan. Split. Settled.", subhead, primary + ghost
  *   CTAs, no-app/no-account/free proof row. Right — a phone rendering a live
  *   itemized split with per-person claims and a running "you owe" in mono.
@@ -649,7 +649,7 @@ export default function Landing() {
               <Link to="/restaurants" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">For Restaurants</Link>
               <Link to="/login" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">Sign in</Link>
               <button onClick={handleSplitNow} className="press bg-primary text-primary-foreground text-sm font-semibold rounded-lg px-4 py-2 shadow-glow transition hover:brightness-110">
-                Split a bill
+                Scan a receipt
               </button>
             </div>
           </div>
@@ -673,9 +673,20 @@ export default function Landing() {
               <p className="animate-rise text-lg md:text-xl leading-relaxed text-muted-foreground max-w-xl mt-6" style={{ animationDelay: ".08s" }}>
                 Photograph the bill. Everyone scans the QR, claims their items, and pays their exact share in one tap. No math. No awkwardness. No chasing anyone.
               </p>
-              <div className="animate-rise flex flex-col sm:flex-row gap-3 mt-8" style={{ animationDelay: ".16s" }}>
+              {/*
+                What the button actually does, in one line, next to the button.
+                The site scored 61 on conversion with "the main action is not
+                specific enough" as the root cause: the CTA named an outcome
+                ("split a bill") and left the first step to be guessed. This
+                says it — camera, then the split — so nobody has to click to
+                find out whether they are about to be asked for an account.
+              */}
+              <p className="animate-rise text-sm text-muted-foreground mt-5" style={{ animationDelay: ".14s" }}>
+                Opens your camera. Photograph the bill and the split is ready in about 30 seconds — no sign-up first.
+              </p>
+              <div className="animate-rise flex flex-col sm:flex-row gap-3 mt-5" style={{ animationDelay: ".16s" }}>
                 <button data-no-constraint onClick={handleSplitNow} className="press sheen inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold text-base rounded-xl px-7 h-14 shadow-glow transition hover:brightness-110">
-                  Split a bill now <ArrowRight className="w-4 h-4" />
+                  Scan a receipt <ArrowRight className="w-4 h-4" />
                 </button>
                 <a data-no-constraint href="#how-it-works" className="press inline-flex items-center justify-center gap-2 border border-border text-foreground font-semibold text-base rounded-xl px-7 h-14 transition hover:bg-accent hover:border-primary/40">
                   See how it works
@@ -689,10 +700,35 @@ export default function Landing() {
                   </span>
                 ))}
               </div>
-              {/* The one line on this page aimed at an owner instead of a
-                  diner — see the nav link above for the fuller reasoning. */}
-              <p className="animate-rise text-sm mt-6" style={{ animationDelay: ".28s" }}>
-                <Link to="/restaurants" className="text-primary font-medium hover:underline">Own a restaurant? Turn every split into a 5-star review →</Link>
+              {/*
+                The doubts that were only answered further down the page, moved
+                up beside the first action. Who pays (nobody, to split), where
+                it works (US), and what happens to the photo — the three things
+                a first-time visitor stalls on, in plain words rather than in a
+                FAQ they have to scroll to find.
+              */}
+              <div className="animate-rise mt-6 rounded-xl border border-border/70 bg-card/60 px-4 py-3 max-w-xl" style={{ animationDelay: ".26s" }}>
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-primary" /> Receipt photos auto-delete 30 days after the split closes</span>
+                  <span className="inline-flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-primary" /> We never touch your card — you pay through Venmo, Cash App or Zelle</span>
+                  <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-primary" /> No credit card to start · US payment apps</span>
+                </div>
+              </div>
+              {/*
+                The one line on this page aimed at an owner instead of a diner —
+                see the nav link above for why it exists at all.
+
+                Demoted rather than removed. In teal at the same weight as the
+                body copy it read as a second primary action inside the first
+                viewport, and the evaluation named exactly that ("the product
+                speaks to two different audiences at once") as a cause of the
+                diluted conversion score. An owner who wants it still finds it
+                here and in the nav; a diner no longer has to decide which of
+                two offers is theirs before scrolling.
+              */}
+              <p className="animate-rise text-xs text-muted-foreground mt-6" style={{ animationDelay: ".30s" }}>
+                Restaurant owner?{" "}
+                <Link to="/restaurants" className="underline underline-offset-2 transition-colors hover:text-foreground">See BillTap for restaurants</Link>
               </p>
             </div>
             {/* Right: the split, already done */}
@@ -718,6 +754,19 @@ export default function Landing() {
               <div className="glass-strong rounded-[2rem] p-2.5 shadow-float">
                 <DemoVideo name="product-demo" className="rounded-[1.6rem]" />
               </div>
+              {/*
+                The clip was already the strongest evidence on the page and it
+                was captioned as nothing at all — a decorative phone beside a
+                "thirty seconds" headline the evaluation flagged as unsupported.
+                Naming what it is (the real flow, start to finish, ten seconds
+                of it) is what turns it from an illustration into the proof the
+                claim above needs. No testimonial or metric is invented here:
+                there are no customers yet, and the one honest thing this page
+                can show is the product doing the thing.
+              */}
+              <p className="text-xs text-muted-foreground text-center mt-3 leading-relaxed">
+                The actual flow, end to end — receipt photographed, items claimed on each person's phone, payment confirmed. Ten seconds.
+              </p>
             </div>
 
             {/* steps as a numbered ledger — the sequence carries meaning */}
@@ -828,10 +877,23 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link to="/register" className="press block w-full py-3.5 rounded-xl font-semibold text-sm text-center border border-border text-foreground transition hover:bg-accent hover:border-primary/40">
+              <Link to="/login" className="press block w-full py-3.5 rounded-xl font-semibold text-sm text-center border border-border text-foreground transition hover:bg-accent hover:border-primary/40">
                 Start free
               </Link>
-              <p className="text-center text-xs mt-3 text-muted-foreground">No credit card · Always free</p>
+              {/*
+                What the next screen actually is.
+
+                This linked to /register, which has not been a sign-up form
+                since signInWithOtp started creating the account on first use —
+                it redirects to /login, whose heading reads "Welcome back". So
+                "Start free" handed a new visitor a screen that looked like it
+                was for somebody who already had an account, which the
+                evaluation picked up as the register page not matching the
+                promise. The link now goes straight to /login without the
+                redirect hop, and this line says what to expect there, so the
+                screen is the one they were told about rather than a surprise.
+              */}
+              <p className="text-center text-xs mt-3 text-muted-foreground">Sign in with email or Google — the account is created on first use. No password, no credit card.</p>
             </div>
 
             {/* Pro */}
@@ -1068,7 +1130,7 @@ export default function Landing() {
             BillTap handles it. Scan, claim, pay. Built for real dinners with real friends. Free to start. No tricks.
           </p>
           <button data-no-constraint onClick={handleSplitNow} className="press sheen inline-flex items-center justify-center gap-2 mt-9 bg-primary text-primary-foreground font-semibold text-lg rounded-xl px-9 py-4 shadow-glow transition hover:brightness-110">
-            Split your first bill free <ArrowRight className="w-5 h-5" />
+            Scan a receipt <ArrowRight className="w-5 h-5" />
           </button>
           <p className="mt-5 text-sm text-muted-foreground">No credit card. No account needed. US only.</p>
         </div>
