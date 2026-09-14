@@ -15,7 +15,7 @@ import { art, artSrcSet, artSizes, video, videoPoster, VIDEO_MANIFEST } from "@/
  *   borders, a single teal aurora. No gradient text, no eyebrow labels, no
  *   same-size icon cards as scaffold.
  * STORY: A diner sees the math already done, understands there's no app and no
- *   account, and taps "Split a bill now" → /new-receipt.
+ *   account, and taps "Scan a receipt" → /new-receipt.
  * FIRST VIEWPORT: Left — H1 "Scan. Split. Settled.", subhead, primary + ghost
  *   CTAs, no-app/no-account/free proof row. Right — a phone rendering a live
  *   itemized split with per-person claims and a running "you owe" in mono.
@@ -237,11 +237,19 @@ function SplitReceipt() {
           </div>
           {/* your total — ticks up as the split lands */}
           <div className="mx-3 mb-3 rounded-xl bg-primary/[0.08] ring-hairline px-4 py-3 flex items-end justify-between">
-            <div>
+            {/*
+              min-w-0 on the label column and shrink-0 on the figure.
+
+              Without them the flex row let the caption wrap, and "Venmo" landed
+              on its own line hard against the total — the one number the hero
+              exists to show, with a loose word beside it. The figure now keeps
+              its width and the caption takes what is left on one line.
+            */}
+            <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Your share</p>
-              <p className="text-xs text-muted-foreground">2 items · settle with Venmo</p>
+              <p className="text-xs text-muted-foreground truncate">2 items · via Venmo</p>
             </div>
-            <p ref={totalRef} className="mono text-2xl font-semibold text-primary tabular-nums leading-none">${total.toFixed(2)}</p>
+            <p ref={totalRef} className="mono text-2xl font-semibold text-primary tabular-nums leading-none shrink-0 ml-3">${total.toFixed(2)}</p>
           </div>
         </div>
       </div>
@@ -649,7 +657,7 @@ export default function Landing() {
               <Link to="/restaurants" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">For Restaurants</Link>
               <Link to="/login" className="press text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hidden sm:block px-2">Sign in</Link>
               <button onClick={handleSplitNow} className="press bg-primary text-primary-foreground text-sm font-semibold rounded-lg px-4 py-2 shadow-glow transition hover:brightness-110">
-                Split a bill
+                Scan a receipt
               </button>
             </div>
           </div>
@@ -673,11 +681,30 @@ export default function Landing() {
               <p className="animate-rise text-lg md:text-xl leading-relaxed text-muted-foreground max-w-xl mt-6" style={{ animationDelay: ".08s" }}>
                 Photograph the bill. Everyone scans the QR, claims their items, and pays their exact share in one tap. No math. No awkwardness. No chasing anyone.
               </p>
-              <div className="animate-rise flex flex-col sm:flex-row gap-3 mt-8" style={{ animationDelay: ".16s" }}>
+              {/*
+                What the button actually does, in one line, next to the button.
+                The site scored 61 on conversion with "the main action is not
+                specific enough" as the root cause: the CTA named an outcome
+                ("split a bill") and left the first step to be guessed. This
+                says it — camera, then the split — so nobody has to click to
+                find out whether they are about to be asked for an account.
+              */}
+              <p className="animate-rise text-sm text-muted-foreground mt-5" style={{ animationDelay: ".14s" }}>
+                Opens your camera. Photograph the bill and the split is ready in about 30 seconds — no sign-up first.
+              </p>
+              <div className="animate-rise flex flex-col sm:flex-row gap-3 mt-5" style={{ animationDelay: ".16s" }}>
                 <button data-no-constraint onClick={handleSplitNow} className="press sheen inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold text-base rounded-xl px-7 h-14 shadow-glow transition hover:brightness-110">
-                  Split a bill now <ArrowRight className="w-4 h-4" />
+                  Scan a receipt <ArrowRight className="w-4 h-4" />
                 </button>
-                <a data-no-constraint href="#how-it-works" className="press inline-flex items-center justify-center gap-2 border border-border text-foreground font-semibold text-base rounded-xl px-7 h-14 transition hover:bg-accent hover:border-primary/40">
+                {/*
+                  Secondary, and drawn that way at every width. Stacked on a
+                  phone it was the same height, weight and full width as the
+                  primary — two slabs of equal authority, which is the shape of
+                  a page that has not decided what it wants you to do. It keeps
+                  the outline from sm: up where the two sit side by side and the
+                  size difference alone no longer separates them.
+                */}
+                <a data-no-constraint href="#how-it-works" className="press inline-flex items-center justify-center gap-2 text-muted-foreground font-medium text-base rounded-xl px-7 h-12 transition hover:text-foreground hover:bg-accent sm:h-14 sm:font-semibold sm:text-foreground sm:border sm:border-border sm:hover:border-primary/40">
                   See how it works
                 </a>
               </div>
@@ -689,10 +716,67 @@ export default function Landing() {
                   </span>
                 ))}
               </div>
-              {/* The one line on this page aimed at an owner instead of a
-                  diner — see the nav link above for the fuller reasoning. */}
-              <p className="animate-rise text-sm mt-6" style={{ animationDelay: ".28s" }}>
-                <Link to="/restaurants" className="text-primary font-medium hover:underline">Own a restaurant? Turn every split into a 5-star review →</Link>
+              {/*
+                The doubts that were only answered further down the page, moved
+                up beside the first action: what happens to the receipt photo,
+                who touches the card, and whether a card is needed at all.
+
+                Drawn as a hairline-ruled row rather than a bordered card. As a
+                card it was a second boxed object in a viewport that already has
+                one — the receipt — and the two competed at the same weight,
+                which made the hero read as two panels instead of one statement
+                and its evidence. The rule above it is the same hairline the
+                ledger uses, so this reads as a footnote to the claim rather
+                than a component someone added later.
+
+                Vertical dividers only from sm: up (divide-x at the breakpoint),
+                because at 375px these stack and a left border on a stacked row
+                is a stray mark.
+              */}
+              <div className="animate-rise mt-7 pt-5 border-t border-border/60 max-w-xl" style={{ animationDelay: ".26s" }}>
+                <dl className="grid gap-4 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border/60">
+                  {[
+                    { icon: Lock, k: "Receipt photos", v: "Auto-delete after 30 days" },
+                    { icon: CreditCard, k: "Your card", v: "Never touched — Venmo, Cash App, Zelle" },
+                    { icon: Shield, k: "To start", v: "No card, no account" },
+                  ].map(({ icon: Icon, k, v }, i) => (
+                    <div key={k} className={i === 0 ? "sm:pr-5" : i === 1 ? "sm:px-5" : "sm:pl-5"}>
+                      <dt className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <Icon className="w-3 h-3 text-primary" aria-hidden="true" /> {k}
+                      </dt>
+                      <dd className="text-xs text-foreground/80 mt-1.5 leading-snug">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              {/*
+                The one line on this page aimed at an owner instead of a diner —
+                see the nav link above for why it exists at all.
+
+                Demoted rather than removed. In teal at the same weight as the
+                body copy it read as a second primary action inside the first
+                viewport, and the evaluation named exactly that ("the product
+                speaks to two different audiences at once") as a cause of the
+                diluted conversion score. An owner who wants it still finds it
+                here and in the nav; a diner no longer has to decide which of
+                two offers is theirs before scrolling.
+              */}
+              <p className="animate-rise text-xs text-muted-foreground mt-7" style={{ animationDelay: ".30s" }}>
+                Restaurant owner?{" "}
+                {/*
+                  text-muted-foreground is load-bearing. Demoting this link in
+                  the previous commit dropped the colour class along with the
+                  teal, which left an <a> with no colour of its own — so it
+                  inherited the user agent's, and rendered violet once visited.
+                  A default-styled link in the first viewport of an otherwise
+                  hand-built page is the single cheapest-looking thing on it.
+                */}
+                <Link
+                  to="/restaurants"
+                  className="text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-primary focus-visible:text-foreground"
+                >
+                  See BillTap for restaurants
+                </Link>
               </p>
             </div>
             {/* Right: the split, already done */}
@@ -718,6 +802,19 @@ export default function Landing() {
               <div className="glass-strong rounded-[2rem] p-2.5 shadow-float">
                 <DemoVideo name="product-demo" className="rounded-[1.6rem]" />
               </div>
+              {/*
+                The clip was already the strongest evidence on the page and it
+                was captioned as nothing at all — a decorative phone beside a
+                "thirty seconds" headline the evaluation flagged as unsupported.
+                Naming what it is (the real flow, start to finish, ten seconds
+                of it) is what turns it from an illustration into the proof the
+                claim above needs. No testimonial or metric is invented here:
+                there are no customers yet, and the one honest thing this page
+                can show is the product doing the thing.
+              */}
+              <p className="text-xs text-muted-foreground text-center mt-3 leading-relaxed">
+                The actual flow, end to end — receipt photographed, items claimed on each person's phone, payment confirmed. Ten seconds.
+              </p>
             </div>
 
             {/* steps as a numbered ledger — the sequence carries meaning */}
@@ -828,10 +925,23 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link to="/register" className="press block w-full py-3.5 rounded-xl font-semibold text-sm text-center border border-border text-foreground transition hover:bg-accent hover:border-primary/40">
+              <Link to="/login" className="press block w-full py-3.5 rounded-xl font-semibold text-sm text-center border border-border text-foreground transition hover:bg-accent hover:border-primary/40">
                 Start free
               </Link>
-              <p className="text-center text-xs mt-3 text-muted-foreground">No credit card · Always free</p>
+              {/*
+                What the next screen actually is.
+
+                This linked to /register, which has not been a sign-up form
+                since signInWithOtp started creating the account on first use —
+                it redirects to /login, whose heading reads "Welcome back". So
+                "Start free" handed a new visitor a screen that looked like it
+                was for somebody who already had an account, which the
+                evaluation picked up as the register page not matching the
+                promise. The link now goes straight to /login without the
+                redirect hop, and this line says what to expect there, so the
+                screen is the one they were told about rather than a surprise.
+              */}
+              <p className="text-center text-xs mt-3 text-muted-foreground">Sign in with email or Google — the account is created on first use. No password, no credit card.</p>
             </div>
 
             {/* Pro */}
@@ -1068,7 +1178,7 @@ export default function Landing() {
             BillTap handles it. Scan, claim, pay. Built for real dinners with real friends. Free to start. No tricks.
           </p>
           <button data-no-constraint onClick={handleSplitNow} className="press sheen inline-flex items-center justify-center gap-2 mt-9 bg-primary text-primary-foreground font-semibold text-lg rounded-xl px-9 py-4 shadow-glow transition hover:brightness-110">
-            Split your first bill free <ArrowRight className="w-5 h-5" />
+            Scan a receipt <ArrowRight className="w-5 h-5" />
           </button>
           <p className="mt-5 text-sm text-muted-foreground">No credit card. No account needed. US only.</p>
         </div>
@@ -1107,27 +1217,27 @@ export default function Landing() {
             </div>
             <div>
               <h4 className="mono font-semibold text-xs mb-4 uppercase tracking-[0.18em] text-muted-foreground/80">Product</h4>
-              <ul className="space-y-3">
+              <ul>
                 {[...navLinks, { label: "FAQ", href: "#faq" }].map(l => (
-                  <li key={l.label}><a href={l.href} className="text-sm text-muted-foreground transition-colors hover:text-primary">{l.label}</a></li>
+                  <li key={l.label}><a href={l.href} className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">{l.label}</a></li>
                 ))}
               </ul>
             </div>
             <div>
               <h4 className="mono font-semibold text-xs mb-4 uppercase tracking-[0.18em] text-muted-foreground/80">Company</h4>
-              <ul className="space-y-3">
-                <li><Link to="/about" className="text-sm text-muted-foreground transition-colors hover:text-primary">About</Link></li>
-                <li><Link to="/blog" className="text-sm text-muted-foreground transition-colors hover:text-primary">Blog</Link></li>
-                <li><a href="https://billtap.app" className="text-sm text-muted-foreground transition-colors hover:text-primary">billtap.app</a></li>
+              <ul>
+                <li><Link to="/about" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">About</Link></li>
+                <li><Link to="/blog" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Blog</Link></li>
+                <li><a href="https://billtap.app" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">billtap.app</a></li>
               </ul>
             </div>
           </div>
           <div className="pt-8 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">© 2026 BillTap. Built in public by Kai Cogmon.</p>
             <div className="flex items-center gap-6">
-              <Link to="/terms" className="text-sm text-muted-foreground transition-colors hover:text-primary">Terms</Link>
-              <Link to="/privacy" className="text-sm text-muted-foreground transition-colors hover:text-primary">Privacy</Link>
-              <Link to="/security" className="text-sm text-muted-foreground transition-colors hover:text-primary">Security</Link>
+              <Link to="/terms" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Terms</Link>
+              <Link to="/privacy" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Privacy</Link>
+              <Link to="/security" className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">Security</Link>
             </div>
           </div>
         </div>

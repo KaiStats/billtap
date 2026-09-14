@@ -61,8 +61,12 @@
 /analytics.js
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
-/fonts.js
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+# Self-hosted woff2. These keep their names across builds, like /icons and
+# /img, so the same reasoning applies — but a typeface is replaced far less
+# often than a logo, and a font arriving late is a visible reflow rather than a
+# stale picture. A week, revalidated in the background after, rather than a day.
+/fonts/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000
 
 # The service worker decides when every other cached thing is replaced, so it
 # must never be the stale one. Browsers bypass the HTTP cache for the update

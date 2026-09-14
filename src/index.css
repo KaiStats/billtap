@@ -1,3 +1,73 @@
+/*
+ * ── Self-hosted type ────────────────────────────────────────────────────────
+ *
+ * These were five families pulled from fonts.googleapis.com at runtime, and
+ * the whole typographic design was hostage to that request. The sequence was
+ * preconnect → CSS from googleapis → font files from gstatic: two third-party
+ * origins and two serial round trips before a single headline could render in
+ * the face it was designed in. When that path is slow, firewalled, or blocked
+ * by a corporate proxy, "Scan. Split. Settled." renders in Arial and the page
+ * stops looking like the thing anyone designed. That is not a hypothetical —
+ * it is what the page does today behind any egress filter.
+ *
+ * Now they are files this origin serves, so they arrive with the same
+ * reliability as the bundle. Three consequences worth stating:
+ *
+ *   Variable fonts. Inter, Inter Tight and JetBrains Mono each ship one file
+ *   covering their whole weight range, so the five weights the design uses
+ *   cost one request, not five.
+ *
+ *   Latin subset only. Google was serving cyrillic, greek and latin-ext faces
+ *   this product has no copy in. All five files together are ~163 kB.
+ *
+ *   Space Grotesk is gone. It was in the request with four weights and is
+ *   referenced nowhere in the codebase.
+ *
+ * font-display: swap keeps text readable while a face loads. Inter and Inter
+ * Tight are preloaded in index.html, so in practice they are already in cache
+ * when first paint happens and the swap is invisible. JetBrains Mono is not
+ * preloaded: it sets numerals inside the hero receipt, where a brief fallback
+ * is cheaper than another 31 kB competing with the bundle for bandwidth.
+ *
+ * Licence: all four families are SIL Open Font License 1.1, which permits
+ * self-hosting and redistribution. See public/fonts/OFL.txt.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter-tight.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -397,8 +397,8 @@
       "!/icons/*",
       "!/img/*",
       "!/video/*",
-      "!/analytics.js",
-      "!/fonts.js"
+      "!/fonts/*",
+      "!/analytics.js"
     ]
   }
 }

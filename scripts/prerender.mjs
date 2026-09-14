@@ -31,6 +31,7 @@ import { readFile, writeFile, unlink, stat } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { chromiumPath } from './chromium-path.mjs';
 
 import { PRERENDERED } from '../worker/index.js';
 
@@ -115,7 +116,7 @@ await new Promise((resolve) => server.listen(PORT, resolve));
 let browser;
 try {
   browser = await chromium.launch({
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
+    executablePath: chromiumPath(),
     // Chromium's own sandbox wants privileges a locked-down build image does not
     // hand out, and a build container is already the isolation the sandbox would
     // be providing. Harmless where it is not needed.
@@ -161,7 +162,8 @@ try {
     'read the message above — it names the cause. A missing binary needs ' +
     '`npx playwright install chromium`; a missing shared library needs the system ' +
     'packages (`--with-deps`, or the distro equivalent where that cannot escalate). ' +
-    'Set PRERENDER_OPTIONAL=1 to ship without snapshots deliberately.',
+    'Where that download is blocked, point PLAYWRIGHT_CHROMIUM_PATH at a Chromium you ' +
+    'already have. Set PRERENDER_OPTIONAL=1 to ship without snapshots deliberately.',
   );
 }
 

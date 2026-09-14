@@ -175,11 +175,34 @@ test('the Google tag loads everywhere, including for guests', () => {
 });
 
 test('the fonts are still actually applied', () => {
-  assert.match(html, /<script defer src="\/fonts\.js">/, 'fonts.js is not loaded');
-  assert.match(html, /rel="preload"\s+as="style"\s+data-fonts/, 'the preload lost its data-fonts hook');
-  const fonts = read('public/fonts.js');
-  assert.match(fonts, /link\[rel="preload"\]\[as="style"\]\[data-fonts\]/, 'fonts.js looks for a different element');
-  assert.match(fonts, /rel = 'stylesheet'/, 'fonts.js never applies the stylesheet');
+  // The failure this guards against has not changed, only its shape. It used to
+  // be fonts.js never promoting the preload to a stylesheet; now it would be an
+  // @font-face pointing at a file that is not there, or a preload the browser
+  // refuses to reuse. Both fail the same way the Google dependency did — the
+  // page renders, nothing errors, and every headline is Arial forever.
+  const css = read('src/index.css');
+  assert.match(css, /@font-face/, 'no @font-face rules — nothing declares the type');
+
+  for (const family of ['Inter', 'Inter Tight', 'JetBrains Mono']) {
+    assert.ok(css.includes(`font-family: '${family}'`), `${family} is no longer declared`);
+  }
+
+  // crossorigin is not decoration on a font preload: fonts are fetched in CORS
+  // mode, so without it the preloaded file is a different request from the one
+  // @font-face makes. The browser downloads it twice and warns that the
+  // preloaded resource went unused.
+  const preloads = [...html.matchAll(/<link rel="preload" href="(\/fonts\/[^"]+)"[^>]*>/g)];
+  assert.ok(preloads.length >= 2, 'the critical faces are no longer preloaded');
+  for (const [tag, href] of preloads) {
+    assert.match(tag, /crossorigin/, `${href} is preloaded without crossorigin — it will be fetched twice`);
+    assert.match(tag, /as="font"/, `${href} is preloaded without as="font"`);
+    assert.ok(css.includes(href), `${href} is preloaded but no @font-face uses it`);
+  }
+
+  // The whole point of self-hosting. If either origin comes back, the design is
+  // once again hostage to a third party that a corporate proxy can block.
+  assert.ok(!/href="https:\/\/fonts\.googleapis\.com/.test(html), 'a Google Fonts stylesheet is back in index.html');
+  assert.ok(!/https:\/\/fonts\.gstatic\.com/.test(css), 'src/index.css is pulling fonts from gstatic again');
 });
 
 test('every origin script-src allows is one the app actually calls', () => {

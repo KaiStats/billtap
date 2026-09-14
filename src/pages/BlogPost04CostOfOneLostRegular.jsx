@@ -22,7 +22,7 @@ export default function BlogPost04CostOfOneLostRegular() {
       />
 
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
-        <Link to="/blog" className="text-sm hover:underline" style={{ color: GOLD }}>
+        <Link to="/blog" className="inline-flex items-center text-sm hover:underline" style={{ color: GOLD }}>
           ← All posts
         </Link>
 

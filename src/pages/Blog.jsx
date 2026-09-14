@@ -65,7 +65,7 @@ export default function Blog() {
                 <h3 className="font-heading font-bold text-xl mb-2" style={{ color: "#f2f2f4" }}>{post.title}</h3>
                 <p className="text-sm mb-4" style={{ color: "#8390ae" }}>{post.excerpt}</p>
                 {post.href !== "#" ? (
-                  <a href={post.href} className="text-sm font-semibold hover:text-primary transition-colors" style={{ color: "#00c896" }}>Read More →</a>
+                  <a href={post.href} className="inline-flex items-center text-sm font-semibold hover:text-primary transition-colors" style={{ color: "#00c896" }}>Read More →</a>
                 ) : (
                   <span className="text-sm" style={{ color: "#4a5068" }}>Coming Soon</span>
                 )}
