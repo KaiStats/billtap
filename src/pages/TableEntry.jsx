@@ -69,6 +69,26 @@ export default function TableEntry({ rateFirst = false }) {
    * Asking again on the next screen would be the same question twice.
    */
   const [pickedStars, setPickedStars] = useState(0);
+  /**
+   * The star count this visit was recorded with, once the server confirmed it.
+   *
+   * Set from RatingCapture's onRated, which fires only on a returned rating
+   * id — never on a tap that failed. While it is set, this page thanks the
+   * guest instead of offering the question again.
+   *
+   * Without it, closing the rating sheet dropped a guest back onto five blank
+   * stars (or the "Rate your visit" button), and the most natural second tap
+   * in the world opened a second session, a second rating and a second page
+   * to the manager's phone about one person. The alert is the product; an
+   * alert that double-fires is an alert a manager learns to ignore.
+   *
+   * In memory, not storage, on purpose: a reload resets it, and "Rate another
+   * visit" resets it on purpose. That keeps the pitch at the door intact — the
+   * same phone has to be able to run the two-star demo twice for two prospects
+   * — while making a duplicate something a person has to choose, not stumble
+   * into.
+   */
+  const [ratedStars, setRatedStars] = useState(0);
 
   /**
    * Jump straight to the rating, skipping the split.
@@ -326,7 +346,7 @@ export default function TableEntry({ rateFirst = false }) {
           ? `${restaurant.name} — How was it? | BillTap`
           : `${restaurant.name} — Split the check | BillTap`}
         description={ratingFirst
-          ? `Tell ${restaurant.name} how your visit went. One tap, no app and no account — and if something was wrong, the manager hears about it while you are still there.`
+          ? `Tell ${restaurant.name} how your visit went. One tap, no app and no account — and if something was wrong, the manager hears about it right away.`
           : `Split the check at ${restaurant.name}. Everyone scans, claims what they ordered, and pays their exact share — no app and no account.`}
         noindex={restaurant.noindex ?? !!restaurant.demo}
         schema={(restaurant.noindex ?? restaurant.demo) ? null : [{
@@ -373,6 +393,22 @@ export default function TableEntry({ rateFirst = false }) {
             first the operator hears of it is a review that is already public.
           */
           <>
+            {ratedStars ? (
+              <div className="mt-8" role="status">
+                <p className="text-lg font-black">Thanks — {restaurant.name} got it.</p>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.55)" }}>
+                  Your {ratedStars}-star rating is in.
+                </p>
+                <button
+                  onClick={() => setRatedStars(0)}
+                  className="mt-4 text-sm py-2 underline underline-offset-4"
+                  style={{ color: "rgba(255,255,255,.45)" }}
+                >
+                  Rate another visit
+                </button>
+              </div>
+            ) : (
+            <>
             <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
               How was it? One tap — no app, no account.
             </p>
@@ -403,6 +439,8 @@ export default function TableEntry({ rateFirst = false }) {
                 One moment
               </div>
             ) : null}
+            </>
+            )}
 
             {/*
               Kept, and kept small. Somebody at a counter did pay already — but
@@ -456,15 +494,24 @@ export default function TableEntry({ rateFirst = false }) {
               Google review link, and gating it behind a completed bill split meant
               most tables never reached either.
             */}
-            <button
-              onClick={() => startRating()}
-              disabled={ratingBusy}
-              className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-              style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
-            >
-              {ratingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-              Rate your visit
-            </button>
+            {ratedStars ? (
+              <p className="mt-4 text-sm" role="status" style={{ color: "rgba(255,255,255,.55)" }}>
+                Thanks — your {ratedStars}-star rating is in.{" "}
+                <button onClick={() => setRatedStars(0)} className="underline underline-offset-4" style={{ color: "rgba(255,255,255,.45)" }}>
+                  Rate another visit
+                </button>
+              </p>
+            ) : (
+              <button
+                onClick={() => startRating()}
+                disabled={ratingBusy}
+                className="mt-3 w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ background: "transparent", color: GOLD, border: `1px solid ${GOLD}` }}
+              >
+                {ratingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+                Rate your visit
+              </button>
+            )}
           </>
         )}
 
@@ -478,6 +525,13 @@ export default function TableEntry({ rateFirst = false }) {
               the guest has already answered.
             */
             initialStars={pickedStars}
+            /*
+              The record this page already loaded, through the same endpoint and
+              the same projection RatingCapture would fetch — so the star write
+              is not held behind a second round trip for data already in hand.
+            */
+            initialRestaurant={restaurant}
+            onRated={setRatedStars}
             onDismiss={() => { setRatingSession(null); setPickedStars(0); }}
           />
         ) : null}

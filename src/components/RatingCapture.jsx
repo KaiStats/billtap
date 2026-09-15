@@ -88,9 +88,26 @@ async function fireRatingAlert(ratingId) {
  *
  * Renders nothing unless the session belongs to a restaurant.
  */
-export default /** @param {{ restaurantId?: any, sessionId?: any, onDismiss?: any, initialStars?: any, [key: string]: any }} props */
-function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0 }) {
-  const [restaurant, setRestaurant] = useState(null);
+export default /** @param {{ restaurantId?: any, sessionId?: any, onDismiss?: any, initialStars?: any, initialRestaurant?: any, onRated?: any, [key: string]: any }} props */
+function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, initialRestaurant = null, onRated = undefined }) {
+  /**
+   * Seeded from the caller when the caller already holds this exact record.
+   *
+   * TableEntry loaded it through getPublicRestaurant a moment ago — the same
+   * endpoint, the same allow-listed projection this component would fetch.
+   * Fetching it again put a full round trip between the star tap and the
+   * rating write on the pay-first screen, because the submit below waits for
+   * `restaurant` before it may decide whether to page anyone. At a counter
+   * that is the guest standing by the bins with a phone in one hand and a
+   * tray in the other; the fewer round trips between their tap and the write,
+   * the fewer of them walk out before it lands.
+   *
+   * Only trusted when the ids match. A seed for some other restaurant would
+   * put the wrong threshold in front of the paging decision.
+   */
+  const seeded = initialRestaurant && initialRestaurant.id === restaurantId ? initialRestaurant : null;
+  const [restaurant, setRestaurant] = useState(seeded);
+  const hasSeed = Boolean(seeded);
   const [stars, setStars] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
@@ -107,6 +124,8 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0 })
   const [sentFeedback, setSentFeedback] = useState(false);
 
   useEffect(() => {
+    // Already in hand — see `seeded` above. Nothing to wait for.
+    if (hasSeed) return undefined;
     let alive = true;
     (async () => {
       try {
@@ -120,7 +139,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0 })
       }
     })();
     return () => { alive = false; };
-  }, [restaurantId]);
+  }, [restaurantId, hasSeed]);
 
   // Three, matching DEFAULT_RATING_THRESHOLD in worker/routes/functions.js.
   //
@@ -150,6 +169,16 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0 })
       });
       const id = res?.data?.rating_id || null;
       setRatingId(id);
+      /**
+       * Tell the page this visit has been rated — only when the server said so.
+       *
+       * The pay-first screen stays mounted underneath this sheet, star row and
+       * all. Without this, "Done" dropped the guest back onto five blank stars
+       * and a second tap opened a second session, a second rating and a second
+       * page to the manager's phone about one guest. A manager paged twice for
+       * one complaint starts reading the alert as noise.
+       */
+      if (id && typeof onRated === "function") onRated(value);
 
       /**
        * Page the manager now, before the guest has typed anything.

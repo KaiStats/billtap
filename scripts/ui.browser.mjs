@@ -130,6 +130,9 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
   // page to the manager, and the stamp that says the guest reached Google.
   const ratingCalls = [];
   const alertCalls = [];
+  // Every read of the guest-visible restaurant record, so a test can count the
+  // round trips standing between a guest's tap and the rating write.
+  const publicRestaurantCalls = [];
   // Every poll of any kind. The host screen reads through getSessionAsHost and
   // a diner through getSplitStatus, so a test that counts only one of them is
   // counting nothing on half the screens.
@@ -170,7 +173,10 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
     // catch-all `{}` below, RatingCapture read `restaurant` as null and
     // rendered nothing at all. Every guest-facing assertion about it would
     // have passed against a blank screen.
-    if (url.includes('/fn/getPublicRestaurant')) return send({ restaurant });
+    if (url.includes('/fn/getPublicRestaurant')) {
+      publicRestaurantCalls.push(route.request().postDataJSON());
+      return send({ restaurant });
+    }
     if (url.includes('/fn/submitGuestRating')) {
       const payload = route.request().postDataJSON();
       ratingCalls.push(payload);
@@ -312,7 +318,7 @@ async function phone({ scan = SCAN, onCreate, hostSession = null, hostAllowed = 
 
   return {
     context, page, errors, created, confirmCalls, settingsCalls, qrCalls, statusCalls, pollCalls, uploadCalls, scanCalls,
-    ratingCalls, alertCalls, joinCalls,
+    ratingCalls, alertCalls, joinCalls, publicRestaurantCalls,
     host: () => hostState,
     /** Change the split behind the app's back, the way another phone would. */
     setHost: (next) => { hostState = next; },
@@ -1618,6 +1624,19 @@ test('a scan does not upload the same photo twice', async () => {
   const { context, page, uploadCalls } = await phone();
   try {
     await toReview(page);
+    /**
+     * Waited for, then held — not read the instant the review screen appears.
+     *
+     * The upload is started in the background on file select and the review
+     * screen can paint before the route handler has recorded that request. An
+     * instant read counted zero on a slow machine and failed a correct app
+     * about one run in six. Waiting for the first call, then holding a beat
+     * longer, still catches the bug this test exists for: a second upload of
+     * the same photo would land inside that window and make the count two.
+     */
+    const deadline = Date.now() + 5000;
+    while (uploadCalls.length < 1 && Date.now() < deadline) await page.waitForTimeout(50);
+    await page.waitForTimeout(400);
     assert.equal(uploadCalls.length, 1, 'the background upload is reused, not repeated');
   } finally { await context.close(); }
 });
@@ -2427,6 +2446,88 @@ test('a table-service tent still opens on the split it was printed for', async (
     await page.getByRole('button', { name: 'Rate your visit' }).waitFor({ timeout: 10000 });
     // The star row belongs to the rating screen, not to this one.
     assert.equal(await page.getByRole('button', { name: '5 stars' }).count(), 0);
+  } finally { await context.close(); }
+});
+
+test('the star tap is not held behind a second fetch of a restaurant already on screen', async () => {
+  // The page loaded this record a moment ago. RatingCapture fetching it again
+  // put a full round trip between the tap and the write, because the write
+  // waits for the record before it decides whether to page anyone.
+  const { context, page, publicRestaurantCalls, ratingCalls } = await phone({ restaurant: COUNTER });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: /Review us on Google/i }).waitFor({ timeout: 15000 });
+
+    assert.equal(publicRestaurantCalls.length, 1, 'one read of the restaurant for the whole visit');
+    assert.equal(ratingCalls.filter((c) => c.action === 'rate').length, 1);
+  } finally { await context.close(); }
+});
+
+test('closing the rating does not offer the same guest the question again', async () => {
+  // A second tap on a fresh star row was a second session, a second rating
+  // and a second page to the manager about one person.
+  const { context, page, created, ratingCalls } = await phone({ restaurant: COUNTER });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: /Maybe later/i }).click({ timeout: 15000 });
+
+    await page.getByText(/Thanks — Mariposa got it/).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByRole('button', { name: '5 stars' }).count(), 0, 'no fresh star row to tap twice');
+    assert.equal(created.length, 1);
+    assert.equal(ratingCalls.filter((c) => c.action === 'rate').length, 1);
+  } finally { await context.close(); }
+});
+
+test('the door demo can still run twice on one phone, on purpose', async () => {
+  // Kai hands the same phone to the next prospect. A duplicate has to be a
+  // choice somebody makes, not something the page makes impossible.
+  const { context, page, created } = await phone({ restaurant: COUNTER });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: /Maybe later/i }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Rate another visit' }).click({ timeout: 10000 });
+    await page.getByRole('button', { name: '2 stars' }).click({ timeout: 10000 });
+    await page.getByRole('heading', { name: /What went wrong/i }).waitFor({ timeout: 15000 });
+    assert.equal(created.length, 2, 'the second rating was chosen, and it went through');
+  } finally { await context.close(); }
+});
+
+test('a table guest who rated is thanked instead of shown the button again', async () => {
+  const { context, page, created } = await phone({ restaurant: RESTAURANT });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Rate your visit' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: /Maybe later/i }).click({ timeout: 15000 });
+    await page.getByText(/your 5-star rating is in/).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByRole('button', { name: 'Rate your visit' }).count(), 0);
+    assert.equal(created.length, 1);
+  } finally { await context.close(); }
+});
+
+test('a guest who closes the sheet without rating still has the button', async () => {
+  // Thanks is for a rating the server confirmed. Skipping is not a rating.
+  const { context, page, ratingCalls } = await phone({ restaurant: RESTAURANT });
+  try {
+    await page.goto(`${base}/r/mariposa`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Rate your visit' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Skip' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Rate your visit' }).waitFor({ timeout: 10000 });
+    assert.equal(ratingCalls.length, 0);
+  } finally { await context.close(); }
+});
+
+test('a rating the server refused is not thanked as recorded', async () => {
+  const { context, page } = await phone({ restaurant: COUNTER, failRating: true });
+  try {
+    await page.goto(`${base}/r/mariposa/rate`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '5 stars' }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: /Maybe later/i }).click({ timeout: 15000 });
+    await page.getByRole('button', { name: '5 stars' }).waitFor({ timeout: 10000 });
+    assert.equal(await page.getByText(/got it/).count(), 0);
   } finally { await context.close(); }
 });
 
