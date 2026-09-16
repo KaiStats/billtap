@@ -771,7 +771,7 @@ export default function Restaurants() {
                 </div>
                 <p className="mt-5 text-[10px] text-center leading-relaxed font-light"
                   style={{ color: "rgba(255,255,255,.4)" }}>
-                  Text and email. Arrives before they ask for the check.
+                  Email alert. Arrives before they ask for the check.
                 </p>
               </div>
             </PhoneFrame>
