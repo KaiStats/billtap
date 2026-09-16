@@ -31,7 +31,18 @@ export default [
   {
     // Global ignores. Must be an entry carrying only `ignores` to apply
     // repo-wide rather than to one `files` glob.
-    ignores: ["dist/**", "node_modules/**", "public/**", ".wrangler/**"],
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/public/**",
+      "**/.wrangler/**",
+      // Agent worktrees are a second checkout of this repo. Without this the
+      // linter reports every minified bundle in them as thousands of no-undefs
+      // — a failing gate describing nothing in the tree being shipped. The
+      // globs above are anchored at the repo root, so a nested dist/ escapes
+      // them unless they carry the "**/" prefix.
+      ".claude/**",
+    ],
   },
 
   // Core JS correctness rules — no-undef, no-dupe-keys, no-unreachable and the

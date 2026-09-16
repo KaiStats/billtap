@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 /**
  * Vitest, scoped to the error-handling boundary suites.
@@ -23,6 +23,11 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['**/*.boundary.test.js'],
+    // The include glob is unanchored, so an agent worktree under .claude/ —
+    // a second checkout of this repo — contributes its own copy of every
+    // boundary suite. That is not extra coverage: it runs the same assertions
+    // against a stale tree and reports a test count nobody can reconcile.
+    exclude: [...configDefaults.exclude, '**/.claude/**'],
     // Workers code, not a browser. Nothing here touches the DOM, and a jsdom
     // environment would quietly provide globals the runtime does not have.
     environment: 'node',
