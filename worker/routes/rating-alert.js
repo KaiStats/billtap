@@ -224,10 +224,32 @@ export async function onRequestPost({ request, env }) {
     const guestEmail = clean(rating.guest_email || '', 200).toLowerCase();
     const alertPhone = clean(restaurant.alert_phone || '', 40);
 
-    const when = new Date().toLocaleString('en-US', {
-      timeZone: env.RESTAURANT_TZ || 'America/Los_Angeles',
+    // One clock reading for both the body and the subject. Two `new Date()`
+    // calls can straddle a minute boundary and print times a minute apart in
+    // the same email.
+    const now = new Date();
+    const tz = env.RESTAURANT_TZ || 'America/Los_Angeles';
+
+    const when = now.toLocaleString('en-US', {
+      timeZone: tz,
       dateStyle: 'medium',
       timeStyle: 'short',
+    });
+
+    /**
+     * The same local clock time, alone, for the subject line.
+     *
+     * Gmail threads on sender plus subject, and every alert for a restaurant
+     * had the identical subject — so the second and later alerts collapsed
+     * into the first one's conversation, and on a phone a message added to an
+     * existing thread often raises no banner. Four separate unhappy tables
+     * arrived as one silent conversation. The minute makes each alert its own
+     * thread, which is the whole point of a page.
+     */
+    const whenTime = now.toLocaleTimeString('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      minute: '2-digit',
     });
 
     const html = `
@@ -331,7 +353,7 @@ export async function onRequestPost({ request, env }) {
         // the same guest adding detail, not a second unhappy one.
         subject: isFollowUp
           ? `↳ ${stars}-star at ${restaurantName} — they've added detail`
-          : `⚠︎ ${stars}-star rating at ${restaurantName}`,
+          : `⚠︎ ${stars}-star rating at ${restaurantName} · ${whenTime}`,
         html,
         text,
         replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,

@@ -44,7 +44,9 @@ const RESTAURANT = { id: 'rest1', name: 'Joe Diner', alert_email: 'owner@example
  */
 function stub({ rating = RATING, restaurant = RESTAURANT, emailOk = true, smsOk = true, updateOk = true } = {}) {
   const store = { rating: rating ? { ...rating } : null, restaurant };
-  const sent = { emails: 0, sms: 0 };
+  // `subjects` records what actually went out. Gmail threads on the subject, so
+  // it is the field that decides whether an alert is its own conversation.
+  const sent = { emails: 0, sms: 0, subjects: [] };
   const original = globalThis.fetch;
 
   globalThis.fetch = async (url, init = {}) => {
@@ -53,6 +55,7 @@ function stub({ rating = RATING, restaurant = RESTAURANT, emailOk = true, smsOk 
 
     if (u.includes('postmarkapp.com')) {
       sent.emails += 1;
+      sent.subjects.push(JSON.parse(init.body).Subject);
       return new Response('{}', { status: emailOk ? 200 : 500 });
     }
     if (u.includes('twilio.com')) {
@@ -112,6 +115,41 @@ test('an operator actually gets paged', async () => {
     assert.equal(sent.emails, 1, 'no email left the Worker');
     assert.ok(store.rating.alerted_at, 'the alert was sent without being claimed — it can be replayed');
   });
+});
+
+// ── Each page has to be its own conversation ────────────────────────────────
+
+test('two alerts a minute apart do not share a subject', async (t) => {
+  // Gmail threads on sender plus subject, and this endpoint sets no
+  // Message-ID/References headers, so the subject is the only thing deciding
+  // what groups. A subject fixed per restaurant meant every alert after the
+  // first landed inside the first one's conversation — and a phone usually
+  // raises no banner for a message added to a thread it already has. On Sep 16
+  // four separate unhappy tables at one restaurant arrived as one silent
+  // conversation. The local clock time is what keeps them apart.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2025-09-16T18:01:00Z') });
+  t.after(() => t.mock.timers.reset());
+
+  const env = { ...ENV, RESTAURANT_TZ: 'America/Los_Angeles' };
+
+  const first = await withStub({}, async ({ sent }) => {
+    await fire(env);
+    return sent.subjects[0];
+  });
+
+  t.mock.timers.tick(60_000);
+
+  // A second guest a minute later. A fresh store is a different rating rather
+  // than a replay of the first — the dedupe would refuse a replay, and two
+  // unhappy tables is the case the manager actually has to see twice.
+  const second = await withStub({}, async ({ sent }) => {
+    await fire(env);
+    return sent.subjects[0];
+  });
+
+  assert.equal(first, '⚠︎ 2-star rating at Joe Diner · 11:01 AM');
+  assert.equal(second, '⚠︎ 2-star rating at Joe Diner · 11:02 AM');
+  assert.notEqual(first, second, 'both alerts collapse into one Gmail conversation');
 });
 
 // ── The claim, which is the only spend cap ──────────────────────────────────
