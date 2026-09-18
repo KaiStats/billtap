@@ -134,8 +134,22 @@ const SPA_ROUTES = new Set([
   '/new',
 ]);
 
-/** Per-table guest links from the QR tents: /r/<slug>. */
-const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/];
+/**
+ * Per-table guest links from the QR tents: /r/<slug>, and /r/<slug>/rate.
+ *
+ * The second is the pay-first entrance. A counter-service room never presents
+ * a check, so there is no "I've paid" for the rating to hang off — the code
+ * goes on the cup, the bag, the number tent or the receipt footer instead, and
+ * it has to land on a screen that opens with the question rather than with a
+ * button that photographs a bill. See src/pages/TableEntry.jsx and migration
+ * 0026.
+ *
+ * Listed here for the reason everything in SPA_ROUTES is: an unlisted path is
+ * served with a 404 status. The screen would boot and work while telling every
+ * crawler — and every link preview — that the address printed on a thousand
+ * coffee cups does not exist.
+ */
+const DYNAMIC_ROUTES = [/^\/r\/[^/]+$/, /^\/r\/[^/]+\/rate$/];
 
 /**
  * The prefix a batch of printed cards used by mistake — see the redirect below.
@@ -568,9 +582,9 @@ async function serve(request, env, ctx, outerId) {
      * ── What happened ─────────────────────────────────────────────────────
      *
      * Cards and flyers were printed carrying `billtap.app/f/<slug>`. This app
-     * has only ever served `/r/<slug>` — one route in src/App.jsx, one pattern
-     * in DYNAMIC_ROUTES above, and nothing anywhere in the repo has ever
-     * emitted an `/f/` URL. So every one of those printed codes fell through
+     * has only ever served the `/r/` prefix — the routes in src/App.jsx, the
+     * patterns in DYNAMIC_ROUTES above, and nothing anywhere in the repo has
+     * ever emitted an `/f/` URL. So every one of those printed codes fell through
      * to the SPA shell, missed the known-route check below, and came back 404.
      * Not degraded: dead, since the first piece came off the press.
      *

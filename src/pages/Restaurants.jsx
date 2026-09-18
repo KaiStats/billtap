@@ -123,6 +123,18 @@ const FAQ = [
     a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit — all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
   },
   {
+    /**
+     * The disqualifying question, answered before it disqualifies anything.
+     *
+     * Every other answer on this page describes a table waiting on a check.
+     * An owner reading it from behind a counter concludes in ten seconds that
+     * BillTap is not for them and closes the tab — and they are wrong, but
+     * nothing here was telling them so.
+     */
+    q: "We're counter service — guests pay before they get their food. Does this work?",
+    a: "Yes, and it's the simpler half of what we do. There's no check to split, so the code doesn't go on a table tent — it goes where the meal ends: the order-number card, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. One scan, five stars, done. Put it anywhere except the register: ask at the register and you're asking about food nobody has eaten yet. And the alert matters more in your room than in a dining room — you have no server walking back to ask how everything is, so an unhappy guest usually leaves without a word. This is the thing that tells you while they're still standing there.",
+  },
+  {
     q: "Where do the 5-star reviews actually go?",
     a: "Straight to your Google Business Profile — the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
   },
