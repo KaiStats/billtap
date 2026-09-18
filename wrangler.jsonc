@@ -78,9 +78,13 @@
   // Use a DIFFERENT Sentry project per environment, or a staging load test
   // fires the same alerts as a restaurant's Saturday. src/lib/environment.js
   // already tags the browser's events; this is the server half of that.
+  // demoTtlHours() in worker/routes/functions.js has read DEMO_TTL_HOURS since
+  // c0429a2 and falls back to 24 hours when it is unset — so this is config, not
+  // missing code. Repeated in every environment below: vars do not inherit.
   "vars": {
     "ENVIRONMENT": "production",
     "DATA_BACKEND": "supabase",
+    "DEMO_TTL_HOURS": "168",
     "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
   },
 
@@ -128,6 +132,7 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "DATA_BACKEND": "supabase",
+        "DEMO_TTL_HOURS": "168",
         // Repeated deliberately. See assertEnvironmentIsolated: without this
         // the "you are pointed at production" check cannot run at all.
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
@@ -169,6 +174,7 @@
       "vars": {
         "ENVIRONMENT": "development",
         "DATA_BACKEND": "supabase",
+        "DEMO_TTL_HOURS": "168",
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
       },
       "unsafe": {
