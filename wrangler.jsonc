@@ -81,6 +81,7 @@
   "vars": {
     "ENVIRONMENT": "production",
     "DATA_BACKEND": "supabase",
+    "DEMO_TTL_HOURS": "168",
     "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
   },
 
@@ -128,6 +129,7 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "DATA_BACKEND": "supabase",
+        "DEMO_TTL_HOURS": "168",
         // Repeated deliberately. See assertEnvironmentIsolated: without this
         // the "you are pointed at production" check cannot run at all.
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
@@ -169,6 +171,7 @@
       "vars": {
         "ENVIRONMENT": "development",
         "DATA_BACKEND": "supabase",
+        "DEMO_TTL_HOURS": "168",
         "PRODUCTION_SUPABASE_URL": "https://skrqxxhoxbrvlviqrhjt.supabase.co"
       },
       "unsafe": {
