@@ -238,20 +238,33 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `GEMINI_API_KEY` | for receipt scanning | — |
 | `QR_SIGNING_SECRET` | for table QR tokens | — |
 | `DEMO_OPERATOR_EMAILS` | to create demo pages | — (empty denies everyone) |
-| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) |
+| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) — production binds `168` |
 
-**`DEMO_TTL_HOURS` is short on purpose.** A demo publishes a live page carrying
-a real business's name, for a business that has agreed to nothing, so every
-extra hour is another hour that page can be found or stumbled on by the owner
-whose name is on it. A day is the default because the page should not outlive
-the conversation it was made for.
+**The code default is short on purpose; production overrides it.** A demo
+publishes a live page carrying a real business's name, for a business that has
+agreed to nothing, so every extra hour is another hour that page can be found
+or stumbled on by the owner whose name is on it. The fallback in
+`demoTtlHours()` is a day for that reason: the page should not outlive the
+conversation it was made for.
 
-The "come back Tuesday" case is handled by extending the one demo that matters
-rather than by keeping them all alive: `extendDemoRestaurant` pushes a live
-demo's clock out on demand **without changing its slug**, so the URL already
-handed over keeps working. Everything nobody asked about still expires tonight,
-and `sweepExpiredDemos` hard-deletes it — row, ratings and contacts — on the
-nightly retention pass.
+Production binds `DEMO_TTL_HOURS` to `168` — a week — and that is a deliberate
+trade, not a drift. Demos are provisioned on sales calls where the close is
+"call me back Monday", and a page that died overnight took the callback with
+it. The cost is that the exposure window above is now seven times longer for
+*every* demo, including the ones nobody ever follows up on.
+
+Two things keep that bounded. `extendDemoRestaurant` still pushes a live demo's
+clock out on demand **without changing its slug**, so a URL already handed over
+keeps working and a genuinely hot prospect never needs the global default
+raised again. And `sweepExpiredDemos` still hard-deletes what does expire —
+row, ratings and contacts — on the nightly retention pass. Note that extension
+reads the same binding, so on production it now grants a further week rather
+than a further day.
+
+If the exposure ever matters more than the callback, the fix is to drop the
+binding rather than to edit this file: unset it and every environment returns
+to the 24-hour default, with `extendDemoRestaurant` covering the follow-ups it
+was written for.
 
 Anything unset, empty, non-numeric, zero or negative falls back to 24 rather
 than erroring: this code runs mid-sales-call, and a bad binding must not be
