@@ -31,7 +31,7 @@ export default [
   {
     // Global ignores. Must be an entry carrying only `ignores` to apply
     // repo-wide rather than to one `files` glob.
-    ignores: ["dist/**", "node_modules/**", "public/**", ".wrangler/**"],
+    ignores: ["**/dist/**", "**/node_modules/**", "public/**", "**/.wrangler/**", ".claude/**"],
   },
 
   // Core JS correctness rules — no-undef, no-dupe-keys, no-unreachable and the
