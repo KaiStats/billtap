@@ -23,6 +23,11 @@ import { defineConfig, configDefaults } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['**/*.boundary.test.js'],
+    // `include` is deliberately unanchored so a suite can live beside the code
+    // it guards. That also matches git worktrees under .claude/, which are
+    // checkouts of this same repo: without this the boundary suite ran three
+    // times — once here and once per worktree — and a stale copy could fail a
+    // run that has nothing to do with the working tree.
     exclude: [...configDefaults.exclude, '.claude/**'],
     // Workers code, not a browser. Nothing here touches the DOM, and a jsdom
     // environment would quietly provide globals the runtime does not have.
