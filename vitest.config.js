@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 
 /**
  * Vitest, scoped to the error-handling boundary suites.
@@ -23,6 +23,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['**/*.boundary.test.js'],
+    exclude: [...configDefaults.exclude, '.claude/**'],
     // Workers code, not a browser. Nothing here touches the DOM, and a jsdom
     // environment would quietly provide globals the runtime does not have.
     environment: 'node',
