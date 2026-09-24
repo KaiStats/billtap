@@ -86,6 +86,7 @@ const BULLETS = [
 const PERFECT_FOR = [
   "Steakhouses", "Mexican Restaurants", "Sushi", "BBQ",
   "Breweries", "Sports Bars", "Family Restaurants",
+  "Coffee Shops", "Fast Casual", "Bakeries & Delis",
 ];
 
 const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
