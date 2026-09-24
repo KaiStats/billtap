@@ -22,6 +22,77 @@ derived from the authenticated host's own `Restaurant` row. It is never accepted
 from the client — otherwise anyone could attribute ratings, and the guest emails
 attached to them, to a restaurant they don't own.
 
+## The room that never presents a check
+
+The loop above describes a table-service restaurant, and that is a minority of
+the businesses this product is for. Counter service, coffee, fast casual,
+bakeries, delis, taquerias, food trucks, breweries, pickup windows: the guest
+pays **before** they eat, carries their own food, and leaves without anybody
+ever asking how it was.
+
+**The trigger is the problem, not a missing feature.** At a table, "you have
+paid" and "you have finished" are the same moment, so hanging the rating off
+payment is free and correct. At a counter they are opposite ends of the visit.
+Wire the split flow into a taqueria and you collect ratings of the queue.
+
+So the trigger moves off the payment event and onto the guest's own scan of a
+code placed where finishing happens. Everything behind that scan is unchanged.
+
+### The pay-first loop
+
+1. Guest scans a code on the object they are holding when they finish →
+   `/r/<slug>/rate` (`src/pages/TableEntry.jsx`, `rateFirst`)
+2. The page opens on five stars. No bill, no receipt photo, nothing to type
+3. A tap opens a `kind: 'rating_only'` session (migration 0024 — no items, no
+   participants, `total_amount` 0, so nothing counts it as a bill) and hands
+   the star to `RatingCapture`, which submits it as though it had been tapped
+   there
+4. From step 4 of the loop above, it is the same code: the threshold, the alert
+   to the operator, the Google handoff every guest reaches
+
+### Where the code goes
+
+This is the whole of the training, and it is the half an operator gets wrong on
+their own. The dashboard prints both codes with these lines on them.
+
+| Put it | Why |
+| --- | --- |
+| The order-number tent | Already on their table for the whole meal, already handed over with the food, already collected and reused. Nothing to reprint per guest |
+| The cup, the bag, the wrapper | Goes home with them and is in their hand at the last bite |
+| The receipt footer | Square, Toast and Clover all take a custom message and URL. Reaches takeout, delivery pickup and drive-through, and costs nothing per guest |
+| A sticker over the bus tub, or by the door | At a counter-service place the bin **is** the end of the meal. Every dine-in guest walks past it on the way out |
+| **Not the register** | Asking there is asking about food nobody has eaten yet |
+
+### Why the alert is worth more here
+
+A dining room has a server who comes back to ask how everything is. A counter
+has nobody. An unhappy guest at a counter leaves without a word, and the first
+the operator hears of it is a review that is already public. This is the only
+thing in the room that tells them while the guest is still standing there.
+
+### What is a setting and what is not
+
+`restaurants.service_style` (`'table' | 'counter'`, migration 0026) decides
+**only** which screen a bare scan of `/r/<slug>` opens on. `/r/<slug>/rate`
+opens rating-first at every restaurant regardless, because the two are not
+exclusive — a dining room with a takeout window wants the tent on the tables
+and the rating sticker on the bags, and no single flag on the row describes
+both halves of that building. Set on the settings pane at
+`/restaurant-dashboard`; defaults to `'table'`, so every tent already printed
+keeps pointing at the screen it was printed for.
+
+### The ceiling, which used to be one number
+
+`createSession` caps guest sessions per restaurant per hour. It was 100 across
+both kinds, which is right for splits and wrong for ratings by an order of
+magnitude: a counter collects a rating from every guest rather than from the
+fraction of tables that split a check. Left as it was, a busy coffee shop would
+stop collecting reviews part-way through every lunch — and be refused with
+"this restaurant has too many splits in progress", at a business that has never
+presented a check. Worse, one pool couples them: an hour of ratings would lock
+out the split flow, and a lock-out there is a table that cannot pay. The two
+kinds are counted separately now: 100 splits, 600 ratings.
+
 ## The threshold does not hide the link
 
 `rating_threshold` decides one thing: at or below it, the guest is asked what
@@ -55,7 +126,7 @@ branch where some guests do not reach `google_review_url`, that is this, again.
 | File | Role |
 | --- | --- |
 | `src/pages/Restaurants.jsx` | Marketing page + lead capture |
-| `src/pages/TableEntry.jsx` | `/r/:slug` — what the table tent points at |
+| `src/pages/TableEntry.jsx` | `/r/:slug` — what the table tent points at; `/r/:slug/rate` — what the cup, the bag and the number tent point at |
 | `src/pages/RestaurantDashboard.jsx` | Stats, low-rating queue, guest list, settings, table QR |
 | `src/components/RatingCapture.jsx` | Post-payment rating, feedback, Google handoff, email capture |
 | `supabase/migrations/` | The schema. `restaurants` is the config, `guest_ratings` every rating and whether the guest tapped through to Google, `guest_contacts` the guest list, `restaurant_leads` the inbound sales leads |
@@ -167,20 +238,33 @@ did — that is the endpoint rejecting an empty body, which is correct.
 | `GEMINI_API_KEY` | for receipt scanning | — |
 | `QR_SIGNING_SECRET` | for table QR tokens | — |
 | `DEMO_OPERATOR_EMAILS` | to create demo pages | — (empty denies everyone) |
-| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) |
+| `DEMO_TTL_HOURS` | no | `24` (clamped 1–720) — production binds `168` |
 
-**`DEMO_TTL_HOURS` is short on purpose.** A demo publishes a live page carrying
-a real business's name, for a business that has agreed to nothing, so every
-extra hour is another hour that page can be found or stumbled on by the owner
-whose name is on it. A day is the default because the page should not outlive
-the conversation it was made for.
+**The code default is short on purpose; production overrides it.** A demo
+publishes a live page carrying a real business's name, for a business that has
+agreed to nothing, so every extra hour is another hour that page can be found
+or stumbled on by the owner whose name is on it. The fallback in
+`demoTtlHours()` is a day for that reason: the page should not outlive the
+conversation it was made for.
 
-The "come back Tuesday" case is handled by extending the one demo that matters
-rather than by keeping them all alive: `extendDemoRestaurant` pushes a live
-demo's clock out on demand **without changing its slug**, so the URL already
-handed over keeps working. Everything nobody asked about still expires tonight,
-and `sweepExpiredDemos` hard-deletes it — row, ratings and contacts — on the
-nightly retention pass.
+Production binds `DEMO_TTL_HOURS` to `168` — a week — and that is a deliberate
+trade, not a drift. Demos are provisioned on sales calls where the close is
+"call me back Monday", and a page that died overnight took the callback with
+it. The cost is that the exposure window above is now seven times longer for
+*every* demo, including the ones nobody ever follows up on.
+
+Two things keep that bounded. `extendDemoRestaurant` still pushes a live demo's
+clock out on demand **without changing its slug**, so a URL already handed over
+keeps working and a genuinely hot prospect never needs the global default
+raised again. And `sweepExpiredDemos` still hard-deletes what does expire —
+row, ratings and contacts — on the nightly retention pass. Note that extension
+reads the same binding, so on production it now grants a further week rather
+than a further day.
+
+If the exposure ever matters more than the callback, the fix is to drop the
+binding rather than to edit this file: unset it and every environment returns
+to the 24-hour default, with `extendDemoRestaurant` covering the follow-ups it
+was written for.
 
 Anything unset, empty, non-numeric, zero or negative falls back to 24 rather
 than erroring: this code runs mid-sales-call, and a bad binding must not be

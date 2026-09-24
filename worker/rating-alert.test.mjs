@@ -42,9 +42,11 @@ const RESTAURANT = { id: 'rest1', name: 'Joe Diner', alert_email: 'owner@example
  * alerted_at stamp is the only thing standing between an unauthenticated
  * endpoint and an unbounded phone bill, so whether it lands is the point.
  */
-function stub({ rating = RATING, restaurant = RESTAURANT, emailOk = true, smsOk = true, updateOk = true } = {}) {
-  const store = { rating: rating ? { ...rating } : null, restaurant };
-  const sent = { emails: 0, sms: 0 };
+function stub({ rating = RATING, restaurant = RESTAURANT, session = null, emailOk = true, smsOk = true, updateOk = true } = {}) {
+  const store = { rating: rating ? { ...rating } : null, restaurant, session };
+  // Bodies, not just counts: the headline is the part of this email that can
+  // be wrong without anything failing, so it has to be readable in a test.
+  const sent = { emails: 0, sms: 0, mail: [] };
   const original = globalThis.fetch;
 
   globalThis.fetch = async (url, init = {}) => {
@@ -53,6 +55,7 @@ function stub({ rating = RATING, restaurant = RESTAURANT, emailOk = true, smsOk 
 
     if (u.includes('postmarkapp.com')) {
       sent.emails += 1;
+      try { sent.mail.push(JSON.parse(init.body)); } catch { /* shape is asserted where it matters */ }
       return new Response('{}', { status: emailOk ? 200 : 500 });
     }
     if (u.includes('twilio.com')) {
@@ -76,6 +79,12 @@ function stub({ rating = RATING, restaurant = RESTAURANT, emailOk = true, smsOk 
     if (u.includes('/entities/Restaurant')) {
       if (!store.restaurant) return new Response('not found', { status: 404 });
       return new Response(JSON.stringify(store.restaurant), { status: 200 });
+    }
+    // The bill behind the rating. Absent by default, which is what a rating
+    // with no session looks like — the endpoint must still page.
+    if (u.includes('/entities/Session')) {
+      if (!store.session) return new Response('not found', { status: 404 });
+      return new Response(JSON.stringify(store.session), { status: 200 });
     }
     return new Response('{}', { status: 200 });
   };
@@ -222,4 +231,66 @@ test('it reads through the data layer, so the cutover does not silence it', asyn
   } finally {
     globalThis.fetch = original;
   }
+});
+
+// ── "Still on site" is a claim, and it has to be earned ─────────────────────
+
+/** The email's headline, which is the sentence that sends a manager walking. */
+const headline = (sent) => {
+  const body = sent.mail[0]?.HtmlBody ?? '';
+  const found = body.match(/Unhappy guest[^<]*/);
+  return found ? found[0].trim() : '';
+};
+
+test('a rating finished during the visit still says the guest is on site', async () => {
+  // The original promise, and it is a true one here: a split row is opened
+  // when a guest photographs the check, so a rating landing forty minutes
+  // later is a rating made at a table somebody is still sitting at.
+  const opened = Date.now() - 40 * 60 * 1000;
+  await withStub({
+    rating: { ...RATING, session_id: 's1', created_at: Date.now() },
+    session: { id: 's1', kind: 'split', created_date: new Date(opened).toISOString(), total_amount: 62.4 },
+  }, async ({ sent }) => {
+    assert.equal((await fire()).status, 200);
+    assert.equal(headline(sent), 'Unhappy guest — still on site');
+  });
+});
+
+test('a rating from a counter sticker never claims the guest is on site', async () => {
+  // The bug this pair exists for. /r/<slug>/rate never expires, so the scan
+  // behind a rating_only row may have happened at the bus tub or on a sofa at
+  // nine at night — and the row cannot tell them apart, because it is created
+  // by the star tap itself. The old copy sent a manager to walk a dining room
+  // that had closed an hour earlier.
+  await withStub({
+    rating: { ...RATING, session_id: 's1', created_at: Date.now() },
+    session: { id: 's1', kind: 'rating_only', created_date: new Date().toISOString(), total_amount: 0 },
+  }, async ({ sent }) => {
+    assert.equal((await fire()).status, 200);
+    assert.equal(headline(sent), 'Unhappy guest — they may have left');
+    assert.match(sent.mail[0].TextBody, /May have rated after leaving/);
+  });
+});
+
+test('a split rated long after it opened is not treated as a live table', async () => {
+  // Past the length of any meal that ends in a check being split, the moment
+  // the row was opened has stopped anchoring anything.
+  const opened = Date.now() - 9 * 60 * 60 * 1000;
+  await withStub({
+    rating: { ...RATING, session_id: 's1', created_at: Date.now() },
+    session: { id: 's1', kind: 'split', created_date: new Date(opened).toISOString(), total_amount: 62.4 },
+  }, async ({ sent }) => {
+    assert.equal((await fire()).status, 200);
+    assert.equal(headline(sent), 'Unhappy guest — they may have left');
+  });
+});
+
+test('a rating with no session at all still pages, and claims nothing', async () => {
+  // Session deleted, read timed out, or a rating submitted without one. The
+  // detail is decoration; the page itself is the product.
+  await withStub({ rating: { ...RATING, created_at: Date.now() } }, async ({ sent }) => {
+    assert.equal((await fire()).status, 200);
+    assert.equal(sent.emails, 1);
+    assert.equal(headline(sent), 'Unhappy guest — they may have left');
+  });
 });
