@@ -100,7 +100,9 @@ const CARDS = {
   },
   "og-restaurants": {
     eyebrow: "FOR RESTAURANTS",
-    lines: ["Turn every split check", "into more 5-star reviews."],
+    // Matches the /restaurants hero (#35). Was "Turn every split check / into
+    // more 5-star reviews.", which spoke only to table service.
+    lines: ["Your unhappy guests leave", "without a word. Now you’ll", "hear them first."],
   },
 };
 
