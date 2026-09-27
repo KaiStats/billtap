@@ -23,7 +23,7 @@ import { join } from 'node:path';
 const REPO = new URL('..', import.meta.url).pathname;
 
 /** Scripts that drive a real browser, and so must resolve one the same way. */
-const BROWSER_SCRIPTS = ['prerender.mjs', 'ui.browser.mjs', 'boundaries.e2e.mjs'];
+const BROWSER_SCRIPTS = ['prerender.mjs', 'ui.browser.mjs', 'boundaries.e2e.mjs', 'build-flyer.mjs'];
 
 /** Resolve in a child process, so each case gets a clean environment. */
 const resolveWith = (env) =>

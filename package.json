@@ -24,6 +24,7 @@
     "test:e2e": "npm run build:test && node --test --test-concurrency=2 scripts/boundaries.e2e.mjs",
     "test:unit": "node --test worker/*.test.mjs src/*.test.mjs scripts/*.test.mjs",
     "build:test": "node scripts/build-for-tests.mjs",
+    "build:flyer": "node scripts/build-flyer.mjs",
     "check:wrangler": "node scripts/check-wrangler.mjs",
     "test:db": "node --test scripts/db-smoke.test.mjs"
   },
