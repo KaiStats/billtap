@@ -13,6 +13,12 @@
   // Worker falls back to the SPA shell when no snapshot is present — it just
   // ships the SEO handicap that prerendering exists to remove.
   "name": "billtap",
+  // The Cloudflare account billtap deploys to. Not a secret — it is in every
+  // dashboard URL. Pinned here so a deploy cannot depend on a CI secret that
+  // silently holds a different account's id: that is what broke the GitHub
+  // Deploy workflow from Sep 14 ("Authentication error [code: 10000]"), with a
+  // token that deployed fine from a laptop using this id.
+  "account_id": "5252bacec3a6f67c864d43db51fd27d9",
   "main": "worker/index.js",
   "compatibility_date": "2026-07-29",
 
