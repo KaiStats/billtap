@@ -83,10 +83,15 @@ const BULLETS = [
   { icon: Clock, title: "Setup in under 10 minutes", desc: "We do the heavy lifting." },
 ];
 
+// Counter service outnumbers the dining rooms this is sold to (see "The room
+// that never presents a check" in RESTAURANTS_PAGE.md), so the list should too.
+// Kept in step with the flyer, marketing/restaurants-flyer/flyer.html.
 const PERFECT_FOR = [
   "Steakhouses", "Mexican Restaurants", "Sushi", "BBQ",
-  "Breweries", "Sports Bars", "Family Restaurants",
-  "Coffee Shops", "Fast Casual", "Bakeries & Delis",
+  "Sports Bars", "Family Restaurants",
+  "Coffee Shops", "Fast Casual", "Bakeries & Delis", "Taquerias",
+  "Pizza by the Slice", "Food Trucks", "Breweries & Taprooms",
+  "Smoothie & Juice Bars", "Ice Cream & Dessert",
 ];
 
 const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];

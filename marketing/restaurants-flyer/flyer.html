@@ -1,0 +1,325 @@
+<!doctype html>
+<!--
+  BillTap for Restaurants — the one-page leave-behind flyer, US Letter.
+
+  This is the source. Build the print files with:
+
+      npm run build:flyer
+
+  which writes billtap-restaurants-flyer.pdf (print) and .png (preview) next to
+  this file. The double-brace placeholders below are lucide icons ("icon:"),
+  the QR code ("qr") and fonts from public/fonts ("font:") — all filled in by
+  scripts/build-flyer.mjs, so this file needs no network to render.
+
+  The copy follows /restaurants (src/pages/Restaurants.jsx), under the same
+  rules that page is tested against: no named customers, no performance figure
+  nobody measured, no competitor's price, and no line that implies an unhappy
+  guest is kept away from Google. If the page changes, change this too.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BillTap for Restaurants — flyer</title>
+<style>
+  @font-face { font-family: "Inter Tight"; src: url({{font:inter-tight.woff2}}) format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Instrument Serif"; src: url({{font:instrument-serif.woff2}}) format("woff2"); }
+  @font-face { font-family: "Instrument Serif"; font-style: italic; src: url({{font:instrument-serif-italic.woff2}}) format("woff2"); }
+
+  @page { size: 8.5in 11in; margin: 0; }
+  :root {
+    --ink: #0b0b0d; --gold: #f0b429; --gold-deep: #c98a0c; --paper: #ffffff;
+    --red: #e5484d; --green: #2f9e62; --navy: #1e3a8a; --muted: #55575e; --line: #ece7da;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 8.5in; height: 11in; }
+  body {
+    font-family: "Inter Tight", system-ui, sans-serif; color: var(--ink); background: var(--paper);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  svg { display: block; flex-shrink: 0; }
+
+  /* ── Header band ───────────────────────────────────────────── */
+  header {
+    background: var(--ink); color: #fff; padding: 0.22in 0.45in 0.2in;
+    display: flex; justify-content: space-between; align-items: center; position: relative;
+  }
+  header::after {
+    content: ""; position: absolute; right: 0; bottom: 0; width: 3.4in; height: 5px; background: var(--gold);
+  }
+  .logo { font-weight: 900; font-size: 36px; letter-spacing: -0.03em; line-height: 1; }
+  .logo span { color: var(--gold); }
+  .logo-sub { margin-top: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.42em; color: var(--gold); }
+  .header-right { text-align: right; }
+  .header-right .l1 { font-size: 13px; color: rgba(255,255,255,.82); }
+  .header-right .l2 { font-size: 14px; font-weight: 800; color: var(--gold); margin-top: 3px; }
+  .header-right .l3 { margin-top: 8px; font-size: 14px; font-weight: 800; display: inline-flex; gap: 6px; align-items: center; }
+  .b-chip { background: var(--gold); color: var(--ink); border-radius: 4px; width: 17px; height: 17px;
+            display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; }
+
+  main { flex: 1; padding: 0.17in 0.45in 0.14in; display: flex; flex-direction: column; gap: 0.1in; }
+
+  /* ── Headline ─────────────────────────────────────────────── */
+  .hero { text-align: center; }
+  .hero h1 { font-size: 29px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; }
+  .hero h1 em { display: block; font-family: "Instrument Serif", serif; font-style: italic; font-weight: 400;
+                font-size: 38px; letter-spacing: -0.01em; color: var(--gold-deep); margin-top: 0; }
+  .hero p { margin: 5px auto 0; max-width: 7.2in; font-size: 12px; line-height: 1.4; color: var(--muted); }
+  .hero p b { color: var(--ink); }
+
+  /* ── Four cards ───────────────────────────────────────────── */
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.11in; }
+  .card { border: 1.5px solid var(--line); border-radius: 12px; padding: 9px 10px 8px; text-align: center; }
+  .dot { width: 32px; height: 32px; border-radius: 50%; margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; }
+  .card h2 { font-size: 11.5px; font-weight: 800; line-height: 1.2; letter-spacing: 0.01em; text-transform: uppercase; }
+  .card .rule { width: 26px; height: 3px; border-radius: 2px; margin: 5px auto; }
+  .card p { font-size: 10px; line-height: 1.35; color: var(--muted); }
+  .card p b { color: var(--ink); }
+
+  /* ── Fact strip ───────────────────────────────────────────── */
+  .strip { border: 2px solid var(--gold); border-radius: 12px; display: grid; grid-template-columns: repeat(6, 1fr); padding: 7px 4px; }
+  .fact { padding: 0 8px; border-right: 1px solid var(--line); }
+  .fact:last-child { border-right: 0; }
+  .fact .t { display: flex; gap: 5px; align-items: flex-start; font-size: 9.5px; font-weight: 800; text-transform: uppercase; line-height: 1.25; }
+  .fact .d { margin-top: 3px; font-size: 9px; line-height: 1.35; color: var(--muted); }
+
+  /* ── Honesty band ─────────────────────────────────────────── */
+  .honest { background: #0f1512; color: #fff; border-radius: 12px; padding: 8px 16px; display: grid;
+            grid-template-columns: 2.55in 1fr; gap: 14px; align-items: center; }
+  .honest h3 { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 22px; line-height: 1.05; }
+  .honest h3 span { color: var(--gold); }
+  .honest p { font-size: 10px; line-height: 1.4; color: rgba(255,255,255,.78); }
+  .honest p b { color: #fff; }
+
+  /* ── Bottom grid ──────────────────────────────────────────── */
+  .grid { display: grid; grid-template-columns: 1.8in 1fr 1.95in; grid-template-rows: auto 1fr; gap: 0.11in; flex: 1; }
+  .perfect { grid-row: 1 / 3; background: var(--ink); color: #fff; border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; }
+  .perfect h3 { color: var(--gold); font-size: 15px; font-weight: 800; }
+  .perfect .grp { margin-top: 7px; font-size: 8.5px; font-weight: 700; letter-spacing: 0.22em; color: rgba(255,255,255,.55); }
+  .perfect ul { list-style: none; margin-top: 3px; }
+  .perfect li { display: flex; gap: 7px; align-items: center; font-size: 11px; padding: 1.5px 0; }
+  .perfect .rule { margin-top: auto; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.14); font-size: 10px; line-height: 1.4; color: rgba(255,255,255,.72); }
+  .perfect .rule b { color: var(--gold); }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; border-radius: 12px; overflow: hidden; border: 1.5px solid var(--line); }
+  .compare > div { padding: 8px 11px; }
+  .compare .without { background: #fdf1f1; }
+  .compare .with { background: #eff8f2; }
+  .compare h4 { font-size: 10.5px; font-weight: 800; text-align: center; margin-bottom: 5px; }
+  .compare li { list-style: none; display: flex; gap: 6px; align-items: flex-start; font-size: 10px; font-weight: 600; line-height: 1.25; padding: 2px 0; }
+
+  .plan { background: var(--ink); color: #fff; border-radius: 12px; padding: 9px 10px; text-align: center; }
+  .plan .k { color: var(--gold); font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; }
+  .plan .price { font-size: 44px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; margin-top: 3px; }
+  .plan .price small { font-size: 15px; color: var(--gold); font-weight: 800; letter-spacing: 0; }
+  .plan .sub { font-size: 9.5px; font-weight: 700; color: rgba(255,255,255,.8); margin-top: 4px; line-height: 1.35; }
+  .plan ul { list-style: none; margin: 7px auto 0; display: inline-block; text-align: left; }
+  .plan li { display: flex; gap: 6px; align-items: center; font-size: 11px; font-weight: 800; padding: 1.5px 0; }
+
+  .how { border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 12px 7px; }
+  .how h4 { text-align: center; font-size: 12px; font-weight: 800; letter-spacing: 0.03em; }
+  .how h4::after { content: ""; display: block; width: 26px; height: 3px; border-radius: 2px; background: var(--gold); margin: 5px auto 0; }
+  .lane { margin-top: 5px; }
+  .lane .lbl { font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; }
+  .lane .lbl span { font-weight: 500; letter-spacing: 0; color: var(--muted); margin-left: 4px; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+  .step { display: flex; gap: 6px; font-size: 9.5px; line-height: 1.3; color: var(--ink); }
+  .num { width: 17px; height: 17px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .how .either { margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--line); text-align: center; font-size: 10px; line-height: 1.4; color: var(--muted); }
+  .how .either b { color: var(--gold-deep); }
+
+  .cta { background: linear-gradient(160deg, #f6c64a 0%, var(--gold) 55%, #e2a116 100%); border-radius: 12px; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; }
+  .cta h4 { font-size: 13.5px; font-weight: 900; line-height: 1.15; }
+  .cta .pill { background: var(--ink); color: #fff; border-radius: 999px; font-size: 9px; font-weight: 800; padding: 4px 8px; margin: 6px auto 0; letter-spacing: 0.02em; }
+  .cta .qrwrap { background: #fff; border-radius: 9px; padding: 6px 6px 4px; margin: 6px auto 0; }
+  .cta .qrwrap .url { margin-top: 3px; font-size: 9px; font-weight: 800; }
+  .cta .note { margin-top: auto; padding-top: 5px; font-size: 9px; font-weight: 700; line-height: 1.3; }
+
+  /* ── Footer band ──────────────────────────────────────────── */
+  footer { background: var(--ink); color: #fff; padding: 0.14in 0.45in 0.17in; display: flex; justify-content: space-between; align-items: flex-end; }
+  footer .tag { font-size: 15px; font-weight: 800; }
+  footer .ticks { display: flex; gap: 14px; margin-top: 6px; font-size: 10.5px; color: rgba(255,255,255,.82); }
+  footer .ticks span { display: inline-flex; gap: 5px; align-items: center; }
+  footer .contact { text-align: right; }
+  footer .contact .k { color: var(--gold); font-size: 10.5px; font-weight: 800; letter-spacing: 0.03em; }
+  footer .contact .v { margin-top: 5px; display: flex; gap: 16px; font-size: 14px; font-weight: 800; }
+  footer .contact .v span { display: inline-flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Bill<span>Tap</span></div>
+    <div class="logo-sub">— FOR RESTAURANTS —</div>
+  </div>
+  <div class="header-right">
+    <div class="l1">Sit-down tables or pay-first counters.</div>
+    <div class="l2">Every guest asked. Every review counted.</div>
+    <div class="l3"><span class="b-chip">B</span>billtap.app</div>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Your unhappy guests leave without a word.<em>Now you’ll hear them first.</em></h1>
+    <p>BillTap asks every guest how it was — at the table or at the counter. A low rating <b>texts you while you
+      can still fix it</b>, and every guest gets a one-tap route to your Google listing.</p>
+  </section>
+
+  <section class="cards">
+    <div class="card">
+      <div class="dot" style="background:var(--red)">{{icon:Bell:19:#fff}}</div>
+      <h2 style="color:var(--red)">Hear it before they walk out</h2>
+      <div class="rule" style="background:var(--red)"></div>
+      <p>A guest rates you low? A <b>text and email</b> hit your phone right away — from the table or the counter — while someone can still walk over.</p>
+    </div>
+    <div class="card">
+      <div class="dot" style="background:var(--gold)">{{icon:Star:19:#fff}}</div>
+      <h2 style="color:var(--gold-deep)">More Google reviews</h2>
+      <div class="rule" style="background:var(--gold)"></div>
+      <p><b>Every guest</b> gets a one-tap link to your Google listing — happy or not. No staff asking, nobody filtered out.</p>
+    </div>
+    <div class="card">
+      <div class="dot" style="background:var(--green)">{{icon:Users:19:#fff}}</div>
+      <h2 style="color:var(--green)">Build a customer list every night</h2>
+      <div class="rule" style="background:var(--green)"></div>
+      <p>Guests opt in after they rate. Names and emails become <b>your list</b> — even at a counter, where you never got a name.</p>
+    </div>
+    <div class="card">
+      <div class="dot" style="background:var(--navy)">{{icon:Coffee:19:#fff}}</div>
+      <h2 style="color:var(--navy)">Works at the counter, too</h2>
+      <div class="rule" style="background:var(--navy)"></div>
+      <p>Guests pay first? The code goes on the <b>cup, bag, number card or receipt</b> and opens straight on five stars.</p>
+    </div>
+  </section>
+
+  <section class="strip">
+    <div class="fact"><div class="t">{{icon:Smartphone:12:#c98a0c}}No app to download</div><div class="d">Just scan and go. No account.</div></div>
+    <div class="fact"><div class="t">{{icon:Split:12:#c98a0c}}Split &amp; pay — or just rate</div><div class="d">Tables split the check. Counters go straight to the stars.</div></div>
+    <div class="fact"><div class="t">{{icon:ThumbsUp:12:#c98a0c}}One-tap Google review</div><div class="d">Every guest gets the link, whatever they rate.</div></div>
+    <div class="fact"><div class="t">{{icon:Mail:12:#c98a0c}}Your list, your data</div><div class="d">Guest emails belong to you, not us.</div></div>
+    <div class="fact"><div class="t">{{icon:Plug:12:#c98a0c}}Works alongside your POS</div><div class="d">No integration. No new hardware.</div></div>
+    <div class="fact"><div class="t">{{icon:Clock:12:#c98a0c}}Set up in minutes</div><div class="d">We do the heavy lifting.</div></div>
+  </section>
+
+  <section class="honest">
+    <h3>We never hide the <span>review button.</span></h3>
+    <p>Some review tools send happy guests to Google and quietly route unhappy ones to a private form. That’s
+      <b>review gating</b> — Google’s review policy prohibits it, and reviews collected that way can be removed.
+      Every BillTap guest gets the same button. <b>The unhappy ones just reach you first.</b></p>
+  </section>
+
+  <section class="grid">
+    <div class="perfect">
+      <h3>PERFECT FOR</h3>
+      <div class="grp">SIT-DOWN</div>
+      <ul>
+        <li>{{icon:Beef:14:#f0b429}}Steakhouses</li>
+        <li>{{icon:Utensils:14:#f0b429}}Mexican Restaurants</li>
+        <li>{{icon:Fish:14:#f0b429}}Sushi</li>
+        <li>{{icon:Flame:14:#f0b429}}BBQ</li>
+        <li>{{icon:Trophy:14:#f0b429}}Sports Bars</li>
+        <li>{{icon:Users:14:#f0b429}}Family Restaurants</li>
+      </ul>
+      <div class="grp">PAY-FIRST COUNTERS</div>
+      <ul>
+        <li>{{icon:Coffee:14:#f0b429}}Coffee Shops</li>
+        <li>{{icon:Sandwich:14:#f0b429}}Fast Casual</li>
+        <li>{{icon:Croissant:14:#f0b429}}Bakeries &amp; Delis</li>
+        <li>{{icon:ChefHat:14:#f0b429}}Taquerias</li>
+        <li>{{icon:Pizza:14:#f0b429}}Pizza by the Slice</li>
+        <li>{{icon:Truck:14:#f0b429}}Food Trucks</li>
+        <li>{{icon:Beer:14:#f0b429}}Breweries &amp; Taprooms</li>
+        <li>{{icon:CupSoda:14:#f0b429}}Smoothie &amp; Juice Bars</li>
+        <li>{{icon:IceCreamCone:14:#f0b429}}Ice Cream &amp; Dessert</li>
+      </ul>
+      <div class="rule"><b>One rule at a counter:</b> never put the code at the register. Ask after the last bite, not before the first.</div>
+    </div>
+
+    <div class="compare">
+      <div class="without">
+        <h4 style="color:var(--red)">WITHOUT BILLTAP</h4>
+        <ul>
+          <li>{{icon:X:12:#e5484d}}Missed reviews</li>
+          <li>{{icon:X:12:#e5484d}}Lost customer emails</li>
+          <li>{{icon:X:12:#e5484d}}Surprise 1-star reviews</li>
+          <li>{{icon:X:12:#e5484d}}Nobody asks at the counter</li>
+          <li>{{icon:X:12:#e5484d}}Harder to grow</li>
+        </ul>
+      </div>
+      <div class="with">
+        <h4 style="color:var(--green)">WITH BILLTAP</h4>
+        <ul>
+          <li>{{icon:CircleCheck:12:#2f9e62}}More Google reviews</li>
+          <li>{{icon:CircleCheck:12:#2f9e62}}Your own customer list</li>
+          <li>{{icon:CircleCheck:12:#2f9e62}}Instant bad-experience alerts</li>
+          <li>{{icon:CircleCheck:12:#2f9e62}}Every guest gets asked</li>
+          <li>{{icon:CircleCheck:12:#2f9e62}}No review button ever hidden</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="plan">
+      <div class="k">ONE SIMPLE PLAN</div>
+      <div class="price">$149<small>/MONTH</small></div>
+      <div class="sub">No contract. No setup fee.<br>We take no cut of your sales.</div>
+      <ul>
+        <li>{{icon:CircleCheck:13:#f0b429}}14-day free trial</li>
+        <li>{{icon:CircleCheck:13:#f0b429}}Cancel anytime</li>
+      </ul>
+    </div>
+
+    <div class="how">
+      <h4>HOW IT WORKS</h4>
+      <div class="lane">
+        <div class="lbl" style="color:var(--green)">AT A TABLE<span>sit-down</span></div>
+        <div class="steps">
+          <div class="step"><div class="num" style="background:var(--green)">1</div>Guests scan the QR on the table. No app.</div>
+          <div class="step"><div class="num" style="background:var(--green)">2</div>They split the check and pay their share.</div>
+          <div class="step"><div class="num" style="background:var(--green)">3</div>They tap a star rating on the way out.</div>
+        </div>
+      </div>
+      <div class="lane">
+        <div class="lbl" style="color:var(--gold-deep)">AT A COUNTER<span>pay-first</span></div>
+        <div class="steps">
+          <div class="step"><div class="num" style="background:var(--gold)">1</div>Guests order and pay at your register, same as today.</div>
+          <div class="step"><div class="num" style="background:var(--gold)">2</div>After eating, they scan the code on the cup, bag or card.</div>
+          <div class="step"><div class="num" style="background:var(--gold)">3</div>Five stars come up. One tap and done.</div>
+        </div>
+      </div>
+      <div class="either"><b>Either way:</b> every guest gets your Google review link — and a low rating reaches you instantly.</div>
+    </div>
+
+    <div class="cta">
+      <h4>SEE IT WITH YOUR NAME ON IT</h4>
+      <div class="pill">FREE DEMO PAGE — OR A 14-DAY TRIAL</div>
+      <div class="qrwrap">
+        {{qr}}
+        <div class="url">billtap.app/restaurants</div>
+      </div>
+      <div class="note">Scan to get a live page for your restaurant, free for a week.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div>
+    <div class="tag">Every guest asked. Every unhappy one heard first.</div>
+    <div class="ticks">
+      <span>{{icon:CircleCheck:12:#f0b429}}No new POS</span>
+      <span>{{icon:CircleCheck:12:#f0b429}}No hardware</span>
+      <span>{{icon:CircleCheck:12:#f0b429}}Tables &amp; counters</span>
+    </div>
+  </div>
+  <div class="contact">
+    <div class="k">QUESTIONS? LET’S TALK.</div>
+    <div class="v">
+      <span>{{icon:Phone:14:#f0b429}}(702) 844-0938</span>
+      <span>{{icon:Mail:14:#f0b429}}alerts@billtap.app</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
