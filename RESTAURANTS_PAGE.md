@@ -15,7 +15,10 @@ gets the reviews and the guest list.
    the question
 6. Either way the email lands in `GuestContact`
 7. Operator watches it all at `/restaurant-dashboard`
-8. First of the month, `monthlyRestaurantReport` aggregates and Cloudflare mails it
+8. First of the month, `monthlyRestaurantReport` aggregates and Cloudflare mails it.
+   The email closes with a "forward this to an owner" line linking
+   `/restaurants?utm_campaign=owner_referral`, which files the lead with a
+   `+owner_referral` source
 
 Sessions are stamped with `restaurant_id` **server-side** in `createSession`,
 derived from the authenticated host's own `Restaurant` row. It is never accepted
