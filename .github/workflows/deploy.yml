@@ -67,14 +67,21 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
+      # The account comes from `account_id` in wrangler.jsonc, not a secret:
+      # CLOUDFLARE_ACCOUNT_ID would override it, and a stale value there is
+      # indistinguishable in the log from a bad token (both are masked ***).
+      #
       # "Invalid access token [code: 9109]" or "Authentication error [code:
-      # 10000]" here means the CLOUDFLARE_API_TOKEN secret has expired or been
-      # revoked — the build above is fine. Create a new token in Cloudflare
-      # (My Profile → API Tokens → "Edit Cloudflare Workers" template, this
-      # account) and paste it into Settings → Environments → production →
-      # CLOUDFLARE_API_TOKEN. Nothing in the repo needs to change.
+      # 10000]" here now means the CLOUDFLARE_API_TOKEN secret is wrong — the
+      # build above is fine. Check a token locally with
+      #   curl https://api.cloudflare.com/client/v4/accounts/<account_id>/tokens/verify \
+      #     -H "Authorization: Bearer <token>"
+      # then paste it into Settings → Environments → production →
+      # CLOUDFLARE_API_TOKEN (the environment secret overrides a repository one).
+      #
+      # --env="" targets the top-level environment explicitly, the same as
+      # `npm run deploy`, instead of leaving wrangler to warn and guess.
       - name: Deploy
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
