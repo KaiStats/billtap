@@ -24,9 +24,9 @@ const PILLARS = [
     // that withheld the Google link from unhappy guests. It no longer does, and
     // the honest version of this line is the better one anyway: an operator can
     // print it, say it out loud, and put it in a marketplace application.
-    kicker: "While they're still at the table",
+    kicker: "While they're still there",
     title: "Hear it before they walk out",
-    desc: "Real-time alert the moment a guest rates you low — while a manager can still walk over and fix it in person.",
+    desc: "A text the moment a guest rates you low — at a table or at the counter — while someone can still walk over and fix it in person.",
   },
   {
     icon: Star,
@@ -35,7 +35,7 @@ const PILLARS = [
     alt: "A guest's hand tapping a star rating on their phone over a table set with dessert and wine.",
     kicker: "One tap, no asking",
     title: "Generate more Google reviews",
-    desc: "Every guest gets a one-tap route to your listing the second they finish paying. No staff asking.",
+    desc: "Every guest gets a one-tap route to your listing the moment they finish — happy or not. No staff asking.",
   },
   {
     icon: Mail,
@@ -90,7 +90,23 @@ const PERFECT_FOR = [
 ];
 
 const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
-const WITH = ["More 5-star reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
+const WITH = ["More Google reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
+
+/**
+ * The rows of the sample monthly report, in the order and wording
+ * worker/routes/monthly-report.js sends them. Pairs rather than `{ n, l }`
+ * stat objects: these are an illustration of an email, not claims about
+ * BillTap's performance, and the no-invented-metrics guard in
+ * src/csp.test.mjs is aimed at the stat blocks.
+ */
+const REPORT_SAMPLE = [
+  ["Average rating", "4.6 / 5"],
+  ["Ratings collected", "212"],
+  ["Sent to Google", "64"],
+  ["Low ratings you heard first", "3"],
+  ["New guest emails", "88"],
+  ["Total list size", "540"],
+];
 
 /**
  * The questions owners actually ask — written once, rendered twice.
@@ -136,12 +152,12 @@ const FAQ = [
     a: "Yes, and it's the simpler half of what we do. There's no check to split, so the code doesn't go on a table tent — it goes where the meal ends: the order-number card, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. One scan, five stars, done. Put it anywhere except the register: ask at the register and you're asking about food nobody has eaten yet. And the alert matters more in your room than in a dining room — you have no server walking back to ask how everything is, so an unhappy guest usually leaves without a word. This is the thing that tells you right away — usually before they've left.",
   },
   {
-    q: "Where do the 5-star reviews actually go?",
-    a: "Straight to your Google Business Profile — the same place customers already look you up. A happy guest gets a one-tap link the moment they finish paying.",
+    q: "Where do the reviews actually go?",
+    a: "Straight to your Google Business Profile — the same place customers already look you up. Every guest gets a one-tap link the moment they finish — not just the happy ones.",
   },
   {
     q: "What happens if a guest leaves a bad rating?",
-    a: "Every guest gets the same Google link — nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still at the table, so a manager can walk over and make it right in person.",
+    a: "Every guest gets the same Google link — nothing is gated or hidden by rating. A low rating instead triggers a real-time alert to you while the guest is still there, so a manager can walk over and make it right in person.",
   },
   {
     q: "Can I cancel anytime?",
@@ -275,14 +291,32 @@ export default function Restaurants() {
   });
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  /**
+   * What the owner is asking for: the trial, or a demo page with their name on
+   * it. Same form, same endpoint — the difference is the source the lead is
+   * filed under, so whoever calls back knows whether to switch on a trial or
+   * build a page at /new first.
+   */
+  const [intent, setIntent] = useState("trial");
+  // Set once from the URL: the monthly report's "forward this to an owner"
+  // link carries utm_campaign=owner_referral (worker/routes/monthly-report.js).
+  const [referral, setReferral] = useState(false);
 
   useEffect(() => {
     if (typeof window.fbq === "function") window.fbq("trackCustom", "RestaurantsPageView");
+    try {
+      setReferral(new URLSearchParams(window.location.search).get("utm_campaign") === "owner_referral");
+    } catch { /* no URL to read — not a referral */ }
   }, []);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const scrollToForm = () =>
     formRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+  const chooseIntent = (next) => {
+    setIntent(next);
+    if (status === "error") setStatus(null);
+    scrollToForm();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -303,7 +337,8 @@ export default function Restaurants() {
       phone: form.phone.trim(),
       locations: form.locations,
       company_website: form.company_website,
-      source: "restaurants_page",
+      source: (intent === "demo" ? "restaurants_page_demo" : "restaurants_page")
+        + (referral ? "+owner_referral" : ""),
     };
 
     // The alert is now the whole of the save.
@@ -327,7 +362,7 @@ export default function Restaurants() {
     }
 
     if (typeof window.fbq === "function") window.fbq("trackCustom", "RestaurantLead");
-    if (typeof window.gtag === "function") window.gtag("event", "generate_lead", { value: 149, currency: "USD" });
+    if (typeof window.gtag === "function") window.gtag("event", "generate_lead", { value: 149, currency: "USD", lead_type: intent });
     setStatus("done");
   };
 
@@ -335,8 +370,8 @@ export default function Restaurants() {
     <div className="min-h-screen font-body" style={{ background: INK, color: "#f5f5f4" }}>
       <Seo
         path="/restaurants"
-        title="More Google Reviews for Your Restaurant | BillTap"
-        description="Guests split the check from a QR code on the table, then rate you. Every guest gets a one-tap route to your Google listing, and a low rating alerts you while they're still there. 14-day free trial, $149/month."
+        title="Hear Unhappy Guests First, Get More Google Reviews | BillTap"
+        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. 14-day free trial, $149/month."
         image="https://billtap.app/img/og-restaurants.png"
         schema={[
           {
@@ -590,22 +625,33 @@ export default function Restaurants() {
               <div className="inline-flex items-center gap-2 rst-eyebrow px-3 py-1.5 rounded-full mb-8"
                 style={{ background: "rgba(240,180,41,.1)", color: GOLD, border: "1px solid rgba(240,180,41,.3)" }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD }} />
-                Guests split the bill free — you get the reviews
+                At the table or at the counter
               </div>
             </Reveal>
 
             <Reveal delay={0.06}>
-              {/* Sans for the claim, serif italic for the promise — the mix is the signature. */}
-              <h1 className="leading-[0.94]" style={{ fontSize: "clamp(2.5rem, 6.6vw, 4.9rem)" }}>
+              {/*
+                Sans for the problem, serif italic for the promise — the mix is
+                the signature.
+
+                Was "Turn every split check into more 5-star reviews." Two things
+                wrong with it. It spoke only to table service, which RESTAURANTS_PAGE.md
+                calls a minority of the rooms this is for — an owner behind a
+                counter read "split check" and left. And "more 5-star reviews" is
+                the line every review tool leads with, which makes $149 a price
+                comparison. The problem this product solves that nothing else in
+                the room does is the unhappy guest who leaves without a word.
+              */}
+              <h1 className="leading-[0.94]" style={{ fontSize: "clamp(2.4rem, 6.2vw, 4.6rem)" }}>
                 <span className="font-body font-semibold tracking-[-0.04em] block">
-                  Turn every split check into
+                  Your unhappy guests leave without a word.
                 </span>
-                <span className="font-display italic block mt-1" style={{
+                <span className="font-display italic block mt-2" style={{
                   fontSize: "1.12em",
                   background: "linear-gradient(100deg, #f0b429 0%, #ffd97a 45%, #e0952a 100%)",
                   WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
                 }}>
-                  more 5-star reviews.
+                  Now you&apos;ll hear them first.
                 </span>
               </h1>
             </Reveal>
@@ -613,23 +659,29 @@ export default function Restaurants() {
             <Reveal delay={0.12}>
               <p className="mt-8 text-lg sm:text-xl leading-relaxed max-w-xl font-light"
                 style={{ color: "rgba(245,245,244,.74)" }}>
-                The easiest way to increase Google reviews, build your customer list, and
-                catch unhappy guests <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>before they leave</em>.
+                BillTap asks every guest how it was. A low rating texts you{" "}
+                <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>while you can still fix it</em>
+                {" "}— and every guest gets a one-tap route to your Google listing.
               </p>
             </Reveal>
 
             <Reveal delay={0.18}>
               <div className="mt-10 flex flex-col sm:flex-row gap-3 sm:items-center">
-                <button onClick={scrollToForm}
+                <button onClick={() => chooseIntent("trial")}
                   className="group inline-flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-full transition-transform hover:scale-[1.02]"
                   style={{ background: GOLD, color: INK, boxShadow: "0 18px 50px -18px rgba(240,180,41,.8)" }}>
                   Start free trial
                   <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                 </button>
-                <span className="text-sm" style={{ color: "rgba(245,245,244,.45)" }}>
-                  14-day free trial. Cancel anytime.
-                </span>
+                <button onClick={() => chooseIntent("demo")}
+                  className="inline-flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-full transition-colors"
+                  style={{ color: "#f5f5f4", border: "1px solid rgba(245,245,244,.28)", background: "rgba(255,255,255,.04)" }}>
+                  See a free demo with your name on it
+                </button>
               </div>
+              <p className="mt-4 text-sm" style={{ color: "rgba(245,245,244,.45)" }}>
+                14-day free trial, no card. Or a live demo page for your restaurant, free for a week.
+              </p>
             </Reveal>
           </div>
         </div>
@@ -788,6 +840,125 @@ export default function Restaurants() {
                 </p>
               </div>
             </PhoneFrame>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── We never hide the review button ──────────────────
+          The one true story this company can tell that its competitors cannot.
+          Routing happy guests to Google and unhappy ones to a private form is
+          review gating. BillTap used to do it and removed it on purpose — see
+          "The threshold does not hide the link" in RESTAURANTS_PAGE.md. Every
+          claim here is about the practice and the published rules, not about a
+          named competitor, for the same reason the pricing block below names no
+          competitor's price. */}
+      <section id="honest-reviews" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Why we ask every guest</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            We never hide the review button.
+          </h2>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+            A common review-tool trick is to send happy guests to Google and quietly route
+            unhappy ones to a private form. It&apos;s called review gating. It looks like a
+            shortcut to a better rating, and it&apos;s the fastest way to lose the reviews
+            you paid for.
+          </p>
+        </Reveal>
+
+        <div className="mt-10 grid md:grid-cols-2 gap-4">
+          <Reveal delay={0.05}>
+            <div className="h-full p-7 rounded-2xl" style={{ background: "rgba(229,72,77,.06)", border: "1px solid rgba(229,72,77,.22)" }}>
+              <h3 className="rst-eyebrow" style={{ color: "#e5484d" }}>Review gating</h3>
+              <ul className="mt-5 space-y-3">
+                {[
+                  "Happy guest → sent to Google",
+                  "Unhappy guest → sent to a private form, never shown the link",
+                  "Google's review policy prohibits selectively asking happy customers — reviews collected that way can be removed",
+                  "The FTC's rule on consumer reviews targets suppressing negative ones",
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.72)" }}>
+                    <X className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#e5484d" }} aria-hidden="true" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div className="h-full p-7 rounded-2xl" style={{ background: "rgba(48,164,108,.07)", border: "1px solid rgba(48,164,108,.25)" }}>
+              <h3 className="rst-eyebrow" style={{ color: "#30a46c" }}>BillTap</h3>
+              <ul className="mt-5 space-y-3">
+                {[
+                  "Every guest gets the same one-tap Google button, whatever they rated",
+                  "An unhappy guest is asked what went wrong — and you get a text right then",
+                  "A manager can walk over while the guest is still there",
+                  "More guests asked means more reviews, and review count is what ranks you locally",
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+                    <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#30a46c" }} aria-hidden="true" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+        </div>
+
+        <Reveal delay={0.12}>
+          <p className="mt-8 font-display text-[1.5rem] leading-snug max-w-2xl" style={{ color: "#f5f5f4" }}>
+            The unhappy guests still get the button. They just reach you first.
+          </p>
+        </Reveal>
+      </section>
+
+      {/* ── The monthly report ───────────────────────────────
+          The fourth pillar, shown instead of described. This mirrors the email
+          worker/routes/monthly-report.js actually sends — same rows, same
+          labels, same closing line — so a wording change there that made this
+          wrong is a visible diff. The numbers are a sample restaurant's, labelled
+          as such, for the reason given above #product: there is no customer
+          account to show yet, and this page does not invent one. */}
+      <section id="report" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <Reveal>
+            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>First of every month</p>
+            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+              Your month, in one email.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+              No dashboard to log into. On the first of the month you get the numbers that
+              matter — your rating, how many guests you asked, how many went on to Google,
+              how many unhappy guests you heard from in time, and how big your guest list
+              has grown. Walk into your next partner meeting already knowing.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <figure>
+              <div className="rounded-2xl p-5 sm:p-6" style={{ background: "#fff", color: "#111", boxShadow: "0 40px 90px -50px rgba(0,0,0,.95)" }}>
+                <div className="rounded-xl p-5 mb-4" style={{ background: "#111827" }}>
+                  <p className="text-[11px] uppercase tracking-[.12em]" style={{ color: GOLD }}>September</p>
+                  <p className="mt-1 text-xl font-bold" style={{ color: "#fff" }}>{SAMPLE_RESTAURANT}</p>
+                </div>
+                <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+                  <tbody>
+                    {REPORT_SAMPLE.map(([k, v]) => (
+                      <tr key={k}>
+                        <td className="py-2.5 pr-3" style={{ color: "#666", borderBottom: "1px solid #eee" }}>{k}</td>
+                        <td className="py-2.5 text-right font-bold" style={{ borderBottom: "1px solid #eee" }}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-4 text-xs leading-relaxed" style={{ color: "#888" }}>
+                  3 unhappy guests reached you the moment they rated, while there was still time to make it right.
+                </p>
+              </div>
+              <figcaption className="mt-3 text-xs text-center font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+                Sample report for a sample restaurant — illustrative numbers, not a customer&apos;s results.
+              </figcaption>
+            </figure>
           </Reveal>
         </div>
       </section>
@@ -967,6 +1138,12 @@ export default function Restaurants() {
                 Comparing us against Podium?
                 <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
               </Link>
+              <button type="button" onClick={() => chooseIntent("demo")}
+                className="mt-3 flex items-center gap-2 text-sm font-medium"
+                style={{ color: "rgba(245,245,244,.82)" }}>
+                Not ready for a trial? Get a free demo page with your name on it
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
 
               <hr className="rst-rule my-8" />
               <p className="rst-eyebrow" style={{ color: GOLD }}>Questions? Let's talk.</p>
@@ -996,17 +1173,47 @@ export default function Restaurants() {
                     style={{ background: "rgba(240,180,41,.14)", border: "1px solid rgba(240,180,41,.35)" }}>
                     <Check className="w-7 h-7" style={{ color: GOLD }} aria-hidden="true" />
                   </div>
-                  <h3 className="font-display text-3xl">You're in.</h3>
+                  <h3 className="font-display text-3xl">{intent === "demo" ? "Your demo is on its way." : "You're in."}</h3>
                   <p className="mt-3 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
-                    We'll call within one business day to get your table tents printed and
-                    your trial switched on. Sooner is fine too — (702) 844-0938.
+                    {intent === "demo"
+                      ? "We'll build a live page with your restaurant's name on it and send you the link within one business day. Sooner is fine too — (702) 844-0938."
+                      : "We'll call within one business day to get your table tents printed and your trial switched on. Sooner is fine too — (702) 844-0938."}
                   </p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} noValidate>
-                  <h3 className="font-display text-3xl leading-tight">Start your free trial</h3>
+                  {/*
+                    Two offers, one form.
+
+                    The trial asks an owner who has never heard of us to commit
+                    to fourteen days of table tents. The demo asks for nothing:
+                    we build a live page with their name on it (the /new tool,
+                    on the 168-hour clock in wrangler.jsonc), and they scan it
+                    on their own phone. For an owner who does not know us yet,
+                    that is the better first step — so it is offered beside the
+                    trial rather than hidden behind a sales call.
+                  */}
+                  <div role="group" aria-label="What would you like?"
+                    className="mb-7 grid grid-cols-2 gap-1 p-1 rounded-full"
+                    style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)" }}>
+                    {[["trial", "Free trial"], ["demo", "Free demo page"]].map(([value, label]) => (
+                      <button key={value} type="button" onClick={() => setIntent(value)}
+                        aria-pressed={intent === value}
+                        className="py-2.5 rounded-full text-sm font-semibold transition-colors"
+                        style={intent === value
+                          ? { background: GOLD, color: INK }
+                          : { background: "transparent", color: "rgba(245,245,244,.7)" }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <h3 className="font-display text-3xl leading-tight">
+                    {intent === "demo" ? "See it with your name on it" : "Start your free trial"}
+                  </h3>
                   <p className="mt-2 text-sm font-light" style={{ color: "rgba(245,245,244,.54)" }}>
-                    14 days free. No card. Takes about twenty seconds.
+                    {intent === "demo"
+                      ? "We build a live BillTap page for your restaurant. Scan it, tap a rating, and see exactly what your guests would. Free for 7 days, no card."
+                      : "14 days free. No card. Takes about twenty seconds."}
                   </p>
 
                   <div className="mt-7 space-y-4">
@@ -1065,11 +1272,11 @@ export default function Restaurants() {
                     style={{ background: GOLD, color: INK, boxShadow: "0 18px 50px -22px rgba(240,180,41,.85)" }}>
                     {status === "loading"
                       ? (<><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />Sending</>)
-                      : (<>Start my free trial<ArrowRight className="w-4 h-4" aria-hidden="true" /></>)}
+                      : (<>{intent === "demo" ? "Send me my demo" : "Start my free trial"}<ArrowRight className="w-4 h-4" aria-hidden="true" /></>)}
                   </button>
 
                   <p className="mt-4 text-xs text-center leading-relaxed font-light" style={{ color: "rgba(245,245,244,.4)" }}>
-                    We'll only use this to talk to you about your trial. No lists, no resale.
+                    We'll only use this to talk to you about {intent === "demo" ? "your demo" : "your trial"}. No lists, no resale.
                   </p>
                 </form>
               )}
@@ -1194,7 +1401,7 @@ export default function Restaurants() {
       <footer style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-12">
           <p className="font-display text-2xl" style={{ color: GOLD }}>
-            More Reviews. More Customers. More Revenue.
+            Every guest asked. Every unhappy one heard first.
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <p className="text-sm font-light" style={{ color: "rgba(245,245,244,.4)" }}>© {new Date().getFullYear()} BillTap</p>

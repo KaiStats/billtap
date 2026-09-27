@@ -30,6 +30,35 @@ const row = (k, v) => `
     <td style="padding:11px 0;font-weight:700;text-align:right;border-bottom:1px solid #eee">${esc(v)}</td>
   </tr>`;
 
+/**
+ * The one line in this email that asks for anything.
+ *
+ * Owners talk to other owners, and this is the email they already open. The
+ * link is tagged so /restaurants can file the lead as a referral rather than
+ * as a cold visit. It promises nothing beyond the ordinary trial, because no
+ * referral reward exists — offering one here would be a claim the product
+ * cannot honour.
+ */
+export const REFERRAL_URL =
+  'https://billtap.app/restaurants?utm_source=monthly_report&utm_medium=email&utm_campaign=owner_referral';
+const REFERRAL_TEXT = 'Know an owner who would want this? Forward this email — they can try BillTap free for 14 days';
+
+/**
+ * What the footer says about low ratings.
+ *
+ * It used to read "reached you privately instead of Google", and the row above
+ * it was "Caught before going public". Both described review gating — the
+ * practice this product removed on purpose (RESTAURANTS_PAGE.md, "The threshold
+ * does not hide the link"). Every guest is shown the Google button, the unhappy
+ * ones included. What a low rating buys the operator is hearing about it first,
+ * while the guest is still there, and that is what this says.
+ */
+export function lowRatingLine(caught) {
+  const n = Number(caught);
+  if (!(n > 0)) return 'No low ratings this month.';
+  return `${n} unhappy guest${n === 1 ? '' : 's'} reached you the moment they rated, while there was still time to make it right.`;
+}
+
 export async function onRequestPost({ request, env }) {
   const expected = env.REPORT_WEBHOOK_SECRET;
   if (!expected) {
@@ -107,7 +136,7 @@ export async function onRequestPost({ request, env }) {
       ['Average rating', r.average != null ? `${r.average} / 5` : 'No ratings yet'],
       ['Ratings collected', r.ratings ?? 0],
       ['Sent to Google', r.routed ?? 0],
-      ['Caught before going public', r.caught ?? 0],
+      ['Low ratings you heard first', r.caught ?? 0],
       ['New guest emails', r.new_contacts ?? 0],
       ['Total list size', r.list_size ?? 0],
     ];
@@ -122,13 +151,21 @@ export async function onRequestPost({ request, env }) {
           ${rows.map(([k, v]) => row(k, v)).join('')}
         </table>
         <p style="margin:22px 0 0;color:#888;font-size:12px;line-height:1.6">
-          ${Number(r.caught) > 0
-            ? `${esc(r.caught)} unhappy guest${Number(r.caught) === 1 ? '' : 's'} reached you privately instead of Google this month.`
-            : 'No low ratings this month.'}
+          ${esc(lowRatingLine(r.caught))}
+        </p>
+        <p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #eee;color:#555;font-size:13px;line-height:1.6">
+          ${esc(REFERRAL_TEXT)} at
+          <a href="${REFERRAL_URL}" style="color:#b7791f">billtap.app/restaurants</a>.
         </p>
       </div>`;
 
-    const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+    const text = [
+      ...rows.map(([k, v]) => `${k}: ${v}`),
+      '',
+      lowRatingLine(r.caught),
+      '',
+      `${REFERRAL_TEXT}: ${REFERRAL_URL}`,
+    ].join('\n');
 
     const result = await sendEmail(env, {
       to: r.to,
