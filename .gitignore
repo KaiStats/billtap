@@ -49,3 +49,4 @@ billtap/
 # actually took effect.
 .claude-flow/
 .omc/
+graphify-out/
