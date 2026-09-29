@@ -89,8 +89,8 @@ const PERFECT_FOR = [
   "Coffee Shops", "Fast Casual", "Bakeries & Delis",
 ];
 
-const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
-const WITH = ["More Google reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
+const WITHOUT = ["Tables stuck waiting on the check", "Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
+const WITH = ["Faster check-out, faster turns", "More Google reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
 
 /**
  * The rows of the sample monthly report, in the order and wording
@@ -152,6 +152,10 @@ const FAQ = [
     a: "Yes, and it's the simpler half of what we do. There's no check to split, so the code doesn't go on a table tent — it goes where the meal ends: the order-number card, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. One scan, five stars, done. Put it anywhere except the register: ask at the register and you're asking about food nobody has eaten yet. And the alert matters more in your room than in a dining room — you have no server walking back to ask how everything is, so an unhappy guest usually leaves without a word. This is the thing that tells you right away — usually before they've left.",
   },
   {
+    q: "Does this actually help us turn tables faster?",
+    a: "At a table-service restaurant, yes — here's how. The slowest stretch of a table is usually the end: guests wait to flag the server, wait for the check, work out who owes what, wait for cards to be run, and wait again to sign. With BillTap they split on their own phones the moment they're ready, so the check doesn't sit on the table and nobody holds the server up doing math. How many minutes that frees depends on your room, so we won't quote you a number we haven't timed — the calculator on this page runs it on yours. It matters most on a busy night with a wait at the door. Counter service already turns on its own, so there it's all about the reviews.",
+  },
+  {
     q: "Where do the reviews actually go?",
     a: "Straight to your Google Business Profile — the same place customers already look you up. Every guest gets a one-tap link the moment they finish — not just the happy ones.",
   },
@@ -168,6 +172,72 @@ const FAQ = [
     a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us — no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
   },
 ];
+
+/**
+ * The table-turn argument, as arithmetic on the owner's own numbers.
+ *
+ * Nothing here is a BillTap measurement — the guard in src/csp.test.mjs
+ * exists because this page once shipped an invented "30 sec" stat. Every
+ * input is the operator's, including the minutes saved, which is labelled as
+ * their estimate. The math only counts turns while there is a wait at the
+ * door: freed minutes at an empty table earn nothing, and the copy says so.
+ */
+function TurnCalculator() {
+  const [v, setV] = useState({ tables: 20, turn: 75, saved: 5, hours: 3, check: 120, nights: 12 });
+  const num = (k) => (e) => {
+    const n = Number(e.target.value);
+    setV((o) => ({ ...o, [k]: Number.isFinite(n) && n >= 0 ? n : 0 }));
+  };
+  const minutes = v.hours * 60;
+  const before = v.turn > 0 ? minutes / v.turn : 0;
+  const after = v.turn - v.saved > 0 ? minutes / (v.turn - v.saved) : before;
+  const extraTurns = Math.max(0, (after - before) * v.tables);
+  const perNight = extraTurns * v.check;
+  const perMonth = perNight * v.nights;
+  const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
+  const fields = [
+    ["tables", "Tables"],
+    ["turn", "Minutes a table takes now"],
+    ["saved", "Minutes saved at check-out (your estimate)"],
+    ["hours", "Busy hours with a wait, per night"],
+    ["check", "Average check per table ($)"],
+    ["nights", "Busy nights a month"],
+  ];
+
+  return (
+    <div className="rounded-2xl p-6 sm:p-8" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(240,180,41,.25)" }}>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {fields.map(([k, label]) => (
+          <label key={k} className="block text-sm font-light" style={{ color: "rgba(245,245,244,.7)" }}>
+            {label}
+            <input type="number" inputMode="decimal" min="0" value={v[k]} onChange={num(k)}
+              className="mt-1.5 w-full rounded-lg px-3 py-2.5 text-base font-semibold"
+              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", color: "#f5f5f4" }} />
+          </label>
+        ))}
+      </div>
+      <div className="mt-6 pt-6 grid grid-cols-3 gap-3 text-center" style={{ borderTop: "1px solid rgba(255,255,255,.1)" }} aria-live="polite">
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{extraTurns.toFixed(1)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>extra tables seated a night</p>
+        </div>
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perNight)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>a busy night</p>
+        </div>
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perMonth)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>a month, vs. $149</p>
+        </div>
+      </div>
+      <p className="mt-5 text-xs leading-relaxed font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+        Your numbers, not ours — we haven&apos;t timed your room. Only the hours with guests
+        waiting count; a minute freed at an empty table earns nothing.
+      </p>
+    </div>
+  );
+}
 
 /**
  * Image that fades up once decoded, and removes itself on error so the
@@ -664,6 +734,8 @@ export default function Restaurants() {
                 BillTap asks every guest how it was. A low rating texts you{" "}
                 <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>while you can still fix it</em>
                 {" "}— and every guest gets a one-tap route to your Google listing.
+                At the table, guests split and settle on their own phones, so the table
+                is free for the next party sooner.
               </p>
             </Reveal>
 
@@ -961,6 +1033,45 @@ export default function Restaurants() {
                 Sample report for a sample restaurant — illustrative numbers, not a customer&apos;s results.
               </figcaption>
             </figure>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── Turn tables faster ──────────────────────────────
+          The revenue argument for table service. Mechanism in words, money in
+          the owner's own arithmetic — see TurnCalculator for why no number
+          on this section is ours. */}
+      <section id="turns" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+          <Reveal>
+            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Turn tables faster</p>
+            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+              The meal is over. The table isn&apos;t.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+              The slowest part of a table is the end. Flag the server. Wait for the check.
+              Work out who had what. Wait for the cards. Wait to sign. Meanwhile your
+              host is quoting a wait to the party at the door.
+            </p>
+            <ul className="mt-6 space-y-3">
+              {[
+                "Guests split on their own phones the moment they're ready — no waiting to be noticed",
+                "No server standing at the table doing math on six cards",
+                "Your servers are back on the floor, not stuck at the terminal",
+                "The table clears sooner, and the next party sits sooner",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#30a46c" }} aria-hidden="true" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-sm font-light" style={{ color: "rgba(245,245,244,.5)" }}>
+              Counter service already turns on its own — there, BillTap is about the reviews.
+            </p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <TurnCalculator />
           </Reveal>
         </div>
       </section>
