@@ -231,7 +231,14 @@ function TurnCalculator() {
           <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>a month, vs. $149</p>
         </div>
       </div>
-      <p className="mt-5 text-xs leading-relaxed font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+      <p className="mt-5 text-center text-sm font-semibold" style={{ color: "#f5f5f4" }}>
+        {perNight > 0
+          ? perMonth >= 149
+            ? `On these numbers, BillTap's $149 is covered by ${Math.max(1, Math.ceil(149 / perNight))} busy night${Math.ceil(149 / perNight) > 1 ? "s" : ""} a month — about ${Math.floor(perMonth / 149)}× what it costs.`
+            : "On these numbers the turns alone don't cover $149 — the reviews and the alerts have to."
+          : "Enter your numbers to see the payback."}
+      </p>
+      <p className="mt-3 text-xs leading-relaxed font-light" style={{ color: "rgba(245,245,244,.45)" }}>
         Your numbers, not ours — we haven&apos;t timed your room. Only the hours with guests
         waiting count; a minute freed at an empty table earns nothing.
       </p>
@@ -1034,6 +1041,53 @@ export default function Restaurants() {
               </figcaption>
             </figure>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ── Openers and strugglers ───────────────────────────
+          The two moments an owner feels Google most: a new place with no
+          reviews, and an established one watching its rating slide. The 50 is
+          a goal an owner sets, not a result BillTap claims. */}
+      <section id="stage" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Wherever you are right now</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            Your Google listing decides who walks in.
+          </h2>
+        </Reveal>
+        <div className="mt-10 grid md:grid-cols-2 gap-4">
+          {[
+            {
+              tone: "#30a46c",
+              kicker: "Just opened?",
+              title: "Get to your first 50 reviews faster.",
+              body: "A new place with a handful of reviews looks like a gamble next to the one down the street with hundreds. Every guest you serve is a chance at a review — BillTap asks every one of them, from your first night, with one tap to your listing. No waiting for regulars to remember.",
+              points: ["Ask every guest from day one", "Catch opening-week hiccups before they're posted", "Start your guest list before your first slow week"],
+            },
+            {
+              tone: "#e5484d",
+              kicker: "Rating slipping?",
+              title: "Find out what's wrong while you can still fix it.",
+              body: "A few bad nights can drag a rating down fast, and the guests who post them usually never said a word in the room. BillTap texts you the moment someone rates you low — with the table — so a manager can walk over tonight, not answer a review next week.",
+              points: ["Hear the complaint in the room, not online", "More of your happy guests reviewing, too", "See your monthly average move in one email"],
+            },
+          ].map((c, i) => (
+            <Reveal key={c.kicker} delay={0.05 * (i + 1)}>
+              <div className="h-full p-7 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${c.tone}40` }}>
+                <p className="rst-eyebrow" style={{ color: c.tone }}>{c.kicker}</p>
+                <h3 className="mt-3 font-display text-[1.6rem] leading-tight">{c.title}</h3>
+                <p className="mt-4 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.66)" }}>{c.body}</p>
+                <ul className="mt-5 space-y-2.5">
+                  {c.points.map((t) => (
+                    <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+                      <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: c.tone }} aria-hidden="true" />
+                      {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
         </div>
       </section>
 
