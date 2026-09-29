@@ -179,7 +179,7 @@ test('an oversized image is refused rather than sent', async () => {
 });
 
 test('a model error is a code the client can fall back on', async () => {
-  const stub = stubModel({ error: { message: 'quota' } }, 429);
+  const stub = stubModel({ error: { message: 'internal' } }, 500);
   try {
     const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
     assert.equal(res.status, 502);
@@ -430,8 +430,10 @@ test('a quota rejection is not retried — asking again spends money to be refus
   };
   try {
     const res = await scanReceipt({ request: imageRequest(), env: KEY_ENV });
-    assert.equal(res.status, 502);
-    assert.equal((await res.json()).code, 'model_error');
+    assert.equal(res.status, 503, 'still a 5xx, so the even-split fallback is offered');
+    const body = await res.json();
+    assert.equal(body.code, 'busy', 'out of quota is not a bad photo');
+    assert.match(body.error, /busy/);
     assert.equal(calls, 1, 'a 429 is an answer, not a stall');
   } finally { globalThis.fetch = original; }
 });

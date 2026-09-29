@@ -282,6 +282,15 @@ export async function onRequestPost({ request, env }) {
     const payload = await res.json();
     if (!res.ok) {
       console.error('scan-receipt: model rejected', res.status, JSON.stringify(payload).slice(0, 300));
+      // Out of quota is not a bad photo. Saying "could not read that receipt"
+      // sends the diner to retake a picture that was fine. Still a 5xx, so the
+      // review screen keeps offering the even split that needs no model.
+      if (res.status === 429) {
+        return json({
+          error: 'Scanning is busy right now. Try again in a minute, or split evenly instead.',
+          code: 'busy',
+        }, 503);
+      }
       return json({ error: 'Could not read that receipt.', code: 'model_error' }, 502);
     }
 
