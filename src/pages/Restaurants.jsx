@@ -448,7 +448,7 @@ export default function Restaurants() {
       <Seo
         path="/restaurants"
         title="Hear Unhappy Guests First, Get More Google Reviews | BillTap"
-        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. 14-day free trial, $149/month."
+        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. At the table, guests split and pay on their phones so tables turn sooner. 14-day free trial, $149/month."
         // ?v= because Facebook, LinkedIn and Slack cache a preview by image URL.
         // Bump it whenever scripts/build-brand-images.mjs redraws this card.
         image="https://billtap.app/img/og-restaurants.png?v=2"
