@@ -7,8 +7,9 @@ import Seo from "@/components/Seo";
 
 /**
  * One-page printable leave-behind for in-person visits: billtap.app/flyer,
- * then Print. Laid out 900px wide and zoomed to 90% for print, which fits
- * US Letter inside half-inch margins (720 × 960 CSS px) at readable sizes.
+ * then Print. Laid out 900px wide and zoomed to 80% for print, which fits
+ * US Letter inside half-inch margins (720 × 960 CSS px). 900 × 0.8 is exactly
+ * 720: a larger zoom makes the sheet wider than the page and clips it.
  *
  * Every claim here has to be true of the product today:
  * - $149 and the 14-day, no-card trial are create-pro-checkout.js.
@@ -74,7 +75,7 @@ export default function Flyer() {
   return (
     <main style={{ background: "#fff", color: INK, minHeight: "100vh" }}>
       <Seo path="/flyer" title="BillTap Flyer" description="Printable BillTap one-pager for restaurant owners." noindex />
-      <style>{`@page{size:letter;margin:0.5in}@media print{.noprint{display:none}.sheet{zoom:0.9}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`}</style>
+      <style>{`@page{size:letter;margin:0.5in}@media print{.noprint{display:none}.sheet{zoom:0.8}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`}</style>
       <div className="noprint" style={{ textAlign: "center", padding: 12, background: "#f4f4f5" }}>
         <button onClick={() => window.print()} style={{ padding: "8px 18px", borderRadius: 999, background: INK, color: "#fff", fontWeight: 600 }}>
           Print this flyer
