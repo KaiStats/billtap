@@ -1,14 +1,16 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   Bell, Star, Users, Coffee, Smartphone, ThumbsUp, Clock, Check, X,
-  Phone, Mail, ArrowRight,
+  Phone, Mail, ArrowRight, Beef, UtensilsCrossed, Fish, Flame, Beer, Tv,
+  Sandwich, Croissant, QrCode, Receipt, ShoppingBag, CupSoda, Hash,
 } from "lucide-react";
 import Seo from "@/components/Seo";
 
 /**
  * One-page printable leave-behind for in-person visits: billtap.app/flyer,
- * then Print. Laid out 900px wide and zoomed to 90% for print, which fits
- * US Letter inside half-inch margins (720 × 960 CSS px) at readable sizes.
+ * then Print. Laid out 900px wide and zoomed to 80% for print, which fits
+ * US Letter inside half-inch margins (720 × 960 CSS px). 900 × 0.8 is exactly
+ * 720: a larger zoom makes the sheet wider than the page and clips it.
  *
  * Every claim here has to be true of the product today:
  * - $149 and the 14-day, no-card trial are create-pro-checkout.js.
@@ -47,8 +49,13 @@ const WITH = ["More 5-star reviews", "Your own customer list", "Instant bad-expe
 const TABLE_STEPS = ["Guests scan the QR on the table. No app.", "They split the check and pay their share.", "They tap a star rating on the way out."];
 const COUNTER_STEPS = ["Guests order and pay at your register, as today.", "After eating, they scan the code on the cup, bag or card.", "Five stars come up. One tap and done."];
 
-const SIT_DOWN = ["Steakhouses", "Mexican", "Sushi", "BBQ", "Breweries", "Sports bars", "Family restaurants"];
-const COUNTERS = ["Coffee shops", "Fast casual", "Bakeries & delis"];
+const SIT_DOWN = [
+  { icon: Beef, label: "Steakhouses" }, { icon: UtensilsCrossed, label: "Mexican" }, { icon: Fish, label: "Sushi" }, { icon: Flame, label: "BBQ" },
+  { icon: Beer, label: "Breweries" }, { icon: Tv, label: "Sports bars" }, { icon: Users, label: "Family dining" },
+];
+const COUNTERS = [{ icon: Coffee, label: "Coffee shops" }, { icon: Sandwich, label: "Fast casual" }, { icon: Croissant, label: "Bakeries & delis" }];
+// Where the code goes. Every one of these is a place the copy above already names.
+const SCAN_SPOTS = [{ icon: QrCode, label: "Table tent" }, { icon: Receipt, label: "Receipt" }, { icon: CupSoda, label: "Cup" }, { icon: ShoppingBag, label: "Bag" }, { icon: Hash, label: "Number card" }];
 
 const card = { border: "1px solid #e7e2d6", borderRadius: 12, background: "#fff" };
 
@@ -74,7 +81,7 @@ export default function Flyer() {
   return (
     <main style={{ background: "#fff", color: INK, minHeight: "100vh" }}>
       <Seo path="/flyer" title="BillTap Flyer" description="Printable BillTap one-pager for restaurant owners." noindex />
-      <style>{`@page{size:letter;margin:0.5in}@media print{.noprint{display:none}.sheet{zoom:0.9}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`}</style>
+      <style>{`@page{size:letter;margin:0.5in}@media print{.noprint{display:none}.sheet{zoom:0.8}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`}</style>
       <div className="noprint" style={{ textAlign: "center", padding: 12, background: "#f4f4f5" }}>
         <button onClick={() => window.print()} style={{ padding: "8px 18px", borderRadius: 999, background: INK, color: "#fff", fontWeight: 600 }}>
           Print this flyer
@@ -131,19 +138,33 @@ export default function Flyer() {
         </section>
 
         {/* Lower grid */}
-        <section style={{ display: "grid", gridTemplateColumns: "200px 1fr 210px", gap: 10, padding: "8px 24px" }}>
+        <section style={{ display: "grid", gridTemplateColumns: "210px 1fr 205px", gap: 10, padding: "8px 24px" }}>
           <div style={{ background: INK, color: "#fff", borderRadius: 12, padding: 14 }}>
             <p style={{ color: GOLD, fontWeight: 900, fontSize: 16 }}>PERFECT FOR</p>
             <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 8 }}>SIT-DOWN</p>
-            <p style={{ fontSize: 12.5, marginTop: 3, lineHeight: 1.5 }}>{SIT_DOWN.join(" · ")}</p>
-            <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 10 }}>PAY-FIRST COUNTERS</p>
-            <p style={{ fontSize: 12.5, marginTop: 3, lineHeight: 1.5 }}>{COUNTERS.join(" · ")}</p>
-            <p style={{ fontSize: 11.5, color: "#ccc", marginTop: 10, borderTop: "1px solid #333", paddingTop: 8, lineHeight: 1.35 }}>
+            <p style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>Guests split and pay at the table, then rate.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 4 }}>
+              {SIT_DOWN.map(({ icon: Icon, label: t }) => (
+                <p key={t} style={{ fontSize: 12, marginTop: 5, display: "flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}><Icon size={12} color={GOLD} style={{ flex: "none" }} />{t}</p>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 12 }}>PAY-FIRST COUNTERS</p>
+            <p style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>Guests pay as usual, then scan to rate.</p>
+            {COUNTERS.map(({ icon: Icon, label: t }) => (
+              <p key={t} style={{ fontSize: 13, marginTop: 5, display: "flex", gap: 7, alignItems: "center" }}><Icon size={14} color={GOLD} />{t}</p>
+            ))}
+            <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 12 }}>WHERE GUESTS SCAN</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+              {SCAN_SPOTS.map(({ icon: Icon, label: t }) => (
+                <span key={t} style={{ fontSize: 11, border: "1px solid #444", borderRadius: 999, padding: "2px 7px", display: "flex", gap: 4, alignItems: "center" }}><Icon size={11} color={GOLD} />{t}</span>
+              ))}
+            </div>
+            <p style={{ fontSize: 11.5, color: "#ccc", marginTop: 12, borderTop: "1px solid #333", paddingTop: 8, lineHeight: 1.35 }}>
               <b style={{ color: GOLD }}>One rule at a counter:</b> ask after the last bite, never at the register.
             </p>
           </div>
 
-          <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+          <div style={{ display: "grid", gap: 10, gridTemplateRows: "auto 1fr" }}>
             <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr", overflow: "hidden" }}>
               <div style={{ background: "#fdf1f1", padding: 10 }}>
                 <p style={{ fontSize: 12, fontWeight: 800, color: "#dc2626" }}>WITHOUT BILLTAP</p>
@@ -154,7 +175,7 @@ export default function Flyer() {
                 {WITH.map((t) => <p key={t} style={{ fontSize: 12.5, fontWeight: 600, marginTop: 5, display: "flex", gap: 4 }}><Check size={14} color="#15803d" style={{ flex: "none", marginTop: 1 }} />{t}</p>)}
               </div>
             </div>
-            <div style={{ ...card, padding: "10px 14px" }}>
+            <div style={{ ...card, padding: "10px 14px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <p style={{ fontSize: 14, fontWeight: 900, textAlign: "center" }}>HOW IT WORKS</p>
               <div>
                   <Steps label="AT A TABLE" sub="sit-down" steps={TABLE_STEPS} />
@@ -166,7 +187,7 @@ export default function Flyer() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+          <div style={{ display: "grid", gap: 10, gridTemplateRows: "auto 1fr" }}>
             <div style={{ background: INK, color: "#fff", borderRadius: 12, padding: 14, textAlign: "center" }}>
               <p style={{ color: GOLD, fontWeight: 800, fontSize: 12 }}>ONE SIMPLE PLAN</p>
               <p style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>$149<span style={{ fontSize: 15, color: GOLD }}>/month</span></p>
@@ -174,7 +195,7 @@ export default function Flyer() {
                 <p key={t} style={{ fontSize: 13, fontWeight: 700, marginTop: 4, display: "flex", gap: 6, justifyContent: "center" }}><Check size={15} color={GOLD} />{t}</p>
               ))}
             </div>
-            <div style={{ background: GOLD, borderRadius: 12, padding: 12, textAlign: "center" }}>
+            <div style={{ background: GOLD, borderRadius: 12, padding: 12, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
               <p style={{ fontSize: 14, fontWeight: 900, lineHeight: 1.15 }}>SEE BILLTAP WORKING IN YOUR RESTAURANT</p>
               <p style={{ background: INK, color: "#fff", borderRadius: 999, fontSize: 11, fontWeight: 700, padding: "4px 8px", marginTop: 6 }}>LIVE DEMO IN UNDER 2 MINUTES</p>
               <div style={{ background: "#fff", borderRadius: 10, padding: 8, marginTop: 8, display: "inline-block" }}>
