@@ -50,12 +50,12 @@ const TABLE_STEPS = ["Guests scan the QR on the table. No app.", "They split the
 const COUNTER_STEPS = ["Guests order and pay at your register, as today.", "After eating, they scan the code on the cup, bag or card.", "Five stars come up. One tap and done."];
 
 const SIT_DOWN = [
-  [Beef, "Steakhouses"], [UtensilsCrossed, "Mexican"], [Fish, "Sushi"], [Flame, "BBQ"],
-  [Beer, "Breweries"], [Tv, "Sports bars"], [Users, "Family dining"],
+  { icon: Beef, label: "Steakhouses" }, { icon: UtensilsCrossed, label: "Mexican" }, { icon: Fish, label: "Sushi" }, { icon: Flame, label: "BBQ" },
+  { icon: Beer, label: "Breweries" }, { icon: Tv, label: "Sports bars" }, { icon: Users, label: "Family dining" },
 ];
-const COUNTERS = [[Coffee, "Coffee shops"], [Sandwich, "Fast casual"], [Croissant, "Bakeries & delis"]];
+const COUNTERS = [{ icon: Coffee, label: "Coffee shops" }, { icon: Sandwich, label: "Fast casual" }, { icon: Croissant, label: "Bakeries & delis" }];
 // Where the code goes. Every one of these is a place the copy above already names.
-const SCAN_SPOTS = [[QrCode, "Table tent"], [Receipt, "Receipt"], [CupSoda, "Cup"], [ShoppingBag, "Bag"], [Hash, "Number card"]];
+const SCAN_SPOTS = [{ icon: QrCode, label: "Table tent" }, { icon: Receipt, label: "Receipt" }, { icon: CupSoda, label: "Cup" }, { icon: ShoppingBag, label: "Bag" }, { icon: Hash, label: "Number card" }];
 
 const card = { border: "1px solid #e7e2d6", borderRadius: 12, background: "#fff" };
 
@@ -144,18 +144,18 @@ export default function Flyer() {
             <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 8 }}>SIT-DOWN</p>
             <p style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>Guests split and pay at the table, then rate.</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 4 }}>
-              {SIT_DOWN.map(([Icon, t]) => (
+              {SIT_DOWN.map(({ icon: Icon, label: t }) => (
                 <p key={t} style={{ fontSize: 12, marginTop: 5, display: "flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}><Icon size={12} color={GOLD} style={{ flex: "none" }} />{t}</p>
               ))}
             </div>
             <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 12 }}>PAY-FIRST COUNTERS</p>
             <p style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>Guests pay as usual, then scan to rate.</p>
-            {COUNTERS.map(([Icon, t]) => (
+            {COUNTERS.map(({ icon: Icon, label: t }) => (
               <p key={t} style={{ fontSize: 13, marginTop: 5, display: "flex", gap: 7, alignItems: "center" }}><Icon size={14} color={GOLD} />{t}</p>
             ))}
             <p style={{ fontSize: 10, letterSpacing: ".2em", color: "#aaa", marginTop: 12 }}>WHERE GUESTS SCAN</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
-              {SCAN_SPOTS.map(([Icon, t]) => (
+              {SCAN_SPOTS.map(({ icon: Icon, label: t }) => (
                 <span key={t} style={{ fontSize: 11, border: "1px solid #444", borderRadius: 999, padding: "2px 7px", display: "flex", gap: 4, alignItems: "center" }}><Icon size={11} color={GOLD} />{t}</span>
               ))}
             </div>
