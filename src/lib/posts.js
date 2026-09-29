@@ -59,6 +59,14 @@ export const POSTS = [
     excerpt:
       "A weekly regular is worth four figures a year. Here's what one un-caught bad night actually costs you.",
   },
+  {
+    slug: 'faster-checkout-more-turns',
+    title: 'How Faster Check-Out Turns More Tables',
+    date: 'September 2026',
+    published: '2026-09',
+    excerpt:
+      "The slowest part of a table is often the end. Where check-out time goes, and what getting it back is worth on a busy night.",
+  },
 ];
 
 /** Convenience for the post pages, which know their own slug and nothing else. */

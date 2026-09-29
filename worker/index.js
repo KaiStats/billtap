@@ -212,6 +212,8 @@ export const PRERENDERED = {
   '/blog/qr-without-pos-change': '/blog-qr-without-pos-change.html',
   '/blog/catch-1-star-early': '/blog-catch-1-star-early.html',
   '/blog/cost-of-one-lost-regular': '/blog-cost-of-one-lost-regular.html',
+  '/blog/faster-checkout-more-turns': '/blog-faster-checkout-more-turns.html',
+  '/new-restaurants': '/new-restaurants.html',
   '/changelog': '/changelog.html',
   '/privacy': '/privacy.html',
   '/terms': '/terms.html',

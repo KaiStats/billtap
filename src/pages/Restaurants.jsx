@@ -247,6 +247,54 @@ function TurnCalculator() {
 }
 
 /**
+ * The 20-second demo, as a looping animation rather than a video file: four
+ * frames — scan, split, rate, owner alert — cycling on a phone. No download,
+ * no autoplay-policy fights, and it stops cycling for reduced-motion users.
+ */
+const DEMO_STEPS = [
+  { label: "1 · Scan", title: "Guest scans the table tent", body: "No app. The check opens on their phone." },
+  { label: "2 · Split", title: "Everyone pays their share", body: "They split and settle the moment they're ready — no waiting on the folder." },
+  { label: "3 · Rate", title: "One tap: how was it?", body: "Every guest gets the same one-tap route to your Google listing." },
+  { label: "4 · Alert", title: "You get the text", body: "TABLE 12 — 2★. A manager walks over while the guest is still there." },
+];
+
+function DemoLoop() {
+  const reduced = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (reduced) return undefined;
+    const t = setInterval(() => setI((n) => (n + 1) % DEMO_STEPS.length), 2800);
+    return () => clearInterval(t);
+  }, [reduced]);
+  const step = DEMO_STEPS[i];
+  return (
+    <div className="grid md:grid-cols-[260px_1fr] gap-8 items-center">
+      <div className="mx-auto w-[240px] rounded-[2.2rem] p-3" style={{ background: "#1a1a1d", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div className="rounded-[1.7rem] h-[380px] p-5 flex flex-col justify-center text-center" style={{ background: i === 3 ? "#2a1214" : "#f5f5f4", color: i === 3 ? "#fff" : INK, transition: "background .4s" }}>
+          <motion.div key={i} initial={reduced ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+            <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: i === 3 ? "#e5484d" : "#b7791f" }}>{step.label}</p>
+            <p className="mt-3 text-xl font-bold leading-tight">{step.title}</p>
+            {i === 2 && <p className="mt-4 text-3xl" style={{ color: GOLD }} aria-hidden="true">★★★★★</p>}
+            <p className="mt-4 text-sm leading-relaxed opacity-75">{step.body}</p>
+          </motion.div>
+        </div>
+      </div>
+      <ol className="space-y-3">
+        {DEMO_STEPS.map((d, n) => (
+          <li key={d.label}>
+            <button onClick={() => setI(n)} className="w-full text-left p-4 rounded-xl transition-colors"
+              style={{ background: n === i ? "rgba(240,180,41,.1)" : "transparent", border: `1px solid ${n === i ? "rgba(240,180,41,.35)" : "rgba(255,255,255,.08)"}` }}>
+              <span className="font-semibold">{d.title}</span>
+              <span className="block text-sm font-light mt-1" style={{ color: "rgba(245,245,244,.6)" }}>{d.body}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/**
  * Image that fades up once decoded, and removes itself on error so the
  * gradient underneath becomes the design rather than a broken box.
  */
@@ -767,6 +815,12 @@ export default function Restaurants() {
           </div>
         </div>
       </header>
+
+      {/* ── Demo loop ── */}
+      <section id="demo" className="relative max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20">
+        <p className="rst-eyebrow mb-6" style={{ color: GOLD }}>See it in 20 seconds</p>
+        <DemoLoop />
+      </section>
 
       {/* ── Four pillars ────────────────────────────────────── */}
       <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
