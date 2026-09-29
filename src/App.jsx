@@ -69,6 +69,9 @@ const BlogPost01PodiumAlternative = lazy(() => import('@/pages/BlogPost01PodiumA
 const BlogPost02Catch1StarEarly = lazy(() => import('@/pages/BlogPost02Catch1StarEarly'));
 const BlogPost03QRWithoutPOS = lazy(() => import('@/pages/BlogPost03QRWithoutPOS'));
 const BlogPost04CostOfOneLostRegular = lazy(() => import('@/pages/BlogPost04CostOfOneLostRegular'));
+const BlogPost05FasterCheckoutMoreTurns = lazy(() => import('@/pages/BlogPost05FasterCheckoutMoreTurns'));
+const NewRestaurants = lazy(() => import('@/pages/NewRestaurants'));
+const Flyer = lazy(() => import('@/pages/Flyer'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
 const NewDemo     = lazy(() => import('@/pages/NewDemo'));
@@ -241,6 +244,7 @@ const AuthenticatedApp = () => {
             <Route path="/blog/catch-1-star-early" element={<BlogPost02Catch1StarEarly />} />
             <Route path="/blog/qr-without-pos-change" element={<BlogPost03QRWithoutPOS />} />
             <Route path="/blog/cost-of-one-lost-regular" element={<BlogPost04CostOfOneLostRegular />} />
+            <Route path="/blog/faster-checkout-more-turns" element={<BlogPost05FasterCheckoutMoreTurns />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/claim" element={<AnimatedPage direction={direction}><Claim /></AnimatedPage>} />
             <Route path="/new-receipt" element={<AnimatedPage direction={direction}><NewReceipt /></AnimatedPage>} />
@@ -281,6 +285,8 @@ const AuthenticatedApp = () => {
             */}
             <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
+            <Route path="/new-restaurants" element={<NewRestaurants />} />
+            <Route path="/flyer" element={<Flyer />} />
             <Route path="/r/:slug" element={<TableEntry />} />
             {/*
               The pay-first entrance, and the same screen.

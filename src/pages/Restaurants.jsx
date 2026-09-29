@@ -89,8 +89,8 @@ const PERFECT_FOR = [
   "Coffee Shops", "Fast Casual", "Bakeries & Delis",
 ];
 
-const WITHOUT = ["Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
-const WITH = ["More Google reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
+const WITHOUT = ["Tables stuck waiting on the check", "Missed reviews", "Lost customer emails", "Surprise 1-star reviews", "No guest insights", "Harder to grow"];
+const WITH = ["Faster check-out, faster turns", "More Google reviews", "Build your customer list", "Instant bad-experience alerts", "Know your numbers", "More repeat customers"];
 
 /**
  * The rows of the sample monthly report, in the order and wording
@@ -152,6 +152,10 @@ const FAQ = [
     a: "Yes, and it's the simpler half of what we do. There's no check to split, so the code doesn't go on a table tent — it goes where the meal ends: the order-number card, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. One scan, five stars, done. Put it anywhere except the register: ask at the register and you're asking about food nobody has eaten yet. And the alert matters more in your room than in a dining room — you have no server walking back to ask how everything is, so an unhappy guest usually leaves without a word. This is the thing that tells you right away — usually before they've left.",
   },
   {
+    q: "Does this actually help us turn tables faster?",
+    a: "At a table-service restaurant, yes — here's how. The slowest stretch of a table is usually the end: guests wait to flag the server, wait for the check, work out who owes what, wait for cards to be run, and wait again to sign. With BillTap they split on their own phones the moment they're ready, so the check doesn't sit on the table and nobody holds the server up doing math. How many minutes that frees depends on your room, so we won't quote you a number we haven't timed — the calculator on this page runs it on yours. It matters most on a busy night with a wait at the door. Counter service already turns on its own, so there it's all about the reviews.",
+  },
+  {
     q: "Where do the reviews actually go?",
     a: "Straight to your Google Business Profile — the same place customers already look you up. Every guest gets a one-tap link the moment they finish — not just the happy ones.",
   },
@@ -168,6 +172,127 @@ const FAQ = [
     a: "None of it. Your guests pay you exactly the way they do now. BillTap splits the check on their phones so everyone knows their share, and tracks who has settled up with whoever is covering the bill. Nothing moves through us — no merchant account to open, no payout schedule, nothing extra to reconcile at close.",
   },
 ];
+
+/**
+ * The table-turn argument, as arithmetic on the owner's own numbers.
+ *
+ * Nothing here is a BillTap measurement — the guard in src/csp.test.mjs
+ * exists because this page once shipped an invented "30 sec" stat. Every
+ * input is the operator's, including the minutes saved, which is labelled as
+ * their estimate. The math only counts turns while there is a wait at the
+ * door: freed minutes at an empty table earn nothing, and the copy says so.
+ */
+function TurnCalculator() {
+  const [v, setV] = useState({ tables: 20, turn: 75, saved: 5, hours: 3, check: 120, nights: 12 });
+  const num = (k) => (e) => {
+    const n = Number(e.target.value);
+    setV((o) => ({ ...o, [k]: Number.isFinite(n) && n >= 0 ? n : 0 }));
+  };
+  const minutes = v.hours * 60;
+  const before = v.turn > 0 ? minutes / v.turn : 0;
+  const after = v.turn - v.saved > 0 ? minutes / (v.turn - v.saved) : before;
+  const extraTurns = Math.max(0, (after - before) * v.tables);
+  const perNight = extraTurns * v.check;
+  const perMonth = perNight * v.nights;
+  const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
+  const fields = [
+    ["tables", "Tables"],
+    ["turn", "Minutes a table takes now"],
+    ["saved", "Minutes saved at check-out (your estimate)"],
+    ["hours", "Busy hours with a wait, per night"],
+    ["check", "Average check per table ($)"],
+    ["nights", "Busy nights a month"],
+  ];
+
+  return (
+    <div className="rounded-2xl p-6 sm:p-8" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(240,180,41,.25)" }}>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {fields.map(([k, label]) => (
+          <label key={k} className="block text-sm font-light" style={{ color: "rgba(245,245,244,.7)" }}>
+            {label}
+            <input type="number" inputMode="decimal" min="0" value={v[k]} onChange={num(k)}
+              className="mt-1.5 w-full rounded-lg px-3 py-2.5 text-base font-semibold"
+              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", color: "#f5f5f4" }} />
+          </label>
+        ))}
+      </div>
+      <div className="mt-6 pt-6 grid grid-cols-3 gap-3 text-center" style={{ borderTop: "1px solid rgba(255,255,255,.1)" }} aria-live="polite">
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{extraTurns.toFixed(1)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>extra tables seated a night</p>
+        </div>
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perNight)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>a busy night</p>
+        </div>
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perMonth)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>a month, vs. $149</p>
+        </div>
+      </div>
+      <p className="mt-5 text-center text-sm font-semibold" style={{ color: "#f5f5f4" }}>
+        {perNight > 0
+          ? perMonth >= 149
+            ? `On these numbers, BillTap's $149 is covered by ${Math.max(1, Math.ceil(149 / perNight))} busy night${Math.ceil(149 / perNight) > 1 ? "s" : ""} a month — about ${Math.floor(perMonth / 149)}× what it costs.`
+            : "On these numbers the turns alone don't cover $149 — the reviews and the alerts have to."
+          : "Enter your numbers to see the payback."}
+      </p>
+      <p className="mt-3 text-xs leading-relaxed font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+        Your numbers, not ours — we haven&apos;t timed your room. Only the hours with guests
+        waiting count; a minute freed at an empty table earns nothing.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The 20-second demo, as a looping animation rather than a video file: four
+ * frames — scan, split, rate, owner alert — cycling on a phone. No download,
+ * no autoplay-policy fights, and it stops cycling for reduced-motion users.
+ */
+const DEMO_STEPS = [
+  { label: "1 · Scan", title: "Guest scans the table tent", body: "No app. The check opens on their phone." },
+  { label: "2 · Split", title: "Everyone pays their share", body: "They split and settle the moment they're ready — no waiting on the folder." },
+  { label: "3 · Rate", title: "One tap: how was it?", body: "Every guest gets the same one-tap route to your Google listing." },
+  { label: "4 · Alert", title: "You get the text", body: "TABLE 12 — 2★. A manager walks over while the guest is still there." },
+];
+
+function DemoLoop() {
+  const reduced = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (reduced) return undefined;
+    const t = setInterval(() => setI((n) => (n + 1) % DEMO_STEPS.length), 2800);
+    return () => clearInterval(t);
+  }, [reduced]);
+  const step = DEMO_STEPS[i];
+  return (
+    <div className="grid md:grid-cols-[260px_1fr] gap-8 items-center">
+      <div className="mx-auto w-[240px] rounded-[2.2rem] p-3" style={{ background: "#1a1a1d", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div className="rounded-[1.7rem] h-[380px] p-5 flex flex-col justify-center text-center" style={{ background: i === 3 ? "#2a1214" : "#f5f5f4", color: i === 3 ? "#fff" : INK, transition: "background .4s" }}>
+          <motion.div key={i} initial={reduced ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+            <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: i === 3 ? "#e5484d" : "#b7791f" }}>{step.label}</p>
+            <p className="mt-3 text-xl font-bold leading-tight">{step.title}</p>
+            {i === 2 && <p className="mt-4 text-3xl" style={{ color: GOLD }} aria-hidden="true">★★★★★</p>}
+            <p className="mt-4 text-sm leading-relaxed opacity-75">{step.body}</p>
+          </motion.div>
+        </div>
+      </div>
+      <ol className="space-y-3">
+        {DEMO_STEPS.map((d, n) => (
+          <li key={d.label}>
+            <button onClick={() => setI(n)} className="w-full text-left p-4 rounded-xl transition-colors"
+              style={{ background: n === i ? "rgba(240,180,41,.1)" : "transparent", border: `1px solid ${n === i ? "rgba(240,180,41,.35)" : "rgba(255,255,255,.08)"}` }}>
+              <span className="font-semibold">{d.title}</span>
+              <span className="block text-sm font-light mt-1" style={{ color: "rgba(245,245,244,.6)" }}>{d.body}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
 /**
  * Image that fades up once decoded, and removes itself on error so the
@@ -371,7 +496,7 @@ export default function Restaurants() {
       <Seo
         path="/restaurants"
         title="Hear Unhappy Guests First, Get More Google Reviews | BillTap"
-        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. 14-day free trial, $149/month."
+        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. At the table, guests split and pay on their phones so tables turn sooner. 14-day free trial, $149/month."
         // ?v= because Facebook, LinkedIn and Slack cache a preview by image URL.
         // Bump it whenever scripts/build-brand-images.mjs redraws this card.
         image="https://billtap.app/img/og-restaurants.png?v=2"
@@ -664,6 +789,8 @@ export default function Restaurants() {
                 BillTap asks every guest how it was. A low rating texts you{" "}
                 <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>while you can still fix it</em>
                 {" "}— and every guest gets a one-tap route to your Google listing.
+                At the table, guests split and settle on their own phones, so the table
+                is free for the next party sooner.
               </p>
             </Reveal>
 
@@ -688,6 +815,12 @@ export default function Restaurants() {
           </div>
         </div>
       </header>
+
+      {/* ── Demo loop ── */}
+      <section id="demo" className="relative max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20">
+        <p className="rst-eyebrow mb-6" style={{ color: GOLD }}>See it in 20 seconds</p>
+        <DemoLoop />
+      </section>
 
       {/* ── Four pillars ────────────────────────────────────── */}
       <section className="relative max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-28">
@@ -961,6 +1094,92 @@ export default function Restaurants() {
                 Sample report for a sample restaurant — illustrative numbers, not a customer&apos;s results.
               </figcaption>
             </figure>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── Openers and strugglers ───────────────────────────
+          The two moments an owner feels Google most: a new place with no
+          reviews, and an established one watching its rating slide. The 50 is
+          a goal an owner sets, not a result BillTap claims. */}
+      <section id="stage" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Wherever you are right now</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            Your Google listing decides who walks in.
+          </h2>
+        </Reveal>
+        <div className="mt-10 grid md:grid-cols-2 gap-4">
+          {[
+            {
+              tone: "#30a46c",
+              kicker: "Just opened?",
+              title: "Get to your first 50 reviews faster.",
+              body: "A new place with a handful of reviews looks like a gamble next to the one down the street with hundreds. Every guest you serve is a chance at a review — BillTap asks every one of them, from your first night, with one tap to your listing. No waiting for regulars to remember.",
+              points: ["Ask every guest from day one", "Catch opening-week hiccups before they're posted", "Start your guest list before your first slow week"],
+            },
+            {
+              tone: "#e5484d",
+              kicker: "Rating slipping?",
+              title: "Find out what's wrong while you can still fix it.",
+              body: "A few bad nights can drag a rating down fast, and the guests who post them usually never said a word in the room. BillTap texts you the moment someone rates you low — with the table — so a manager can walk over tonight, not answer a review next week.",
+              points: ["Hear the complaint in the room, not online", "More of your happy guests reviewing, too", "See your monthly average move in one email"],
+            },
+          ].map((c, i) => (
+            <Reveal key={c.kicker} delay={0.05 * (i + 1)}>
+              <div className="h-full p-7 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${c.tone}40` }}>
+                <p className="rst-eyebrow" style={{ color: c.tone }}>{c.kicker}</p>
+                <h3 className="mt-3 font-display text-[1.6rem] leading-tight">{c.title}</h3>
+                <p className="mt-4 text-sm leading-relaxed font-light" style={{ color: "rgba(245,245,244,.66)" }}>{c.body}</p>
+                <ul className="mt-5 space-y-2.5">
+                  {c.points.map((t) => (
+                    <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+                      <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: c.tone }} aria-hidden="true" />
+                      {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Turn tables faster ──────────────────────────────
+          The revenue argument for table service. Mechanism in words, money in
+          the owner's own arithmetic — see TurnCalculator for why no number
+          on this section is ours. */}
+      <section id="turns" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+          <Reveal>
+            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Turn tables faster</p>
+            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+              The meal is over. The table isn&apos;t.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+              The slowest part of a table is the end. Flag the server. Wait for the check.
+              Work out who had what. Wait for the cards. Wait to sign. Meanwhile your
+              host is quoting a wait to the party at the door.
+            </p>
+            <ul className="mt-6 space-y-3">
+              {[
+                "Guests split on their own phones the moment they're ready — no waiting to be noticed",
+                "No server standing at the table doing math on six cards",
+                "Your servers are back on the floor, not stuck at the terminal",
+                "The table clears sooner, and the next party sits sooner",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#30a46c" }} aria-hidden="true" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-sm font-light" style={{ color: "rgba(245,245,244,.5)" }}>
+              Counter service already turns on its own — there, BillTap is about the reviews.
+            </p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <TurnCalculator />
           </Reveal>
         </div>
       </section>
