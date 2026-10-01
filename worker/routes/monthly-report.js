@@ -13,6 +13,8 @@
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { isEntitled } from '../../shared/entitlement.js';
+import { summarizeRecovery } from '../../shared/guest-recovery.js';
+import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 const MAX_BODY_BYTES = 262144; // ~250KB — comfortably more than a few hundred restaurants
 
@@ -104,8 +106,16 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Invalid JSON' }, 400);
   }
 
+  return json(await deliverReports(env, body));
+}
+
+/**
+ * Sends finished reports. Shared by the webhook above and the monthly cron
+ * below, so both apply the same entitlement and demo rules to every email.
+ */
+export async function deliverReports(env, body) {
   const reports = Array.isArray(body.reports) ? body.reports : [];
-  if (reports.length === 0) return json({ ok: true, sent: 0 });
+  if (reports.length === 0) return { ok: true, sent: 0 };
 
   let sent = 0;
   let skipped = 0;
@@ -121,15 +131,10 @@ export async function onRequestPost({ request, env }) {
      * The monthly report is one of the three things $149 buys, so an unpaid
      * restaurant does not get one.
      *
-     * Gated on `restaurant_id` when the caller supplies one. This endpoint is
-     * a mailer — it is handed finished reports rather than building them — and
-     * the generator that will call it does not exist yet. So the check is here
-     * waiting for it, and a payload without an id still sends: refusing those
-     * would break the only way this endpoint is currently exercised, to
-     * enforce a rule against a restaurant it cannot even identify.
-     *
-     * When the generator is written it should pass restaurant_id, and this
-     * becomes real. `skipped` in the response is how anyone finds out it did.
+     * Gated on `restaurant_id` when the caller supplies one. The monthly
+     * generator below always does; a hand-built webhook payload without an id
+     * still sends, since the rule cannot be applied to a restaurant it cannot
+     * identify. `skipped` in the response is how anyone finds out it fired.
      */
     if (r.restaurant_id) {
       // Not `rows`: the report's own table rows are declared below and shadowing
@@ -206,5 +211,92 @@ export async function onRequestPost({ request, env }) {
   }
 
   // `skipped` only when something was: an ordinary response is unchanged.
-  return json({ ok: true, sent, failed: failures.length, failures, ...(skipped ? { skipped } : {}) });
+  return { ok: true, sent, failed: failures.length, failures, ...(skipped ? { skipped } : {}) };
+}
+
+// ── The generator ───────────────────────────────────────────────────────────
+//
+// What this endpoint waited for: something that computes each restaurant's
+// month and hands it over. It runs from the 1st-of-the-month cron in
+// worker/index.js, over the previous calendar month in UTC.
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+
+/** [start, end) of the calendar month before `now`, in epoch ms, plus its name. */
+export function previousMonth(now = new Date()) {
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  return { start: startDate.getTime(), end, label: `${MONTHS[startDate.getUTCMonth()]} ${startDate.getUTCFullYear()}` };
+}
+
+const inWindow = (ms, { start, end }) => Number.isFinite(Number(ms)) && Number(ms) >= start && Number(ms) < end;
+
+/**
+ * One restaurant's report payload from its rows. Pure, so it is tested without
+ * a database. The low-rating line uses the restaurant's own alert threshold —
+ * the same number that decided whether the manager was paged.
+ */
+export function buildReport(restaurant, ratings, contacts, window) {
+  const month = ratings.filter((g) => inWindow(g.created_at, window));
+  const threshold = Number(restaurant.rating_threshold ?? 3);
+  const low = month.filter((g) => Number(g.stars) <= threshold);
+  const recovery = summarizeRecovery(low);
+  const avg = month.length ? month.reduce((n, g) => n + Number(g.stars || 0), 0) / month.length : null;
+  return {
+    restaurant_id: restaurant.id,
+    restaurant_name: restaurant.name,
+    to: restaurant.alert_email,
+    label: window.label,
+    average: avg === null ? null : Math.round(avg * 10) / 10,
+    ratings: month.length,
+    routed: month.filter((g) => g.routed_to_google).length,
+    caught: low.length,
+    new_contacts: contacts.filter((c) => inWindow(c.first_seen, window)).length,
+    list_size: contacts.length,
+    // Only once something was caught: a quiet month keeps the short email.
+    ...(low.length ? {
+      recovered: recovery.recovered,
+      resolved: recovery.resolved,
+      top_issues: recovery.topIssues.map(({ label, count }) => ({ label, count })),
+    } : {}),
+  };
+}
+
+/** Every page of a restaurant's rows for one entity. */
+async function allRows(svc, entity, restaurantId) {
+  const rows = [];
+  for (let offset = 0; offset < 50000; offset += 1000) {
+    const page = await svc.entity(entity).filter(
+      { restaurant_id: restaurantId },
+      svc.queryOperators ? { limit: 1000, offset, order: 'created_date' } : undefined,
+    );
+    rows.push(...page);
+    if (!svc.queryOperators || page.length < 1000) break;
+  }
+  return rows;
+}
+
+/**
+ * The cron job. Production only, like every scheduled job here: staging must
+ * never email a real restaurant. Restaurants with no alert email, unpaid or
+ * demo rows are left out — deliverReports re-checks the last two anyway.
+ */
+export async function scheduled(env, now = new Date()) {
+  if (!mayRunScheduledWork(env)) return { skipped: 'environment', environment: environmentName(env) };
+  const svc = serviceRole(env);
+  const window = previousMonth(now);
+  const restaurants = (await svc.entity('Restaurant').filter({}))
+    .filter((x) => !x.demo && isEntitled(x) && EMAIL_RE.test(String(x.alert_email || '')));
+
+  const reports = [];
+  for (const restaurant of restaurants) {
+    const [ratings, contacts] = await Promise.all([
+      allRows(svc, 'GuestRating', restaurant.id),
+      allRows(svc, 'GuestContact', restaurant.id),
+    ]);
+    reports.push(buildReport(restaurant, ratings, contacts, window));
+  }
+  const result = await deliverReports(env, { reports, window: window.label });
+  return { job: 'monthly-report', month: window.label, restaurants: reports.length, ...result };
 }

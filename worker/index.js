@@ -23,7 +23,7 @@ import { onRequestPost as createProCheckout } from './routes/create-pro-checkout
 import { onRequestPost as stripeWebhook } from './routes/stripe-webhook.js';
 import { onRequestPost as deleteAccount } from './routes/delete-account.js';
 import { onRequestPost as invokeFunction } from './routes/functions.js';
-import { onRequestPost as monthlyReport } from './routes/monthly-report.js';
+import { onRequestPost as monthlyReport, scheduled as sendMonthlyReports } from './routes/monthly-report.js';
 import { onRequestPost as scanReceipt } from './routes/scan-receipt.js';
 import { onRequestGet as health } from './routes/health.js';
 import { onRequestGet as restaurantSitemap } from './routes/restaurant-sitemap.js';
@@ -55,6 +55,11 @@ export const RETENTION_CRON = '30 9 * * *';
  * night's snapshot differs from the row it was taken from.
  */
 export const RECONCILE_CRON = '0 10 * * *';
+/**
+ * The month-end report, on the 1st at 10:15 — after the night's three jobs, so
+ * it counts a month whose ratings are already backed up and reconciled.
+ */
+export const MONTHLY_REPORT_CRON = '15 10 1 * *';
 
 /** POST-only endpoints owned by this app. */
 const POST_ROUTES = {
@@ -341,6 +346,22 @@ export default {
      * and not wired up here should not silently do nothing, and the backup is
      * the safe thing to do twice.
      */
+    if (event?.cron === MONTHLY_REPORT_CRON) {
+      ctx.waitUntil(
+        sendMonthlyReports(env)
+          .then((summary) => {
+            console.log(JSON.stringify({ at: new Date().toISOString(), ...summary }));
+          })
+          .catch((error) => {
+            console.error(JSON.stringify({
+              at: new Date().toISOString(), job: 'monthly-report', level: 'error', message: error?.message || String(error),
+            }));
+            reportError(env, ctx, error, { id: requestId(), route: 'cron/monthly-report' });
+          }),
+      );
+      return;
+    }
+
     if (event?.cron === RECONCILE_CRON) {
       ctx.waitUntil(
         reconcileBilling(env)
