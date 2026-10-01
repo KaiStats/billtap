@@ -71,6 +71,7 @@ const BlogPost03QRWithoutPOS = lazy(() => import('@/pages/BlogPost03QRWithoutPOS
 const BlogPost04CostOfOneLostRegular = lazy(() => import('@/pages/BlogPost04CostOfOneLostRegular'));
 const BlogPost05FasterCheckoutMoreTurns = lazy(() => import('@/pages/BlogPost05FasterCheckoutMoreTurns'));
 const NewRestaurants = lazy(() => import('@/pages/NewRestaurants'));
+const GuestRecoveryAudit = lazy(() => import('@/pages/GuestRecoveryAudit'));
 const Flyer = lazy(() => import('@/pages/Flyer'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
@@ -286,6 +287,7 @@ const AuthenticatedApp = () => {
             <Route path="/dashboard" element={<AnimatedPage direction={direction}><Dashboard /></AnimatedPage>} />
             <Route path="/restaurants" element={<Restaurants />} />
             <Route path="/new-restaurants" element={<NewRestaurants />} />
+            <Route path="/guest-recovery-audit" element={<GuestRecoveryAudit />} />
             <Route path="/flyer" element={<Flyer />} />
             <Route path="/r/:slug" element={<TableEntry />} />
             {/*

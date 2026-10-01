@@ -214,6 +214,7 @@ export const PRERENDERED = {
   '/blog/cost-of-one-lost-regular': '/blog-cost-of-one-lost-regular.html',
   '/blog/faster-checkout-more-turns': '/blog-faster-checkout-more-turns.html',
   '/new-restaurants': '/new-restaurants.html',
+  '/guest-recovery-audit': '/guest-recovery-audit.html',
   '/changelog': '/changelog.html',
   '/privacy': '/privacy.html',
   '/terms': '/terms.html',

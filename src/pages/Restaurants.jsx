@@ -25,16 +25,16 @@ const PILLARS = [
     // the honest version of this line is the better one anyway: an operator can
     // print it, say it out loud, and put it in a marketplace application.
     kicker: "While they're still there",
-    title: "Hear it before they walk out",
-    desc: "A text the moment a guest rates you low — at a table or at the counter — while someone can still walk over and fix it in person.",
+    title: "Recover the guest before they walk out",
+    desc: "A guest recovery alert the moment someone rates you low — with the table and what went wrong — while a manager can still walk over and fix it in person.",
   },
   {
     icon: Star,
     tone: GOLD,
     img: "pillar-reviews",
     alt: "A guest's hand tapping a star rating on their phone over a table set with dessert and wine.",
-    kicker: "One tap, no asking",
-    title: "Generate more Google reviews",
+    kicker: "Genuine, never gated",
+    title: "More genuine Google reviews",
     desc: "Every guest gets a one-tap route to your listing the moment they finish — happy or not. No staff asking.",
   },
   {
@@ -152,6 +152,10 @@ const FAQ = [
     a: "Yes, and it's the simpler half of what we do. There's no check to split, so the code doesn't go on a table tent — it goes where the meal ends: the order-number card, the cup, the takeout bag, the receipt footer, a sticker by the bins on the way out. One scan, five stars, done. Put it anywhere except the register: ask at the register and you're asking about food nobody has eaten yet. And the alert matters more in your room than in a dining room — you have no server walking back to ask how everything is, so an unhappy guest usually leaves without a word. This is the thing that tells you right away — usually before they've left.",
   },
   {
+    q: "Isn't this just another review tool?",
+    a: "No. Review tools ask for reviews after the guest has gone. BillTap is a guest recovery system: it asks every guest as they finish, and when someone has a bad experience it alerts your manager with the table and what went wrong while they're still in the room — so you can recover the guest before it becomes a bad review or a lost regular. The genuine Google reviews are a by-product, and every guest gets the same button whatever they rated.",
+  },
+  {
     q: "Does this actually help us turn tables faster?",
     a: "At a table-service restaurant, yes — here's how. The slowest stretch of a table is usually the end: guests wait to flag the server, wait for the check, work out who owes what, wait for cards to be run, and wait again to sign. With BillTap they split on their own phones the moment they're ready, so the check doesn't sit on the table and nobody holds the server up doing math. How many minutes that frees depends on your room, so we won't quote you a number we haven't timed — the calculator on this page runs it on yours. It matters most on a busy night with a wait at the door. Counter service already turns on its own, so there it's all about the reviews.",
   },
@@ -255,7 +259,7 @@ const DEMO_STEPS = [
   { label: "1 · Scan", title: "Guest scans the table tent", body: "No app. The check opens on their phone." },
   { label: "2 · Split", title: "Everyone pays their share", body: "They split and settle the moment they're ready — no waiting on the folder." },
   { label: "3 · Rate", title: "One tap: how was it?", body: "Every guest gets the same one-tap route to your Google listing." },
-  { label: "4 · Alert", title: "You get the text", body: "TABLE 12 — 2★. A manager walks over while the guest is still there." },
+  { label: "4 · Recover", title: "Your manager gets a recovery alert", body: "Table 12 — 2★ — \u201cWaited 25 minutes for mains.\u201d A manager walks over while the guest is still there." },
 ];
 
 function DemoLoop() {
@@ -495,8 +499,8 @@ export default function Restaurants() {
     <div className="min-h-screen font-body" style={{ background: INK, color: "#f5f5f4" }}>
       <Seo
         path="/restaurants"
-        title="Hear Unhappy Guests First, Get More Google Reviews | BillTap"
-        description="BillTap asks every guest how it was, at the table or at the counter. A low rating texts you while you can still fix it, and every guest gets a one-tap route to your Google listing. At the table, guests split and pay on their phones so tables turn sooner. 14-day free trial, $149/month."
+        title="Guest Recovery for Restaurants: Catch Unhappy Guests Before They Leave | BillTap"
+        description="BillTap is a real-time guest recovery system for restaurant owners and GMs. A low rating alerts your manager with the table and what went wrong while the guest is still there, so you can recover the table before it becomes a bad review or a lost customer. Genuine Google reviews from every guest, no gating. 14-day free trial, $149/month."
         // ?v= because Facebook, LinkedIn and Slack cache a preview by image URL.
         // Bump it whenever scripts/build-brand-images.mjs redraws this card.
         image="https://billtap.app/img/og-restaurants.png?v=2"
@@ -786,11 +790,10 @@ export default function Restaurants() {
             <Reveal delay={0.12}>
               <p className="mt-8 text-lg sm:text-xl leading-relaxed max-w-xl font-light"
                 style={{ color: "rgba(245,245,244,.74)" }}>
-                BillTap asks every guest how it was. A low rating texts you{" "}
-                <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>while you can still fix it</em>
-                {" "}— and every guest gets a one-tap route to your Google listing.
-                At the table, guests split and settle on their own phones, so the table
-                is free for the next party sooner.
+                BillTap alerts your manager the moment a guest has a bad experience —{" "}
+                <em className="font-display not-italic" style={{ color: "#fff", fontSize: "1.12em" }}>while there&apos;s still time</em>
+                {" "}to recover the table, protect the relationship, and learn what went wrong.
+                Every guest still gets a one-tap route to your Google listing.
               </p>
             </Reveal>
 
@@ -1028,7 +1031,7 @@ export default function Restaurants() {
                   "Every guest gets the same one-tap Google button, whatever they rated",
                   "An unhappy guest is asked what went wrong — and you get a text right then",
                   "A manager can walk over while the guest is still there",
-                  "More guests asked means more reviews, and review count is what ranks you locally",
+                  "More genuine reviews give future guests more real experiences to judge you by when they find you on Google",
                 ].map((t) => (
                   <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
                     <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#30a46c" }} aria-hidden="true" />
@@ -1096,6 +1099,67 @@ export default function Restaurants() {
             </figure>
           </Reveal>
         </div>
+      </section>
+
+      {/* ── The Guest Recovery Loop ──────────────────────────
+          The category line: guest recovery, not review software. Every step
+          named here is something the product does today — the alert carries
+          the table and the guest's own words (worker/routes/rating-alert.js).
+          Recording the outcome of a recovery is not built yet, so it is not
+          claimed here. */}
+      <section id="recovery" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>The Guest Recovery Loop</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            This isn&apos;t review software. It&apos;s how you stop losing guests you never knew were unhappy.
+          </h2>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+            Slow mains, a cold plate, a missing side, a rough interaction. Most unhappy guests
+            don&apos;t complain. They pay, they leave — and then they never come back, post it
+            online, or tell their friends. You can&apos;t personally watch every table in a
+            dinner rush. BillTap watches them for you.
+          </p>
+        </Reveal>
+
+        <Reveal delay={0.06}>
+          <ol className="mt-10 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {[
+              ["Guest rates the visit", "One tap, as they finish — at the table or the counter."],
+              ["Unhappy? Asked what went wrong", "In their own words, while it's fresh."],
+              ["Your manager is alerted", "With the table and the comment, while the guest is still there."],
+              ["You recover the table", "Walk over, make it right, keep the relationship."],
+              ["Every guest can still review you", "Same Google button for everyone. Genuine, never gated."],
+            ].map(([t, d], n) => (
+              <li key={t} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+                <p className="text-xs font-bold" style={{ color: GOLD }}>{String(n + 1).padStart(2, "0")}</p>
+                <p className="mt-2 font-semibold leading-snug">{t}</p>
+                <p className="mt-2 text-sm font-light leading-relaxed" style={{ color: "rgba(245,245,244,.6)" }}>{d}</p>
+              </li>
+            ))}
+          </ol>
+        </Reveal>
+
+        <Reveal delay={0.1}>
+          <div className="mt-10 p-7 sm:p-9 rounded-2xl" style={{ background: "rgba(229,72,77,.06)", border: "1px solid rgba(229,72,77,.22)" }}>
+            <p className="rst-eyebrow" style={{ color: "#e5484d" }}>Ask yourself</p>
+            <ul className="mt-5 grid sm:grid-cols-2 gap-x-8 gap-y-3">
+              {[
+                "How many guests left unhappy last week without telling anyone?",
+                "Why didn't they say something while they were here?",
+                "Which complaint keeps coming back — and on which shift?",
+                "How did you find out about your last 1-star review?",
+              ].map((q) => (
+                <li key={q} className="font-display text-[1.25rem] leading-snug" style={{ color: "#f5f5f4" }}>{q}</li>
+              ))}
+            </ul>
+            <p className="mt-6 text-sm font-light" style={{ color: "rgba(245,245,244,.66)" }}>
+              If the honest answer is &ldquo;I don&apos;t know,&rdquo; that&apos;s the leak.{" "}
+              <Link to="/guest-recovery-audit" className="underline underline-offset-4" style={{ color: GOLD }}>
+                Take the 5-minute Guest Recovery Audit →
+              </Link>
+            </p>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── Openers and strugglers ───────────────────────────
@@ -1277,12 +1341,12 @@ export default function Restaurants() {
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
           <Reveal>
             <div>
-              <p className="rst-eyebrow" style={{ color: GOLD }}>Plans that pay for themselves</p>
+              <p className="rst-eyebrow" style={{ color: GOLD }}>Your Guest Recovery System</p>
               <h2 className="mt-4 font-display leading-none" style={{ fontSize: "clamp(3rem, 6.4vw, 4.4rem)" }}>
                 $149<span className="font-body font-light" style={{ color: "rgba(245,245,244,.4)", fontSize: "0.28em" }}>/month</span>
               </h2>
               <p className="mt-5 leading-relaxed font-light" style={{ color: "rgba(245,245,244,.66)" }}>
-                Pays for itself with just one or two additional returning tables each month.
+                One recovered regular can cover the month. Pays for itself with just one or two additional returning tables.
               </p>
 
               {/*
@@ -1332,7 +1396,9 @@ export default function Restaurants() {
                   payment processor" next to the missing logo wall; that one
                   is fixable without inventing a customer.
                 */}
-                {["14-day free trial", "Cancel anytime", "Printed QR table tents included",
+                {["Real-time unhappy-guest alerts, with the table and what went wrong",
+                  "Monthly guest report in your inbox", "Guest email list, built every service",
+                  "14-day free trial", "Cancel anytime", "Printed QR table tents included",
                   "Every guest can rate you in one tap \u2014 no bill split required",
                   "Unlimited tables and covers", "Setup in under 10 minutes",
                   "Billing by Stripe \u2014 card details never touch BillTap",

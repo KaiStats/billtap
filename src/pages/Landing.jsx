@@ -775,7 +775,7 @@ export default function Landing() {
                   to="/restaurants"
                   className="text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-primary focus-visible:text-foreground"
                 >
-                  Turn tables faster and hear unhappy guests first
+                  Catch unhappy guests before they become bad reviews
                 </Link>
               </p>
             </div>
