@@ -30,6 +30,7 @@ import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js'
 import { serviceRole } from '../lib/data.js';
 import { supabaseUrl } from '../lib/db.js';
 import { entitlement } from '../../shared/entitlement.js';
+import { isIssue, issueLabel } from '../../shared/guest-recovery.js';
 
 const MAX_BODY_BYTES = 512;
 
@@ -236,6 +237,12 @@ export async function onRequestPost({ request, env }) {
     const comment = clean(rating.comment, 1500);
     const guestEmail = clean(rating.guest_email || '', 200).toLowerCase();
     const alertPhone = clean(restaurant.alert_phone || '', 40);
+    // The guest's one-tap category, when they picked one. A fixed label, never
+    // their text, so it needs no escaping beyond the habit.
+    const issue = isIssue(rating.issue) ? issueLabel(rating.issue) : '';
+    // Where "I'm handling it" goes: the dashboard, opened on this guest's card.
+    // Signing in is the check — the link alone changes nothing.
+    const recoverUrl = `https://billtap.app/restaurant-dashboard?rating=${encodeURIComponent(ratingId)}`;
 
     /**
      * Whether this alert may claim the guest is still in the building.
@@ -312,6 +319,9 @@ export async function onRequestPost({ request, env }) {
                ? ''
                : `<p style="margin:4px 0 0;color:#888;font-size:12px">The receipt did not print a table. Match the total and the time against your POS ticket — that has the table and the server.</p>`}`
           : ''}
+        ${issue
+          ? `<p style="margin:14px 0 0;font-size:14px"><strong>Issue:</strong> ${esc(issue)}</p>`
+          : ''}
         ${comment
           ? `<blockquote style="margin:14px 0;padding:12px 16px;background:#f9fafb;border-left:3px solid #f0b429;font-size:14px;line-height:1.55">${esc(comment)}</blockquote>`
           : `<p style="margin:14px 0;color:#888;font-size:14px">No comment left.</p>`}
@@ -321,6 +331,10 @@ export async function onRequestPost({ request, env }) {
         ${onSite
           ? ''
           : `<p style="margin:14px 0 0;color:#888;font-size:13px">This one may have rated after leaving — the code works long after the visit. Answer it rather than walking the floor.</p>`}
+        <p style="margin:20px 0 0">
+          <a href="${esc(recoverUrl)}" style="display:inline-block;background:#f0b429;color:#111827;font-weight:700;padding:12px 20px;border-radius:999px;text-decoration:none">I'm handling it</a>
+        </p>
+        <p style="margin:8px 0 0;color:#888;font-size:12px">Then mark how it went — it goes into your monthly recovery report.</p>
       </div>`;
 
     /** The same detail in the plain-text part, which is what a watch shows. */
@@ -338,9 +352,11 @@ export async function onRequestPost({ request, env }) {
       `${stars}/5 — ${restaurantName} (${when})`,
       onSite ? '\nStill on site.' : '\nMay have rated after leaving.',
       checkLine,
+      issue ? `\nIssue: ${issue}` : '',
       comment ? `\n"${comment}"` : '\nNo comment left.',
       guestEmail ? `\nGuest: ${guestEmail}` : '\nNo guest email.',
       check?.receipt ? `\nReceipt: ${check.receipt}` : '',
+      `\nI'm handling it: ${recoverUrl}`,
     ].join('');
 
     // The table goes first, before the restaurant name even: this is read on a
@@ -349,6 +365,7 @@ export async function onRequestPost({ request, env }) {
     const smsBody = [
       check?.table ? `TABLE ${check.table}` : null,
       `${stars}★ at ${restaurantName}`,
+      issue || null,
       check?.table ? null : (check?.total ? `$${check.total} check` : null),
       comment ? `"${comment.slice(0, 140)}"` : 'No comment.',
       guestEmail ? `Reply: ${guestEmail}` : 'No guest email.',

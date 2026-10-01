@@ -59,6 +59,32 @@ export function lowRatingLine(caught) {
   return `${n} unhappy guest${n === 1 ? '' : 's'} reached you the moment they rated, while there was still time to make it right.`;
 }
 
+/**
+ * The guest recovery block, when the caller supplies it.
+ *
+ * Optional fields, so a payload built before recovery tracking existed sends
+ * exactly the email it always did. `recovered` and `resolved` are counts of low
+ * ratings (fully recovered, and given any outcome); the rate is only shown
+ * when something was resolved — "0%" would claim every guest was lost when
+ * the truth is nobody marked anything. `top_issues` is [{ label, count }],
+ * the labels from shared/guest-recovery.js.
+ */
+export function recoveryRows(r) {
+  const out = [];
+  const recovered = Number(r.recovered);
+  const resolved = Number(r.resolved);
+  if (Number.isFinite(recovered) && r.recovered != null) out.push(['Recovered before they left', recovered]);
+  if (resolved > 0 && Number.isFinite(recovered)) {
+    out.push(['Recovery rate', `${Math.round((recovered / resolved) * 100)}%`]);
+  }
+  const issues = Array.isArray(r.top_issues) ? r.top_issues : [];
+  issues
+    .filter((i) => i && typeof i.label === 'string' && Number(i.count) > 0)
+    .slice(0, 5)
+    .forEach((i, n) => out.push([`${n === 0 ? 'Top problem' : `Problem #${n + 1}`}: ${i.label.slice(0, 60)}`, Number(i.count)]));
+  return out;
+}
+
 export async function onRequestPost({ request, env }) {
   const expected = env.REPORT_WEBHOOK_SECRET;
   if (!expected) {
@@ -137,6 +163,7 @@ export async function onRequestPost({ request, env }) {
       ['Ratings collected', r.ratings ?? 0],
       ['Sent to Google', r.routed ?? 0],
       ['Low ratings you heard first', r.caught ?? 0],
+      ...recoveryRows(r),
       ['New guest emails', r.new_contacts ?? 0],
       ['Total list size', r.list_size ?? 0],
     ];

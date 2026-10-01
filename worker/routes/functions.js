@@ -28,6 +28,7 @@ import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
 import { isEntitled } from '../../shared/entitlement.js';
+import { isIssue, isRecoveryStatus } from '../../shared/guest-recovery.js';
 // The same clamp the scan applies to the model's output, applied again to the
 // browser's. See ticketColumns below for why it is shared rather than copied.
 import { ticketFrom } from './scan-receipt.js';
@@ -1853,7 +1854,23 @@ const HANDLERS = {
       const patch = {};
       if (comment) patch.comment = comment;
       if (validEmail) patch.guest_email = email;
-      if (Object.keys(patch).length) await svc.entity('GuestRating').update(rating_id, patch);
+      // The guest's pick on "What went wrong?". Anything off the list is
+      // dropped rather than refused: the comment is the record that matters,
+      // and a stale client must not lose it over a category name.
+      if (isIssue(body.issue)) patch.issue = body.issue;
+      if (Object.keys(patch).length) {
+        try {
+          await svc.entity('GuestRating').update(rating_id, patch);
+        } catch (e) {
+          // Migrations go out separately from the Worker (src/RUNBOOK.md). If
+          // this deploy beats 0027, the issue column does not exist yet and the
+          // whole write is refused — so retry without it rather than lose the
+          // guest's comment over an optional category.
+          if (!('issue' in patch)) throw e;
+          delete patch.issue;
+          if (Object.keys(patch).length) await svc.entity('GuestRating').update(rating_id, patch);
+        }
+      }
 
       if (validEmail) {
         const contacts = await svc.entity('GuestContact').filter({
@@ -3448,6 +3465,39 @@ const HANDLERS = {
         }
         : {}),
     });
+  },
+
+  /**
+   * The manager's side of a low rating: "I'm handling it", then what happened.
+   *
+   * Owner-only, and the restaurant comes from the signed-in user, never the
+   * caller — a rating id alone must not let anyone mark another restaurant's
+   * guests as recovered. The claim time is kept from the first tap, so moving
+   * from 'handling' to an outcome does not rewrite when somebody picked it up.
+   */
+  async updateGuestRecovery({ env, request, body }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+    const { rating_id, status } = body || {};
+    if (!rating_id || typeof rating_id !== 'string') {
+      return json({ error: 'rating_id is required' }, 400);
+    }
+    if (!isRecoveryStatus(status)) return json({ error: 'Unknown recovery status' }, 400);
+
+    const svc = serviceRole(env);
+    const restaurant = await findOrAdoptRestaurant(svc, user);
+    if (!restaurant) return json({ error: 'No restaurant' }, 404);
+    const rating = (await svc.entity('GuestRating').filter({ id: rating_id }))[0];
+    // Not found and not yours answer the same, so ids cannot be probed.
+    if (!rating || rating.restaurant_id !== restaurant.id) {
+      return json({ error: 'Rating not found' }, 404);
+    }
+
+    const now = Date.now();
+    const patch = { recovery_status: status, recovery_updated_at: now };
+    if (!rating.recovery_claimed_at) patch.recovery_claimed_at = now;
+    await svc.entity('GuestRating').update(rating_id, patch);
+    return json({ ok: true, rating_id, ...patch, recovery_claimed_at: rating.recovery_claimed_at || now });
   },
 
   async listRestaurants({ env }) {

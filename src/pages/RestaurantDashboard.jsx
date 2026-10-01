@@ -6,6 +6,7 @@ import { planSummary } from "@/lib/plan";
 import { reviewLift } from "@/lib/reviewLift";
 import { shareCardLines, drawShareCard, shareCardImage } from "@/lib/shareCard";
 import { accessToken } from "@/lib/supabase";
+import { OUTCOMES, issueLabel, outcomeLabel, summarizeRecovery } from "../../shared/guest-recovery.js";
 
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,6 +46,32 @@ export default function RestaurantDashboard() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
+  const [recoveryBusy, setRecoveryBusy] = useState(null); // rating id being saved
+  // The alert email links here with ?rating=<id>, so the manager lands on the
+  // card for the guest they were paged about.
+  const [focusRating] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("rating"); } catch { return null; }
+  });
+
+  /**
+   * "I'm handling it", then the outcome. Applied locally on success so the card
+   * updates without reloading every rating and contact.
+   */
+  const setRecovery = useCallback(async (ratingId, status) => {
+    setRecoveryBusy(ratingId);
+    try {
+      const res = await invoke("updateGuestRecovery", { rating_id: ratingId, status });
+      const d = res?.data;
+      if (d?.ok) {
+        setRatings((all) => all.map((r) => (r.id === ratingId
+          ? { ...r, recovery_status: d.recovery_status, recovery_claimed_at: d.recovery_claimed_at, recovery_updated_at: d.recovery_updated_at }
+          : r)));
+      }
+    } catch {
+      /* The card keeps its last state; the manager can tap again. */
+    }
+    setRecoveryBusy(null);
+  }, []);
   const handledCheckout = useRef(null);
 
   /**
@@ -86,6 +113,12 @@ export default function RestaurantDashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Bring the paged-about card into view once the ratings have arrived.
+  useEffect(() => {
+    if (!focusRating || loading) return;
+    document.getElementById(`rating-${focusRating}`)?.scrollIntoView({ block: "center" });
+  }, [focusRating, loading]);
 
   // Returning from Stripe Checkout. The session id is proof of nothing on its
   // own — the endpoint asks Stripe directly before we mark the plan active.
@@ -192,7 +225,7 @@ export default function RestaurantDashboard() {
     // DEFAULT_RATING_THRESHOLD in worker/routes/functions.js.
     const alertAt = restaurant?.rating_threshold ?? 3;
     const low = ratings.filter((r) => (r.stars || 0) <= alertAt);
-    return { n, avg, routed, low };
+    return { n, avg, routed, low, recovery: summarizeRecovery(low) };
   }, [ratings, restaurant]);
 
   // One source for the header line and the billing card, so the two cannot say
@@ -532,15 +565,32 @@ export default function RestaurantDashboard() {
           <h2 className="text-lg font-bold flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" style={{ color: "#ff8080" }} /> Needs attention
           </h2>
+          {stats.low.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Stat label="Unhappy guests caught" value={stats.recovery.low} accent="#ff8080" />
+              <Stat label="Recovered" value={stats.recovery.recovered}
+                hint={stats.recovery.partial ? `+${stats.recovery.partial} partly` : undefined} accent="#00c896" />
+              <Stat label="Recovery rate"
+                value={stats.recovery.recoveryRate === null ? "—" : `${Math.round(stats.recovery.recoveryRate * 100)}%`}
+                hint={stats.recovery.resolved ? `of ${stats.recovery.resolved} with an outcome` : "Mark outcomes below"} />
+              <Stat label="Top problem" value={stats.recovery.topIssues[0]?.count ?? "—"}
+                hint={stats.recovery.topIssues[0]?.label || "Guests can now pick one"} />
+            </div>
+          )}
           {stats.low.length === 0 ? (
             <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,.45)" }}>
               Nothing yet. Low ratings land here the moment they happen.
             </p>
           ) : (
             <div className="mt-4 space-y-3">
-              {stats.low.slice().sort((a, b) => (b.created_at || 0) - (a.created_at || 0)).slice(0, 12).map((r) => (
-                <div key={r.id} className="p-4 rounded-xl"
-                  style={{ background: "rgba(255,128,128,.06)", border: "1px solid rgba(255,128,128,.2)" }}>
+              {stats.low.slice()
+                .sort((a, b) => Number(b.id === focusRating) - Number(a.id === focusRating) || (b.created_at || 0) - (a.created_at || 0))
+                .slice(0, 12).map((r) => (
+                <div key={r.id} id={`rating-${r.id}`} className="p-4 rounded-xl"
+                  style={{
+                    background: "rgba(255,128,128,.06)",
+                    border: r.id === focusRating ? `2px solid ${GOLD}` : "1px solid rgba(255,128,128,.2)",
+                  }}>
                   <div className="flex items-center gap-2">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Star key={i} className="w-3.5 h-3.5"
@@ -550,7 +600,36 @@ export default function RestaurantDashboard() {
                       {r.created_at ? new Date(r.created_at).toLocaleString() : ""}
                     </span>
                   </div>
+                  {r.issue && (
+                    <p className="mt-2 text-xs font-bold uppercase tracking-wide" style={{ color: "#ff8080" }}>{issueLabel(r.issue)}</p>
+                  )}
                   {r.comment && <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,.8)" }}>{r.comment}</p>}
+                  {/* Guest recovery: claim it, then record what happened. */}
+                  <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                    <p className="text-xs font-semibold" style={{ color: r.recovery_status ? "#00c896" : "rgba(255,255,255,.5)" }}>
+                      {outcomeLabel(r.recovery_status)}
+                      {r.recovery_claimed_at ? ` · picked up ${new Date(r.recovery_claimed_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {!r.recovery_status && (
+                        <button onClick={() => setRecovery(r.id, "handling")} disabled={recoveryBusy === r.id}
+                          className="px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-50"
+                          style={{ background: GOLD, color: "#111" }}>
+                          I&apos;m handling it
+                        </button>
+                      )}
+                      {OUTCOMES.map((o) => (
+                        <button key={o.id} onClick={() => setRecovery(r.id, o.id)} disabled={recoveryBusy === r.id}
+                          aria-pressed={r.recovery_status === o.id}
+                          className="px-3 py-1.5 rounded-full text-xs font-semibold disabled:opacity-50"
+                          style={r.recovery_status === o.id
+                            ? { background: "#00c896", color: "#04231a" }
+                            : { background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.75)" }}>
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {r.guest_email && (
                     <a href={`mailto:${r.guest_email}`} className="mt-2 inline-block text-sm font-semibold" style={{ color: "#00c896" }}>
                       Reply to {r.guest_email}

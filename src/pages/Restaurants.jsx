@@ -104,6 +104,9 @@ const REPORT_SAMPLE = [
   ["Ratings collected", "212"],
   ["Sent to Google", "64"],
   ["Low ratings you heard first", "3"],
+  ["Recovered before they left", "2"],
+  ["Recovery rate", "67%"],
+  ["Top problem: Slow service", "2"],
   ["New guest emails", "88"],
   ["Total list size", "540"],
 ];
@@ -1105,8 +1108,8 @@ export default function Restaurants() {
           The category line: guest recovery, not review software. Every step
           named here is something the product does today — the alert carries
           the table and the guest's own words (worker/routes/rating-alert.js).
-          Recording the outcome of a recovery is not built yet, so it is not
-          claimed here. */}
+          The outcome step is the dashboard's "I'm handling it" and outcome
+          buttons (updateGuestRecovery, migration 0027). */}
       <section id="recovery" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
         <Reveal>
           <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>The Guest Recovery Loop</p>
@@ -1122,13 +1125,14 @@ export default function Restaurants() {
         </Reveal>
 
         <Reveal delay={0.06}>
-          <ol className="mt-10 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <ol className="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[
               ["Guest rates the visit", "One tap, as they finish — at the table or the counter."],
               ["Unhappy? Asked what went wrong", "In their own words, while it's fresh."],
               ["Your manager is alerted", "With the table and the comment, while the guest is still there."],
-              ["You recover the table", "Walk over, make it right, keep the relationship."],
+              ["You recover the table", "Tap \u201cI\u2019m handling it,\u201d walk over, then mark how it went."],
               ["Every guest can still review you", "Same Google button for everyone. Genuine, never gated."],
+              ["You see what keeps going wrong", "Top problems and your recovery rate, in the dashboard and the monthly report."],
             ].map(([t, d], n) => (
               <li key={t} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
                 <p className="text-xs font-bold" style={{ color: GOLD }}>{String(n + 1).padStart(2, "0")}</p>
@@ -1397,6 +1401,7 @@ export default function Restaurants() {
                   is fixable without inventing a customer.
                 */}
                 {["Real-time unhappy-guest alerts, with the table and what went wrong",
+                  "Recovery tracking: \u201cI\u2019m handling it\u201d and outcomes, top problems, recovery rate",
                   "Monthly guest report in your inbox", "Guest email list, built every service",
                   "14-day free trial", "Cancel anytime", "Printed QR table tents included",
                   "Every guest can rate you in one tap \u2014 no bill split required",

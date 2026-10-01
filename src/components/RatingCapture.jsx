@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ISSUES } from "../../shared/guest-recovery.js";
 import { Star, Loader2, Check, ExternalLink } from "lucide-react";
 import { invoke } from "@/api/functions";
 
@@ -111,6 +112,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
   const [stars, setStars] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
+  const [issue, setIssue] = useState("");
   const [email, setEmail] = useState("");
   const [ratingId, setRatingId] = useState(null);
   const [phase, setPhase] = useState("rate"); // rate | feedback | review | done
@@ -247,11 +249,13 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
    * had to be open to everyone. The upsert now happens as service role inside
    * submitGuestRating, so the rules could be closed.
    */
-  const saveContact = async (/** @type {{ comment?: any }} */ { comment: text } = {}) => {
+  const saveContact = async (/** @type {{ comment?: any, issue?: any }} */ { comment: text, issue: picked } = {}) => {
     const clean = email.trim().toLowerCase();
+    /** @type {Record<string, string>} */
     const body = clean && EMAIL_RE.test(clean) ? { email: clean } : {};
     if (text) body.comment = text;
-    if (!ratingId || (!body.email && !body.comment)) return;
+    if (picked) body.issue = picked;
+    if (!ratingId || (!body.email && !body.comment && !body.issue)) return;
     try {
       await invoke("submitGuestRating", {
         action: "contact",
@@ -309,7 +313,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
     // Email and comment land in one server call, so the comment is stored
     // before the alert fires and the operator's email is never emptier than
     // the record behind it.
-    await saveContact({ comment: comment.trim() });
+    await saveContact({ comment: comment.trim(), issue });
 
     // Page the operator. The rating is already stored, so a failure here costs
     // the alert, not the record. The server looks the rating up to find the
@@ -405,6 +409,21 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
               they have a chance to put it right tonight.
             </p>
 
+            {/* One tap for the kind of problem, so the monthly report can say
+                which complaint keeps coming back. Optional: the words below
+                are still the record that matters. */}
+            <div className="mt-5 flex flex-wrap gap-2 justify-center" role="group" aria-label="What kind of problem">
+              {ISSUES.map((i) => (
+                <button key={i.id} type="button" aria-pressed={issue === i.id}
+                  onClick={() => setIssue(issue === i.id ? "" : i.id)}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                  style={issue === i.id
+                    ? { background: "#00c896", color: "#04231a" }
+                    : { background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.8)", border: "1px solid rgba(255,255,255,.14)" }}>
+                  {i.label}
+                </button>
+              ))}
+            </div>
             <textarea
               rows={4} value={comment} onChange={(e) => setComment(e.target.value)}
               placeholder="What happened?"
