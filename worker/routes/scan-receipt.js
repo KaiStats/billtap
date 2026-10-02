@@ -37,9 +37,22 @@
  *   GEMINI_MODEL    optional. Model names change; do not hard-code a guess in
  *                   a deploy you cannot edit. Check the provider's current
  *                   list and set this.
+ *   ANTHROPIC_API_KEY  optional. Turns on the Claude backup below.
+ *   CLAUDE_MODEL    optional, default claude-sonnet-5-5.
+ *
+ * ── The backup reader ───────────────────────────────────────────────────────
+ *
+ * Gemini stays first: it is fast and cheap. Claude reads the same photo when
+ * Gemini could not — busy (429), an error, a stall, unusable output — or when
+ * Gemini's numbers do not add up (validateReceiptParse, the same check the
+ * review screen runs). If both read it and only Gemini's failed the check,
+ * Claude's is used; if both fail the check, Gemini's comes back as before and
+ * the review screen asks the diner to look it over. Without the key, nothing
+ * here changes.
  */
 
 import { json } from '../lib/email.js';
+import { validateReceiptParse } from '../../shared/receipt-math.js';
 
 /** Matches what the review screen already expects back. */
 const RECEIPT_SCHEMA = {
@@ -286,19 +299,21 @@ export async function onRequestPost({ request, env }) {
       // sends the diner to retake a picture that was fine. Still a 5xx, so the
       // review screen keeps offering the even split that needs no model.
       if (res.status === 429) {
-        return json({
+        return await backupOr(env, contentType, buffer, json({
           error: 'Scanning is busy right now. Try again in a minute, or split evenly instead.',
           code: 'busy',
-        }, 503);
+        }, 503));
       }
-      return json({ error: 'Could not read that receipt.', code: 'model_error' }, 502);
+      return await backupOr(env, contentType, buffer,
+        json({ error: 'Could not read that receipt.', code: 'model_error' }, 502));
     }
 
     const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       // A safety block or a truncated response both land here.
       console.error('scan-receipt: no text in response', JSON.stringify(payload).slice(0, 300));
-      return json({ error: 'Could not read that receipt.', code: 'empty_response' }, 502);
+      return await backupOr(env, contentType, buffer,
+        json({ error: 'Could not read that receipt.', code: 'empty_response' }, 502));
     }
 
     let parsed;
@@ -306,43 +321,148 @@ export async function onRequestPost({ request, env }) {
       parsed = JSON.parse(text);
     } catch {
       console.error('scan-receipt: response was not JSON', text.slice(0, 200));
-      return json({ error: 'Could not read that receipt.', code: 'bad_json' }, 502);
+      return await backupOr(env, contentType, buffer,
+        json({ error: 'Could not read that receipt.', code: 'bad_json' }, 502));
     }
 
-    const ticket = ticketFrom(parsed.ticket);
-
-    // Normalised here so the client gets the same shape whichever path ran.
-    return json({
-      title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'Receipt',
-      items: Array.isArray(parsed.items)
-        ? parsed.items
-            .filter((item) => item && typeof item === 'object')
-            .map((item) => ({
-              name: String(item.name || '').slice(0, 120),
-              price: Number(item.price) || 0,
-              quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-            }))
-        : [],
-      tax: Number(parsed.tax) || 0,
-      tip: Number(parsed.tip) || 0,
-      total: Number(parsed.total) || 0,
-      // Clamped here as well as in createSession. This is model output — the
-      // least trustworthy string in the product — and it ends up rendered into
-      // an email, so it is bounded at both ends rather than at whichever one
-      // somebody remembers. `ticket` is omitted entirely when nothing was
-      // printed, so a caller can test for it rather than for three empties.
-      ...(ticket ? { ticket } : {}),
-    });
+    return await withBackup(env, contentType, buffer, normalise(parsed));
   } catch (error) {
     // Reached only when the retry stalled too, or the network failed outright.
-    // The client reads `code` and falls back to the even split, so the table
-    // still gets to split their bill — they just lose the itemisation and, now,
-    // the table number off the ticket.
     const aborted = error?.name === 'AbortError';
     console.error(`scan-receipt: ${aborted ? 'timed out twice' : 'threw'}`, error?.message);
-    return json(
+    return await backupOr(env, contentType, buffer, json(
       { error: 'Could not read that receipt.', code: aborted ? 'timeout' : 'network' },
       504,
-    );
+    ));
   }
+}
+
+/** Normalised here so the client gets the same shape whichever model read it. */
+function normalise(parsed) {
+  const ticket = ticketFrom(parsed.ticket);
+  return {
+    title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'Receipt',
+    items: Array.isArray(parsed.items)
+      ? parsed.items
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            name: String(item.name || '').slice(0, 120),
+            price: Number(item.price) || 0,
+            quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          }))
+      : [],
+    tax: Number(parsed.tax) || 0,
+    tip: Number(parsed.tip) || 0,
+    total: Number(parsed.total) || 0,
+    // Clamped here as well as in createSession. This is model output — the
+    // least trustworthy string in the product — and it ends up rendered into
+    // an email, so it is bounded at both ends rather than at whichever one
+    // somebody remembers. `ticket` is omitted entirely when nothing was
+    // printed, so a caller can test for it rather than for three empties.
+    ...(ticket ? { ticket } : {}),
+  };
+}
+
+// ── Claude backup ───────────────────────────────────────────────────────────
+
+/** Image types Claude reads. HEIC is not one, so a HEIC photo has no backup. */
+const CLAUDE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+/** Long enough for a careful read, short enough that a diner is not left waiting. */
+const CLAUDE_MS = 15000;
+
+const CLAUDE_PROMPT = `${PROMPT}
+
+Reply with only a JSON object, no other text, in exactly this shape:
+{"title": string, "items": [{"name": string, "price": number, "quantity": number}], `
+  + '"tax": number, "tip": number, "total": number, '
+  + '"ticket": {"table": string, "server": string, "number": string}}';
+
+/** The first {...} in a reply, parsed, or null. */
+export function jsonFrom(text) {
+  if (typeof text !== 'string') return null;
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+}
+
+const canBackup = (env, contentType) => Boolean(env.ANTHROPIC_API_KEY) && CLAUDE_TYPES.has(contentType);
+
+/**
+ * One read by Claude. Returns the normalised receipt, or null — never throws,
+ * because it only ever runs when something else already went wrong and its own
+ * failure must not replace the original answer with a worse one.
+ */
+export async function readWithClaude(env, contentType, buffer) {
+  // Plain fetch, like Gemini and Postmark above. The Anthropic SDK bundles
+  // Node-only modules (fs, child_process) that this Worker cannot load without
+  // turning on nodejs_compat for every route — too wide a change for a backup.
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), CLAUDE_MS);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: abort.signal,
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: env.CLAUDE_MODEL || 'claude-sonnet-5-5',
+        max_tokens: 8000,
+        // Reading printed numbers needs care, not long deliberation.
+        output_config: { effort: 'low' },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: contentType, data: base64(buffer) } },
+            { type: 'text', text: CLAUDE_PROMPT },
+          ],
+        }],
+      }),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      console.error(`scan-receipt: claude rejected ${res.status}`, JSON.stringify(payload?.error || {}).slice(0, 200));
+      return null;
+    }
+    if (payload?.stop_reason === 'refusal' || payload?.stop_reason === 'max_tokens') {
+      console.error(`scan-receipt: claude stopped (${payload.stop_reason})`);
+      return null;
+    }
+    const text = (payload?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const parsed = jsonFrom(text);
+    if (!parsed) {
+      console.error('scan-receipt: claude reply was not JSON', text.slice(0, 200));
+      return null;
+    }
+    return normalise(parsed);
+  } catch (error) {
+    console.error(`scan-receipt: claude ${error?.name === 'AbortError' ? 'timed out' : 'threw'}`, error?.message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Gemini failed outright: try Claude, else return Gemini's own error. */
+async function backupOr(env, contentType, buffer, failure) {
+  if (!canBackup(env, contentType)) return failure;
+  const result = await readWithClaude(env, contentType, buffer);
+  if (!result) return failure;
+  console.log(JSON.stringify({ job: 'scan-receipt', event: 'claude_backup', reason: 'gemini_failed' }));
+  return json(result);
+}
+
+/** Gemini read it: keep it unless its numbers do not add up and Claude's do. */
+async function withBackup(env, contentType, buffer, result) {
+  if (validateReceiptParse(result).valid || !canBackup(env, contentType)) return json(result);
+  const second = await readWithClaude(env, contentType, buffer);
+  if (second && validateReceiptParse(second).valid) {
+    console.log(JSON.stringify({ job: 'scan-receipt', event: 'claude_backup', reason: 'gemini_mismatch' }));
+    return json(second);
+  }
+  return json(result);
 }
