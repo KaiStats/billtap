@@ -86,7 +86,7 @@ async function attemptSend(request) {
   }
 }
 
-export async function sendEmail(env, { to, subject, html, text, replyTo }) {
+export async function sendEmail(env, { to, subject, html, text, replyTo, from: fromOverride }) {
   const held = suppressed(env, 'email', to);
   if (held) return held;
 
@@ -98,7 +98,7 @@ export async function sendEmail(env, { to, subject, html, text, replyTo }) {
     return { ok: false, reason: 'email_not_configured' };
   }
 
-  const from = env.LEAD_NOTIFY_FROM || 'BillTap <alerts@billtap.app>';
+  const from = fromOverride || env.LEAD_NOTIFY_FROM || 'BillTap <alerts@billtap.app>';
 
   /**
    * Every provider this environment can send through, in preference order.

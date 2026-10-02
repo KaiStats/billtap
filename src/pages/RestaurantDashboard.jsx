@@ -47,11 +47,23 @@ export default function RestaurantDashboard() {
   const [formError, setFormError] = useState("");
   const [billing, setBilling] = useState(null); // null | "starting" | "verifying" | "cancelled" | "failed"
   const [recoveryBusy, setRecoveryBusy] = useState(null); // rating id being saved
+  const [testAlert, setTestAlert] = useState(null); // null | "sending" | result
   // The alert email links here with ?rating=<id>, so the manager lands on the
   // card for the guest they were paged about.
   const [focusRating] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("rating"); } catch { return null; }
   });
+
+  /** A real alert to this restaurant's own contacts, with the answer shown. */
+  const sendTest = useCallback(async () => {
+    setTestAlert("sending");
+    try {
+      const res = await invoke("sendTestAlert", {});
+      setTestAlert(res?.data || { ok: false, email: { ok: false, reason: "no_response" } });
+    } catch {
+      setTestAlert({ ok: false, email: { ok: false, reason: "request_failed" } });
+    }
+  }, []);
 
   /**
    * "I'm handling it", then the outcome. Applied locally on success so the card
@@ -787,6 +799,11 @@ export default function RestaurantDashboard() {
                       style={{ background: "rgba(255,255,255,.08)" }}>
                       Copy link
                     </button>
+                    <a href={`/tent/${restaurant.slug}${key === "rating" ? "?rate=1" : ""}`} target="_blank" rel="noreferrer"
+                      className="mt-3 ml-2 inline-block text-sm font-semibold px-4 py-2 rounded-full"
+                      style={{ background: GOLD, color: "#1a1200" }}>
+                      Print table tent
+                    </a>
                   </div>
                 </div>
               ))}
@@ -919,6 +936,42 @@ export default function RestaurantDashboard() {
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {savedAt && !saving ? "Saved" : "Save settings"}
               </button>
+
+              {/* Prove the alert reaches a phone before the restaurant relies on
+                  it. Save first: it uses the saved email and phone. */}
+              <div className="pt-4" style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                <button onClick={sendTest} disabled={testAlert === "sending"}
+                  className="w-full py-3 rounded-2xl font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+                  style={{ background: "rgba(255,255,255,.08)", color: "#fff" }}>
+                  {testAlert === "sending" ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                  Send a test alert
+                </button>
+                {testAlert && testAlert !== "sending" && (
+                  <div className="mt-3 text-sm space-y-1" role="status">
+                    {[["Email", testAlert.email], ["Text", testAlert.sms]].filter(([, r]) => r).map(([label, r]) => (
+                      <p key={label} style={{ color: r.ok ? "#00c896" : "#ff8080" }}>
+                        {r.ok
+                          ? `✓ ${label} sent to ${r.to}. Check it arrived.`
+                          : `✗ ${label}: ${{
+                            no_alert_email: "no alert email saved",
+                            no_alert_phone: "no alert phone saved (optional)",
+                            email_not_configured: "email isn't set up on the server",
+                            sms_not_configured: "texting isn't set up on the server",
+                            email_send_failed: "the email service refused it",
+                            suppressed_outside_production: "test site: nothing is sent",
+                            bad_phone_number: "that phone number isn't valid",
+                            sms_send_failed: "the text service refused it",
+                          }[r.reason] || r.reason || "failed"}`}
+                      </p>
+                    ))}
+                    {testAlert.email?.ok && (
+                      <p className="text-xs" style={{ color: "rgba(255,255,255,.45)" }}>
+                        Not in your inbox within a minute? Check Spam, and mark it &ldquo;Not spam&rdquo;.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>

@@ -126,6 +126,39 @@ export async function onRequestPost({ request, env }) {
   const delivered = result.ok || result.reason === 'suppressed_outside_production';
 
   /**
+   * The prospect hears back in seconds, not "within a business day".
+   *
+   * Sent from hello@billtap.app — the one public address — so a reply lands
+   * with a person. Best effort: the lead is already stored and the operator
+   * already told, so a failed acknowledgement never fails the request.
+   */
+  if (stored || delivered) {
+    const ack = await sendEmail(env, {
+      to: email,
+      from: 'BillTap <hello@billtap.app>',
+      replyTo: 'hello@billtap.app',
+      subject: `Got it — BillTap for ${restaurantName}`,
+      text: [
+        `Thanks for reaching out about ${restaurantName}.`,
+        '',
+        "We'll call or text within one business day to get your table tents printed and your 14-day trial switched on. No card needed.",
+        '',
+        'Want to go sooner? Reply to this email or call (702) 844-0938.',
+        '',
+        '— BillTap',
+        'https://billtap.app/restaurants',
+      ].join('\n'),
+      html: `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;font-size:15px;line-height:1.6;color:#111827">
+        <p>Thanks for reaching out about <strong>${esc(restaurantName)}</strong>.</p>
+        <p>We'll call or text within one business day to get your table tents printed and your 14-day trial switched on. No card needed.</p>
+        <p>Want to go sooner? Just reply to this email or call <a href="tel:+17028440938">(702) 844-0938</a>.</p>
+        <p style="color:#6b7280">— BillTap · <a href="https://billtap.app/restaurants" style="color:#b7791f">billtap.app/restaurants</a></p>
+      </div>`,
+    });
+    if (!ack.ok) console.error(`restaurant-lead: acknowledgement not sent — ${ack.reason}`);
+  }
+
+  /**
    * Now a total loss rather than an undelivered email. The 502 was right while
    * the email was the only record; with the row stored, "try again" sends a
    * restaurant back to a form whose contents are already safe.
