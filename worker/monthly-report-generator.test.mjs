@@ -96,3 +96,13 @@ test('the monthly cron the Worker dispatches on is one wrangler actually fires',
   const src = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   assert.ok(src.includes(`"${MONTHLY_REPORT_CRON}"`), `${MONTHLY_REPORT_CRON} is not in wrangler.jsonc triggers.crons`);
 });
+
+test('the report names the most affected shift once one repeats', async () => {
+  const { recoveryRows } = await import('./routes/monthly-report.js');
+  const w = previousMonth(new Date(Date.UTC(2026, 9, 1)));
+  const fri = Date.UTC(2026, 8, 19, 2, 30); // Friday 7:30pm Los Angeles
+  const r = buildReport({ id: 'r1', rating_threshold: 3 },
+    [{ stars: 1, created_at: fri }, { stars: 2, created_at: fri + 1800e3 }], [], w, 'America/Los_Angeles');
+  assert.deepEqual(r.worst_period, { label: 'Friday dinner', count: 2 });
+  assert.deepEqual(recoveryRows(r).at(-1), ['Most affected: Friday dinner', '2 low ratings']);
+});
