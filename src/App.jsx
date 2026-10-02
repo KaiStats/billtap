@@ -73,6 +73,7 @@ const BlogPost05FasterCheckoutMoreTurns = lazy(() => import('@/pages/BlogPost05F
 const NewRestaurants = lazy(() => import('@/pages/NewRestaurants'));
 const GuestRecoveryAudit = lazy(() => import('@/pages/GuestRecoveryAudit'));
 const Flyer = lazy(() => import('@/pages/Flyer'));
+const Tent = lazy(() => import('@/pages/Tent'));
 const Changelog   = lazy(() => import('@/pages/Changelog'));
 const Profile     = lazy(() => import('@/pages/Profile'));
 const NewDemo     = lazy(() => import('@/pages/NewDemo'));
@@ -289,6 +290,7 @@ const AuthenticatedApp = () => {
             <Route path="/new-restaurants" element={<NewRestaurants />} />
             <Route path="/guest-recovery-audit" element={<GuestRecoveryAudit />} />
             <Route path="/flyer" element={<Flyer />} />
+            <Route path="/tent/:slug" element={<Tent />} />
             <Route path="/r/:slug" element={<TableEntry />} />
             {/*
               The pay-first entrance, and the same screen.

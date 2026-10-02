@@ -17,7 +17,7 @@
  * so every call site is unchanged and the SDK's { data } response shape is
  * preserved.
  */
-import { json } from '../lib/email.js';
+import { json, sendEmail, sendSms } from '../lib/email.js';
 import { serviceRole, currentUser, dataMisconfiguration, backendName } from '../lib/data.js';
 // Straight from db.js rather than through the backend switch: storage is
 // Supabase's and there is no Base44 equivalent to route to. createReceiptUpload
@@ -86,6 +86,7 @@ async function readAll(svc, entity, restaurantId) {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const escHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Guest participant ids are minted client-side; keep the shape constrained. */
@@ -3505,6 +3506,50 @@ const HANDLERS = {
     if (!rating.recovery_claimed_at) patch.recovery_claimed_at = now;
     await svc.entity('GuestRating').update(rating_id, patch);
     return json({ ok: true, rating_id, ...patch, recovery_claimed_at: rating.recovery_claimed_at || now });
+  },
+
+  /**
+   * "Send test alert" on the dashboard: a real alert to the owner's own alert
+   * email and phone, with the provider's answer shown on screen.
+   *
+   * The guest's phone fires the real alert and never reads the response, so a
+   * broken sender looks exactly like a working one until a manager misses a
+   * table. This is the one place the answer is read back to a person: during
+   * the setup call, before the restaurant relies on it.
+   *
+   * Owner-only, to the addresses already on the row — never to anything in the
+   * request body — so it cannot be turned into a relay. Rate-limited by path.
+   */
+  async sendTestAlert({ env, request }) {
+    const user = await currentUser(env, request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+    const svc = serviceRole(env);
+    const restaurant = await findOrAdoptRestaurant(svc, user);
+    if (!restaurant) return json({ error: 'No restaurant' }, 404);
+    const to = String(restaurant.alert_email || '').trim();
+    const phone = String(restaurant.alert_phone || '').trim();
+    if (!to && !phone) {
+      return json({ ok: false, email: { ok: false, reason: 'no_alert_email' }, sms: { ok: false, reason: 'no_alert_phone' } });
+    }
+    const name = String(restaurant.name || 'Your restaurant').slice(0, 120);
+    const text = `TEST from BillTap: this is what a low-rating alert looks like for ${name}. `
+      + 'When a real guest rates you low you will get one of these with the table and what went wrong.';
+    const [email, sms] = await Promise.all([
+      to ? sendEmail(env, {
+        to,
+        subject: `✅ Test alert for ${name} — BillTap`,
+        text,
+        html: `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px">
+          <p style="margin:0 0 6px;color:#16a34a;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Test alert</p>
+          <p style="font-size:15px;line-height:1.55">${escHtml(text)}</p></div>`,
+      }) : { ok: false, reason: 'no_alert_email' },
+      phone ? sendSms(env, { to: phone, body: text }) : { ok: false, reason: 'no_alert_phone' },
+    ]);
+    return json({
+      ok: Boolean(email.ok || sms.ok),
+      email: { ok: Boolean(email.ok), to: to || null, ...(email.ok ? {} : { reason: email.reason }) },
+      sms: { ok: Boolean(sms.ok), to: phone || null, ...(sms.ok ? {} : { reason: sms.reason }) },
+    });
   },
 
   async listRestaurants({ env }) {

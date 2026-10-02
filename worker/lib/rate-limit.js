@@ -61,6 +61,9 @@ const LIMITED = new Set([
   '/api/fn/joinSession',
   '/api/fn/markMePaid',
   '/api/fn/submitGuestRating',
+  // Sends real mail and texts to the owner's own alert contacts; counted so a
+  // stuck button cannot become a phone bill.
+  '/api/fn/sendTestAlert',
   '/api/fn/verifyQRToken',
   '/api/fn/getSplitStatus',
   '/api/fn/getPublicRestaurant',
