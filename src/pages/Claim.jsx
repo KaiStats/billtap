@@ -37,6 +37,21 @@ function calcMyShare(items, myId, tax, tip) {
   return mySubtotal + (tax || 0) * ratio + (tip || 0) * ratio;
 }
 
+/**
+ * The same arithmetic as calcMyShare, kept in its parts so the guest can see
+ * how their number was built instead of taking it on faith.
+ */
+function shareBreakdown(items, myId, tax, tip) {
+  const subtotal = items.reduce((s, item) => s + (item.price * (item.quantity || 1)), 0);
+  let mine = 0;
+  items.forEach(item => {
+    const claimed = item.claimed_by || [];
+    if (claimed.includes(myId)) mine += (item.price * (item.quantity || 1)) / claimed.length;
+  });
+  const ratio = subtotal ? mine / subtotal : 0;
+  return { items: mine, tax: (tax || 0) * ratio, tip: (tip || 0) * ratio, pct: ratio };
+}
+
 function calcEvenShare(totalAmount, participantCount) {
   if (participantCount === 0) return 0;
   return Math.round((totalAmount / participantCount) * 100) / 100;
@@ -584,6 +599,11 @@ export default function Claim() {
     return calcMyShare(items, myId, session.tax, session.tip);
   }, [session, splitMode, participants, items, myId]);
 
+  const breakdown = useMemo(
+    () => (session && splitMode === "itemized" ? shareBreakdown(items, myId, session.tax, session.tip) : null),
+    [session, splitMode, items, myId],
+  );
+
   /**
    * What "just split it evenly" would have cost this diner.
    *
@@ -1106,7 +1126,13 @@ export default function Claim() {
               <div className="flex justify-between items-center">
                 <div>
                   <div className="font-bold text-white text-sm">You owe</div>
-                  <div className="text-xs text-white/50">{myMyClaimed.length} item{myMyClaimed.length !== 1 ? "s" : ""} + tax &amp; tip</div>
+                  {/* Never make a guest guess how the total was built. */}
+                  <div className="text-xs text-white/60 mono tabular-nums">
+                    Items ${breakdown.items.toFixed(2)} · Tax ${breakdown.tax.toFixed(2)} · Tip ${breakdown.tip.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-white/40">
+                    Tax and tip from the receipt, shared by what you ordered ({Math.round(breakdown.pct * 100)}%)
+                  </div>
                   {/*
                     The comparison, right beside the number it is about.
                     "You owe $18" is a utility. "$18 — $13 less than an even
@@ -1130,7 +1156,9 @@ export default function Claim() {
               <div>
                 <div className="font-bold text-white text-sm">You owe</div>
                 <div className="text-xs text-white/50">
-                  {splitMode === "even" ? `${participants.length} way split` : "Custom amount"}
+                  {splitMode === "even"
+                    ? `$${(session.total_amount || 0).toFixed(2)} ÷ ${participants.length}, tax & tip included`
+                    : "Custom amount set by your host"}
                 </div>
               </div>
               <div className="mono text-3xl font-semibold tabular-nums text-primary">${myShare.toFixed(2)}</div>
