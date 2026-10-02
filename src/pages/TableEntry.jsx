@@ -216,7 +216,7 @@ export default function TableEntry({ rateFirst = false }) {
         <div>
           <h1 className="text-2xl font-black">Couldn't load this table</h1>
           <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,.55)" }}>
-            Check your connection and try again.
+            Check your connection and try again — or ask your server to bring the check the usual way.
           </p>
           <button onClick={() => window.location.reload()} className="mt-7 px-6 py-3 rounded-2xl font-bold"
             style={{ background: GOLD, color: "#0a0e1a" }}>
@@ -467,7 +467,7 @@ export default function TableEntry({ rateFirst = false }) {
           */
           <>
             <p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
-              Split the check, or just tell them how it went. No app to download.
+              Split the check, or just tell them how it went. No app, no account.
             </p>
 
             <button
@@ -536,6 +536,11 @@ export default function TableEntry({ rateFirst = false }) {
           />
         ) : null}
 
+        {!ratingFirst && (
+          <p className="mt-6 text-xs" style={{ color: "rgba(255,255,255,.5)" }}>
+            Totally optional. Rather pay the usual way? Your server can still bring the check.
+          </p>
+        )}
         <p className="mt-7 text-xs" style={{ color: "rgba(255,255,255,.35)" }}>
           Powered by BillTap
         </p>

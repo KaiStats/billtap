@@ -1279,16 +1279,26 @@ test('leaving contact details requires a rating to attach them to', async () => 
   });
 });
 
-test('a valid email is stored and starts a contact record', async () => {
+test('an email with offers consent is stored and starts a contact record', async () => {
   await withStub({
     entities: { GuestRating: [{ id: 'g1', restaurant_id: 'r1' }] },
   }, async ({ env, store }) => {
-    await rate(env, { action: 'contact', rating_id: 'g1', email: '  Diner@Example.COM ', comment: 'Lovely' });
+    await rate(env, { action: 'contact', rating_id: 'g1', email: '  Diner@Example.COM ', comment: 'Lovely', marketing_opt_in: true });
     assert.equal(store.GuestRating[0].guest_email, 'diner@example.com', 'normalised to lowercase');
     assert.equal(store.GuestRating[0].comment, 'Lovely');
     assert.equal(store.GuestContact[0].email, 'diner@example.com');
     assert.equal(store.GuestContact[0].visits, 1);
     assert.equal(store.GuestContact[0].opted_in, true);
+  });
+});
+
+test('a reply-only email stays on the rating and never joins the marketing list', async () => {
+  await withStub({
+    entities: { GuestRating: [{ id: 'g1', restaurant_id: 'r1' }] },
+  }, async ({ env, store }) => {
+    await rate(env, { action: 'contact', rating_id: 'g1', email: 'diner@example.com', comment: 'Cold food' });
+    assert.equal(store.GuestRating[0].guest_email, 'diner@example.com', 'kept so the manager can reply');
+    assert.equal(store.GuestContact, undefined, 'asking for a reply is not consent to promotions');
   });
 });
 
@@ -1310,7 +1320,7 @@ test('a returning guest increments their visit count instead of duplicating', as
       GuestContact: [{ id: 'c1', restaurant_id: 'r1', email: 'diner@example.com', visits: 2 }],
     },
   }, async ({ env, store }) => {
-    await rate(env, { action: 'contact', rating_id: 'g1', email: 'diner@example.com' });
+    await rate(env, { action: 'contact', rating_id: 'g1', email: 'diner@example.com', marketing_opt_in: true });
     assert.equal(store.GuestContact.length, 1);
     assert.equal(store.GuestContact[0].visits, 3);
     assert.ok(store.GuestContact[0].last_seen);

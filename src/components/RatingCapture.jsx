@@ -249,12 +249,15 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
    * had to be open to everyone. The upsert now happens as service role inside
    * submitGuestRating, so the rules could be closed.
    */
-  const saveContact = async (/** @type {{ comment?: any, issue?: any }} */ { comment: text, issue: picked } = {}) => {
+  const saveContact = async (/** @type {{ comment?: any, issue?: any, marketing?: boolean }} */ { comment: text, issue: picked, marketing = false } = {}) => {
     const clean = email.trim().toLowerCase();
-    /** @type {Record<string, string>} */
+    /** @type {Record<string, any>} */
     const body = clean && EMAIL_RE.test(clean) ? { email: clean } : {};
     if (text) body.comment = text;
     if (picked) body.issue = picked;
+    // Only the "send me offers" field is consent to the restaurant's list. A
+    // reply address typed into a complaint is for the reply, nothing else.
+    if (marketing && body.email) body.marketing_opt_in = true;
     if (!ratingId || (!body.email && !body.comment && !body.issue)) return;
     try {
       await invoke("submitGuestRating", {
@@ -300,7 +303,7 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
     // counts visits, and a guest who typed their email into the complaint box
     // and then tapped through would otherwise be recorded as having eaten here
     // twice in one sitting.
-    if (!sentFeedback) void saveContact();
+    if (!sentFeedback) void saveContact({ marketing: true });
     void reportRouted();
     if (restaurant?.google_review_url) {
       window.open(restaurant.google_review_url, "_blank", "noopener,noreferrer");
@@ -494,11 +497,17 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
             {!sentFeedback && (
               <input
                 type="email" inputMode="email" autoComplete="email"
-                placeholder="Email for deals (optional)"
+                placeholder={`Offers from ${restaurant.name || "us"} (optional)`}
+                aria-describedby="offers-note"
                 value={email} onChange={(e) => setEmail(e.target.value)}
                 className="mt-6 w-full rounded-xl px-4 py-3 text-white text-sm"
                 style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)" }}
               />
+            )}
+            {!sentFeedback && (
+              <p id="offers-note" className="mt-1.5 text-[11px] text-center" style={{ color: "rgba(255,255,255,.4)" }}>
+                Only if you want them. Not needed to leave a review, and never needed to pay.
+              </p>
             )}
 
             <button
@@ -510,7 +519,10 @@ function RatingCapture({ restaurantId, sessionId, onDismiss, initialStars = 0, i
               <ExternalLink className="w-4 h-4" />
               Review us on Google
             </button>
-            <button onClick={onDismiss} className="mt-3 w-full text-sm py-2" style={{ color: "rgba(255,255,255,.4)" }}>
+            {/* Saving the offers email does not depend on reviewing: a guest
+                who typed it and skipped Google still gets what they asked for. */}
+            <button onClick={() => { if (!sentFeedback) void saveContact({ marketing: true }); onDismiss?.(); }}
+              className="mt-3 w-full text-sm py-2" style={{ color: "rgba(255,255,255,.4)" }}>
               {flagged ? "No thanks" : "Maybe later"}
             </button>
           </>

@@ -1872,7 +1872,14 @@ const HANDLERS = {
         }
       }
 
-      if (validEmail) {
+      /**
+       * The guest list is marketing, so only a guest who asked to be on it
+       * goes on it. The feedback screen asks for an email "if you'd like a
+       * reply" — that stays on the rating for the manager to answer, and is
+       * not consent to promotions. Only the separate "send me offers" field
+       * sends marketing_opt_in.
+       */
+      if (validEmail && body.marketing_opt_in === true) {
         const contacts = await svc.entity('GuestContact').filter({
           restaurant_id: rating.restaurant_id, email,
         });

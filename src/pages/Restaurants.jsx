@@ -141,7 +141,7 @@ const FAQ = [
   },
   {
     q: "What does my staff have to do differently?",
-    a: 'Nothing. Guests scan a QR code at the table, split and pay on their own phones, and rate their visit — all without a server involved. The only "new" step is putting a table tent out, and we send you those.',
+    a: 'Nothing. Guests who want to scan the table tent, split on their own phones, and rate their visit. Anyone who would rather pay the usual way still can: BillTap is an option for your guests, not a replacement for your servers. The only "new" step is putting a table tent out, and we send you those.',
   },
   {
     /**
