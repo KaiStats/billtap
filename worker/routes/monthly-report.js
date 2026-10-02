@@ -13,7 +13,7 @@
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { isEntitled } from '../../shared/entitlement.js';
-import { summarizeRecovery } from '../../shared/guest-recovery.js';
+import { summarizeRecovery, worstPeriod, returnVisits } from '../../shared/guest-recovery.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 const MAX_BODY_BYTES = 262144; // ~250KB — comfortably more than a few hundred restaurants
@@ -84,6 +84,13 @@ export function recoveryRows(r) {
     .filter((i) => i && typeof i.label === 'string' && Number(i.count) > 0)
     .slice(0, 5)
     .forEach((i, n) => out.push([`${n === 0 ? 'Top problem' : `Problem #${n + 1}`}: ${i.label.slice(0, 60)}`, Number(i.count)]));
+  if (r.worst_period && typeof r.worst_period.label === 'string' && Number(r.worst_period.count) > 0) {
+    out.push([`Most affected: ${r.worst_period.label.slice(0, 40)}`, `${Number(r.worst_period.count)} low ratings`]);
+  }
+  if (Number(r.unhappy_tracked) > 0) {
+    out.push(['Unhappy guests who came back', `${Number(r.unhappy_returned) || 0} of ${Number(r.unhappy_tracked)}`]);
+  }
+  if (Number(r.returning) > 0) out.push(['Returning guests on your list', Number(r.returning)]);
   return out;
 }
 
@@ -237,7 +244,7 @@ const inWindow = (ms, { start, end }) => Number.isFinite(Number(ms)) && Number(m
  * a database. The low-rating line uses the restaurant's own alert threshold —
  * the same number that decided whether the manager was paged.
  */
-export function buildReport(restaurant, ratings, contacts, window) {
+export function buildReport(restaurant, ratings, contacts, window, timeZone = 'America/Los_Angeles') {
   const month = ratings.filter((g) => inWindow(g.created_at, window));
   const threshold = Number(restaurant.rating_threshold ?? 3);
   const low = month.filter((g) => Number(g.stars) <= threshold);
@@ -259,7 +266,17 @@ export function buildReport(restaurant, ratings, contacts, window) {
       recovered: recovery.recovered,
       resolved: recovery.resolved,
       top_issues: recovery.topIssues.map(({ label, count }) => ({ label, count })),
+      ...(worstPeriod(low, timeZone) ? { worst_period: worstPeriod(low, timeZone) } : {}),
     } : {}),
+    // This month's unhappy guests, checked against every later visit up to
+    // now: a recovery in the last week of the month still gets its chance.
+    ...(() => {
+      const back = returnVisits(ratings, contacts, threshold, (g) => inWindow(g.created_at, window));
+      return {
+        returning: back.returning,
+        ...(back.unhappyTracked ? { unhappy_tracked: back.unhappyTracked, unhappy_returned: back.unhappyReturned } : {}),
+      };
+    })(),
   };
 }
 
@@ -295,7 +312,7 @@ export async function scheduled(env, now = new Date()) {
       allRows(svc, 'GuestRating', restaurant.id),
       allRows(svc, 'GuestContact', restaurant.id),
     ]);
-    reports.push(buildReport(restaurant, ratings, contacts, window));
+    reports.push(buildReport(restaurant, ratings, contacts, window, env.RESTAURANT_TZ || 'America/Los_Angeles'));
   }
   const result = await deliverReports(env, { reports, window: window.label });
   return { job: 'monthly-report', month: window.label, restaurants: reports.length, ...result };

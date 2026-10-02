@@ -107,6 +107,7 @@ const REPORT_SAMPLE = [
   ["Recovered before they left", "2"],
   ["Recovery rate", "67%"],
   ["Top problem: Slow service", "2"],
+  ["Most affected: Friday dinner", "2 low ratings"],
   ["New guest emails", "88"],
   ["Total list size", "540"],
 ];
@@ -1173,6 +1174,59 @@ export default function Restaurants() {
               </figcaption>
             </figure>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ── What keeps owners up at night ─────────────────────
+          Three of the pains owners and GMs name most, and only the three this
+          product actually touches. Staffing is framed as consistency, not
+          hiring: BillTap detects inconsistent service, it does not fix the
+          labor market, and the card says so. Costs and traffic are left off
+          on purpose rather than promised indirectly. */}
+      <section id="pains" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>What keeps owners and GMs up at night</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            When a guest has a bad experience during a busy shift, how do you find out?
+          </h2>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+            And is there still time to fix it before they leave? For most rooms the honest answer is
+            &ldquo;a review, days later.&rdquo; That&apos;s the gap BillTap closes.
+          </p>
+        </Reveal>
+        <div className="mt-10 grid md:grid-cols-3 gap-4">
+          {[
+            {
+              tone: "#e5484d",
+              pain: "\u201cHow many will tell the internet before they tell me?\u201d",
+              title: "Unhappy guests and bad reviews",
+              fix: "A low rating alerts your manager with the table and what went wrong, while the guest is still there. Every guest still gets the same Google button: no gating, just a chance to make it right first.",
+              proof: "Real-time alert · \u201cI\u2019m handling it\u201d · recovery outcome",
+            },
+            {
+              tone: GOLD,
+              pain: "\u201cI can\u2019t fix a problem I don\u2019t know about.\u201d",
+              title: "Finding out too late",
+              fix: "Every alert, every recovery and every guest\u2019s pick of what went wrong adds up. Your dashboard and monthly report show the top problems, your recovery rate, and the day and shift where things go wrong most.",
+              proof: "Top problems · recovery rate · most affected shift",
+            },
+            {
+              tone: "#3b82f6",
+              pain: "\u201cI can\u2019t be everywhere, and my team isn\u2019t consistent.\u201d",
+              title: "Inconsistent service",
+              fix: "BillTap won\u2019t hire or train your staff. It will tell you when service slips on a night you\u2019re not on the floor, and which shift keeps slipping, so you know where to put your best people.",
+              proof: "Alerts when you\u2019re off the floor · patterns by shift",
+            },
+          ].map((c, i) => (
+            <Reveal key={c.title} delay={0.05 * (i + 1)} className="h-full">
+              <div className="h-full p-7 rounded-2xl flex flex-col" style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${c.tone}55` }}>
+                <p className="font-display text-[1.15rem] leading-snug italic" style={{ color: "rgba(245,245,244,.85)" }}>{c.pain}</p>
+                <h3 className="mt-5 rst-eyebrow" style={{ color: c.tone }}>{c.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed font-light flex-1" style={{ color: "rgba(245,245,244,.7)" }}>{c.fix}</p>
+                <p className="mt-5 pt-4 text-xs font-semibold" style={{ color: "rgba(245,245,244,.55)", borderTop: "1px solid rgba(255,255,255,.08)" }}>{c.proof}</p>
+              </div>
+            </Reveal>
+          ))}
         </div>
       </section>
 

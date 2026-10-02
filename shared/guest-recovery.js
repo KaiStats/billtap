@@ -80,3 +80,90 @@ export function summarizeRecovery(lowRatings) {
     topIssues,
   };
 }
+
+// ── When it goes wrong ──────────────────────────────────────────────────────
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * The service period a local hour falls in. Coarse on purpose: a GM staffs
+ * shifts, not hours, and "Friday dinner" is a sentence they can act on.
+ */
+export function servicePeriod(hour) {
+  if (hour >= 5 && hour < 11) return 'breakfast';
+  if (hour >= 11 && hour < 16) return 'lunch';
+  if (hour >= 16 && hour < 22) return 'dinner';
+  return 'late night';
+}
+
+/** Day of week and hour of an epoch-ms time in an IANA time zone. */
+function localParts(ms, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'long', hour: 'numeric', hourCycle: 'h23',
+  }).formatToParts(new Date(ms));
+  const day = parts.find((p) => p.type === 'weekday')?.value;
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value);
+  return { day, hour };
+}
+
+/**
+ * The day-and-shift with the most low ratings, e.g. { label: 'Friday dinner',
+ * count: 4 }, or null with fewer than two — one bad night is not a pattern,
+ * and naming it as one would send a GM chasing noise.
+ */
+export function worstPeriod(lowRatings, timeZone = 'America/Los_Angeles') {
+  const counts = new Map();
+  for (const r of lowRatings) {
+    const ms = Number(r.created_at);
+    if (!Number.isFinite(ms) || ms <= 0) continue;
+    let p;
+    try { p = localParts(ms, timeZone); } catch { p = localParts(ms, 'UTC'); }
+    if (!DAYS.includes(p.day) || !Number.isFinite(p.hour)) continue;
+    const key = `${p.day} ${servicePeriod(p.hour)}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let best = null;
+  for (const [label, count] of counts) {
+    if (count >= 2 && (!best || count > best.count)) best = { label, count };
+  }
+  return best;
+}
+
+// ── Did they come back? ─────────────────────────────────────────────────────
+
+/**
+ * Return visits, measured rather than assumed.
+ *
+ * BillTap can only see a guest twice when they leave the same email twice, so
+ * these count what is provable and nothing more:
+ *
+ *   returning      guests on the list with more than one recorded visit
+ *   unhappyReturned  unhappy guests (a low rating with an email) who rated
+ *                  again on a later visit — the closest honest proxy for
+ *                  "the recovery kept the customer"
+ *   unhappyTracked how many unhappy guests left an email at all, so the
+ *                  number above is never read without its denominator
+ */
+/** @param {(r: any) => boolean} [inScope] which unhappy ratings to count */
+export function returnVisits(ratings, contacts, threshold = 3, inScope = (_r) => true) {
+  const byEmail = new Map();
+  for (const r of ratings) {
+    const email = typeof r.guest_email === 'string' ? r.guest_email.trim().toLowerCase() : '';
+    if (!email) continue;
+    if (!byEmail.has(email)) byEmail.set(email, []);
+    byEmail.get(email).push(Number(r.created_at) || 0);
+  }
+  let unhappyTracked = 0;
+  let unhappyReturned = 0;
+  const seen = new Set();
+  for (const r of ratings) {
+    const email = typeof r.guest_email === 'string' ? r.guest_email.trim().toLowerCase() : '';
+    if (!email || Number(r.stars) > threshold || !inScope(r) || seen.has(email)) continue;
+    seen.add(email);
+    unhappyTracked++;
+    const at = Number(r.created_at) || 0;
+    if (byEmail.get(email).some((t) => t > at)) unhappyReturned++;
+  }
+  const returning = contacts.filter((c) => Number(c.visits) > 1).length;
+  return { returning, unhappyTracked, unhappyReturned };
+}

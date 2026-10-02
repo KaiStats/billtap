@@ -169,3 +169,30 @@ test('before migration 0027 is applied, the comment is still saved without the i
     assert.deepEqual(saved.map((p) => p.data), [{ comment: 'cold' }]);
   } finally { s.restore(); }
 });
+
+test('worstPeriod names the day and shift in the restaurant time zone, and needs two to call it a pattern', async () => {
+  const { worstPeriod, servicePeriod } = await import('../shared/guest-recovery.js');
+  // Fri 2026-09-18 19:30 Los Angeles = Sat 02:30 UTC — the zone decides the day.
+  const friDinnerLA = Date.UTC(2026, 8, 19, 2, 30);
+  const tueLunchLA = Date.UTC(2026, 8, 15, 19, 0);
+  assert.equal(worstPeriod([{ created_at: friDinnerLA }]), null);
+  assert.deepEqual(
+    worstPeriod([{ created_at: friDinnerLA }, { created_at: friDinnerLA + 3600e3 }, { created_at: tueLunchLA }], 'America/Los_Angeles'),
+    { label: 'Friday dinner', count: 2 },
+  );
+  assert.equal(servicePeriod(12), 'lunch');
+  assert.equal(servicePeriod(23), 'late night');
+});
+
+test('returnVisits counts only what an email proves, with its denominator', async () => {
+  const { returnVisits } = await import('../shared/guest-recovery.js');
+  const ratings = [
+    { stars: 2, guest_email: 'A@x.co', created_at: 100 },
+    { stars: 5, guest_email: 'a@x.co', created_at: 200 }, // came back
+    { stars: 1, guest_email: 'b@x.co', created_at: 150 }, // never did
+    { stars: 1, created_at: 120 },                         // no email: unknowable
+    { stars: 5, guest_email: 'c@x.co', created_at: 90 },
+  ];
+  const contacts = [{ visits: 2 }, { visits: 1 }, { visits: 3 }];
+  assert.deepEqual(returnVisits(ratings, contacts, 3), { returning: 2, unhappyTracked: 2, unhappyReturned: 1 });
+});

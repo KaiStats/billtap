@@ -96,3 +96,27 @@ test('the monthly cron the Worker dispatches on is one wrangler actually fires',
   const src = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   assert.ok(src.includes(`"${MONTHLY_REPORT_CRON}"`), `${MONTHLY_REPORT_CRON} is not in wrangler.jsonc triggers.crons`);
 });
+
+test('the report names the most affected shift once one repeats', async () => {
+  const { recoveryRows } = await import('./routes/monthly-report.js');
+  const w = previousMonth(new Date(Date.UTC(2026, 9, 1)));
+  const fri = Date.UTC(2026, 8, 19, 2, 30); // Friday 7:30pm Los Angeles
+  const r = buildReport({ id: 'r1', rating_threshold: 3 },
+    [{ stars: 1, created_at: fri }, { stars: 2, created_at: fri + 1800e3 }], [], w, 'America/Los_Angeles');
+  assert.deepEqual(r.worst_period, { label: 'Friday dinner', count: 2 });
+  assert.deepEqual(recoveryRows(r).at(-1), ['Most affected: Friday dinner', '2 low ratings']);
+});
+
+test('came-back counts this month\'s unhappy guests, checked against any later visit', () => {
+  const w = previousMonth(new Date(Date.UTC(2026, 9, 1)));
+  const sep = Date.UTC(2026, 8, 10);
+  const oct = Date.UTC(2026, 9, 5);
+  const r = buildReport({ id: 'r1', rating_threshold: 3 }, [
+    { stars: 2, guest_email: 'a@x.co', created_at: sep },
+    { stars: 5, guest_email: 'a@x.co', created_at: oct }, // came back next month
+    { stars: 1, guest_email: 'z@x.co', created_at: oct }, // unhappy, but not this month's
+  ], [{ visits: 2 }], w);
+  assert.equal(r.unhappy_tracked, 1);
+  assert.equal(r.unhappy_returned, 1);
+  assert.equal(r.returning, 1);
+});
