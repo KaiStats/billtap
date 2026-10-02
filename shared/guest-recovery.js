@@ -128,3 +128,42 @@ export function worstPeriod(lowRatings, timeZone = 'America/Los_Angeles') {
   }
   return best;
 }
+
+// ── Did they come back? ─────────────────────────────────────────────────────
+
+/**
+ * Return visits, measured rather than assumed.
+ *
+ * BillTap can only see a guest twice when they leave the same email twice, so
+ * these count what is provable and nothing more:
+ *
+ *   returning      guests on the list with more than one recorded visit
+ *   unhappyReturned  unhappy guests (a low rating with an email) who rated
+ *                  again on a later visit — the closest honest proxy for
+ *                  "the recovery kept the customer"
+ *   unhappyTracked how many unhappy guests left an email at all, so the
+ *                  number above is never read without its denominator
+ */
+/** @param {(r: any) => boolean} [inScope] which unhappy ratings to count */
+export function returnVisits(ratings, contacts, threshold = 3, inScope = (_r) => true) {
+  const byEmail = new Map();
+  for (const r of ratings) {
+    const email = typeof r.guest_email === 'string' ? r.guest_email.trim().toLowerCase() : '';
+    if (!email) continue;
+    if (!byEmail.has(email)) byEmail.set(email, []);
+    byEmail.get(email).push(Number(r.created_at) || 0);
+  }
+  let unhappyTracked = 0;
+  let unhappyReturned = 0;
+  const seen = new Set();
+  for (const r of ratings) {
+    const email = typeof r.guest_email === 'string' ? r.guest_email.trim().toLowerCase() : '';
+    if (!email || Number(r.stars) > threshold || !inScope(r) || seen.has(email)) continue;
+    seen.add(email);
+    unhappyTracked++;
+    const at = Number(r.created_at) || 0;
+    if (byEmail.get(email).some((t) => t > at)) unhappyReturned++;
+  }
+  const returning = contacts.filter((c) => Number(c.visits) > 1).length;
+  return { returning, unhappyTracked, unhappyReturned };
+}

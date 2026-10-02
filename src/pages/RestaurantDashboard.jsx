@@ -6,7 +6,7 @@ import { planSummary } from "@/lib/plan";
 import { reviewLift } from "@/lib/reviewLift";
 import { shareCardLines, drawShareCard, shareCardImage } from "@/lib/shareCard";
 import { accessToken } from "@/lib/supabase";
-import { OUTCOMES, issueLabel, outcomeLabel, summarizeRecovery, worstPeriod } from "../../shared/guest-recovery.js";
+import { OUTCOMES, issueLabel, outcomeLabel, summarizeRecovery, worstPeriod, returnVisits } from "../../shared/guest-recovery.js";
 
 const GOLD = "#f0b429";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -228,8 +228,8 @@ export default function RestaurantDashboard() {
     // The owner's own clock, so "Friday dinner" means their Friday.
     let tz = "America/Los_Angeles";
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch { /* default */ }
-    return { n, avg, routed, low, recovery: summarizeRecovery(low), worst: worstPeriod(low, tz) };
-  }, [ratings, restaurant]);
+    return { n, avg, routed, low, recovery: summarizeRecovery(low), worst: worstPeriod(low, tz), back: returnVisits(ratings, contacts, alertAt) };
+  }, [ratings, contacts, restaurant]);
 
   // One source for the header line and the billing card, so the two cannot say
   // different things about the same row — which is what they did. See
@@ -569,7 +569,7 @@ export default function RestaurantDashboard() {
             <AlertTriangle className="w-4 h-4" style={{ color: "#ff8080" }} /> Needs attention
           </h2>
           {stats.low.length > 0 && (
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
               <Stat label="Unhappy guests caught" value={stats.recovery.low} accent="#ff8080" />
               <Stat label="Recovered" value={stats.recovery.recovered}
                 hint={stats.recovery.partial ? `+${stats.recovery.partial} partly` : undefined} accent="#00c896" />
@@ -580,6 +580,10 @@ export default function RestaurantDashboard() {
                 hint={stats.recovery.topIssues[0]?.label || "Guests can now pick one"} />
               <Stat label="When it happens" value={stats.worst?.count ?? "—"}
                 hint={stats.worst ? stats.worst.label : "Shows once a shift repeats"} />
+              <Stat label="Unhappy guests who came back" accent="#00c896"
+                value={stats.back.unhappyTracked ? `${stats.back.unhappyReturned} of ${stats.back.unhappyTracked}` : "—"}
+                hint="Counted when they leave an email and rate again" />
+              <Stat label="Returning guests" value={stats.back.returning} hint="On your list, more than one visit" />
             </div>
           )}
           {stats.low.length === 0 ? (

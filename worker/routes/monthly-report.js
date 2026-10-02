@@ -13,7 +13,7 @@
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { isEntitled } from '../../shared/entitlement.js';
-import { summarizeRecovery, worstPeriod } from '../../shared/guest-recovery.js';
+import { summarizeRecovery, worstPeriod, returnVisits } from '../../shared/guest-recovery.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
 
 const MAX_BODY_BYTES = 262144; // ~250KB — comfortably more than a few hundred restaurants
@@ -87,6 +87,10 @@ export function recoveryRows(r) {
   if (r.worst_period && typeof r.worst_period.label === 'string' && Number(r.worst_period.count) > 0) {
     out.push([`Most affected: ${r.worst_period.label.slice(0, 40)}`, `${Number(r.worst_period.count)} low ratings`]);
   }
+  if (Number(r.unhappy_tracked) > 0) {
+    out.push(['Unhappy guests who came back', `${Number(r.unhappy_returned) || 0} of ${Number(r.unhappy_tracked)}`]);
+  }
+  if (Number(r.returning) > 0) out.push(['Returning guests on your list', Number(r.returning)]);
   return out;
 }
 
@@ -264,6 +268,15 @@ export function buildReport(restaurant, ratings, contacts, window, timeZone = 'A
       top_issues: recovery.topIssues.map(({ label, count }) => ({ label, count })),
       ...(worstPeriod(low, timeZone) ? { worst_period: worstPeriod(low, timeZone) } : {}),
     } : {}),
+    // This month's unhappy guests, checked against every later visit up to
+    // now: a recovery in the last week of the month still gets its chance.
+    ...(() => {
+      const back = returnVisits(ratings, contacts, threshold, (g) => inWindow(g.created_at, window));
+      return {
+        returning: back.returning,
+        ...(back.unhappyTracked ? { unhappy_tracked: back.unhappyTracked, unhappy_returned: back.unhappyReturned } : {}),
+      };
+    })(),
   };
 }
 
