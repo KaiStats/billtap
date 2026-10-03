@@ -1050,7 +1050,7 @@ export default function Restaurants() {
                 </div>
                 <p className="mt-5 text-[10px] text-center leading-relaxed font-light"
                   style={{ color: "rgba(255,255,255,.4)" }}>
-                  Text and email. Arrives before they ask for the check.
+                  Email, the moment it lands. Arrives before they ask for the check.
                 </p>
               </div>
             </PhoneFrame>
@@ -1592,9 +1592,9 @@ export default function Restaurants() {
                   <Phone className="w-3.5 h-3.5" style={{ color: GOLD }} aria-hidden="true" />
                   (702) 844-0938
                 </a>
-                <a href="mailto:alerts@billtap.app" className="flex items-center gap-2" style={{ color: "rgba(245,245,244,.82)" }}>
+                <a href="mailto:hello@billtap.app" className="flex items-center gap-2" style={{ color: "rgba(245,245,244,.82)" }}>
                   <Mail className="w-3.5 h-3.5" style={{ color: GOLD }} aria-hidden="true" />
-                  alerts@billtap.app
+                  hello@billtap.app
                 </a>
               </div>
             </div>
