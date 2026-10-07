@@ -255,6 +255,146 @@ function TurnCalculator() {
 }
 
 /**
+ * The guest-recovery argument, as arithmetic on the owner's own numbers.
+ *
+ * Same rule as TurnCalculator: every input is the operator's. Nothing here
+ * says how many regulars BillTap recovers — that is the number the dashboard
+ * will show them, and this page has no right to guess it.
+ */
+function RegularCalculator() {
+  const [v, setV] = useState({ check: 45, visits: 2 });
+  const num = (k) => (e) => {
+    const n = Number(e.target.value);
+    setV((o) => ({ ...o, [k]: Number.isFinite(n) && n >= 0 ? n : 0 }));
+  };
+  const perYear = v.check * v.visits * 12;
+  const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+  const fields = [
+    ["check", "Average check per guest ($)"],
+    ["visits", "Visits a month from a regular"],
+  ];
+
+  return (
+    <div className="rounded-2xl p-6 sm:p-8" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(240,180,41,.25)" }}>
+      <p className="font-display text-2xl leading-snug">How much is one recovered regular worth to you?</p>
+      <div className="mt-5 grid sm:grid-cols-2 gap-4">
+        {fields.map(([k, label]) => (
+          <label key={k} className="block text-sm font-light" style={{ color: "rgba(245,245,244,.7)" }}>
+            {label}
+            <input type="number" inputMode="decimal" min="0" value={v[k]} onChange={num(k)}
+              className="mt-1.5 w-full rounded-lg px-3 py-2.5 text-base font-semibold"
+              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", color: "#f5f5f4" }} />
+          </label>
+        ))}
+      </div>
+      <div className="mt-6 pt-6 grid grid-cols-2 gap-3 text-center" style={{ borderTop: "1px solid rgba(255,255,255,.1)" }} aria-live="polite">
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perYear)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>one regular, per year</p>
+        </div>
+        <div>
+          <p className="text-2xl sm:text-3xl font-bold" style={{ color: GOLD }}>{money(perYear * 52 / 2)}</p>
+          <p className="mt-1 text-xs font-light" style={{ color: "rgba(245,245,244,.55)" }}>first year, saving one a week</p>
+        </div>
+      </div>
+      <p className="mt-5 text-center text-sm font-semibold" style={{ color: "#f5f5f4" }}>
+        {perYear > 0
+          ? perYear >= 149 * 12
+            ? `BillTap costs $1,788 a year. Keeping one regular who would have walked covers it.`
+            : `BillTap costs $1,788 a year — about ${Math.ceil(1788 / perYear)} kept regulars on these numbers.`
+          : "Enter your numbers to see what a regular is worth."}
+      </p>
+      <p className="mt-3 text-xs leading-relaxed font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+        Your numbers, not ours. &ldquo;One a week&rdquo; counts each regular only from the week you keep
+        them, so it&apos;s half of 52 full years. We won&apos;t promise how many you&apos;ll keep — your dashboard will show you.
+      </p>
+    </div>
+  );
+}
+
+const FIRST_30 = [
+  ["Days 1–3", "Table tents arrive. You put them on tables. Your staff does nothing differently."],
+  ["Days 4–14", "Ratings start coming in. A low one alerts your manager with the table and what went wrong, while the guest is still there."],
+  ["Days 15–30", "Your dashboard shows your recovery rate, the problems that keep coming up, and the guests who tapped through to Google."],
+  ["Day 30", "You keep it because it's working, or you cancel. No contract, no hardware to send back."],
+];
+
+/** Each answer is a property of the product as it ships today. */
+const WORRIES = [
+  ["“My staff won’t use another tool.”", "Your staff does nothing new. Guests scan, guests rate. Only the manager gets the alert."],
+  ["“Guests won’t scan a QR code.”", "At a table, the scan is how they split the check — something they already want. At the counter it's one tap, no receipt."],
+  ["“It’ll slow down service.”", "Guests split on their own phones, so nobody waits on a server to run six cards."],
+  ["“We’ll get fewer Google reviews.”", "Every guest gets the same Google button, happy or not. Nothing is gated."],
+  ["“This is just another review tool.”", "Review tools ask after the guest has left. BillTap tells you while they're still at the table."],
+];
+
+const ROLES = {
+  gm: {
+    label: "For GMs",
+    title: "Fix it during service, not after.",
+    points: [
+      "A real-time alert the moment a guest rates low",
+      "The table number and what went wrong, in the guest's words",
+      "“I’m handling it” so the team knows it's covered",
+      "Mark the outcome, so you can see your saves add up",
+    ],
+  },
+  owner: {
+    label: "For owners",
+    title: "Protect the rating. Keep the regulars.",
+    points: [
+      "Catch bad experiences before they become Google reviews",
+      "A monthly report: recovery rate, top problems, worst shift",
+      "A guest email list, built every service",
+      "$149 flat a month — no contract, no new hardware",
+    ],
+  },
+};
+
+function RoleTabs() {
+  const [role, setRole] = useState("gm");
+  const r = ROLES[role];
+  return (
+    <div>
+      <div role="tablist" aria-label="Who's reading" className="inline-flex p-1 rounded-full" style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)" }}>
+        {Object.entries(ROLES).map(([k, x]) => (
+          <button key={k} type="button" role="tab" aria-selected={role === k} onClick={() => setRole(k)}
+            className="px-5 py-2 rounded-full text-sm font-semibold transition-colors"
+            style={role === k ? { background: GOLD, color: INK } : { color: "rgba(245,245,244,.7)" }}>
+            {x.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="mt-6 p-7 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+        <h3 className="font-display text-2xl">{r.title}</h3>
+        <ul className="mt-5 grid sm:grid-cols-2 gap-3">
+          {r.points.map((t) => (
+            <li key={t} className="flex items-start gap-2.5 text-sm font-light" style={{ color: "rgba(245,245,244,.85)" }}>
+              <Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: GOLD }} aria-hidden="true" />
+              {t}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Against the category, never a named competitor: a claim about a specific
+ * product's price or features goes stale the day they change it. The named
+ * comparison lives in /blog/podium-alternative.
+ */
+const COMPARE = [
+  ["Catches the problem while the guest is still there", "Rarely — they ask after the visit", "Yes"],
+  ["Real-time alert with the table number", "No", "Yes"],
+  ["Staff has to do something new", "Often", "No"],
+  ["Hides the Google link from unhappy guests", "Some still do", "Never"],
+  ["Needs a POS integration", "Often", "No — works beside any POS"],
+  ["Price", "Varies, often with a contract", "$149/month flat"],
+];
+
+/**
  * The 20-second demo, as a looping animation rather than a video file: four
  * frames — scan, split, rate, owner alert — cycling on a phone. No download,
  * no autoplay-policy fights, and it stops cycling for reduced-motion users.
@@ -887,13 +1027,37 @@ export default function Restaurants() {
                   See a free demo with your name on it
                 </button>
               </div>
-              <p className="mt-4 text-sm" style={{ color: "rgba(245,245,244,.45)" }}>
-                14-day free trial, no card. Or a live demo page for your restaurant, free for a week.
+              <a href="tel:+17028440938" className="mt-4 inline-flex items-center gap-2 text-sm font-medium"
+                style={{ color: "rgba(245,245,244,.82)" }}>
+                <Phone className="w-3.5 h-3.5" style={{ color: GOLD }} aria-hidden="true" />
+                Rather talk to a person? Call the founder: (702) 844-0938
+              </a>
+              <p className="mt-3 text-sm" style={{ color: "rgba(245,245,244,.45)" }}>
+                Takes 20 seconds. No credit card required. 14-day free trial, cancel anytime.
               </p>
             </Reveal>
           </div>
         </div>
       </header>
+
+      {/* ── One recovered regular ── */}
+      <section id="roi" className="relative max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <Reveal>
+            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>The math</p>
+            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+              A guest who leaves unhappy doesn&apos;t cost you one check. It costs you every visit after it.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+              BillTap costs $149 a month. For most rooms, keeping one or two tables that would
+              have walked out unhappy covers it.
+            </p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <RegularCalculator />
+          </Reveal>
+        </div>
+      </section>
 
       {/* ── Demo loop ── */}
       <section id="demo" className="relative max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20">
@@ -1398,6 +1562,90 @@ export default function Restaurants() {
             <TurnCalculator />
           </Reveal>
         </div>
+      </section>
+
+      {/* ── The first 30 days ── */}
+      <section id="first-30-days" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>What happens in the first 30 days</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            No vague promises. Here&apos;s the month.
+          </h2>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <ol className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {FIRST_30.map(([t, d]) => (
+              <li key={t} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+                <p className="text-xs font-bold" style={{ color: GOLD }}>{t}</p>
+                <p className="mt-2 text-sm font-light leading-relaxed" style={{ color: "rgba(245,245,244,.75)" }}>{d}</p>
+              </li>
+            ))}
+          </ol>
+        </Reveal>
+      </section>
+
+      {/* ── What owners worry about ── */}
+      <section id="worries" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>What owners worry about</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            The fair questions, answered straight.
+          </h2>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <dl className="mt-10 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,.08)" }}>
+            {WORRIES.map(([w, a], i) => (
+              <div key={w} className="grid sm:grid-cols-[2fr_3fr] gap-2 sm:gap-8 p-5 sm:p-6"
+                style={{ background: i % 2 ? "transparent" : "rgba(255,255,255,.03)" }}>
+                <dt className="font-display text-[1.2rem] italic leading-snug" style={{ color: "rgba(245,245,244,.85)" }}>{w}</dt>
+                <dd className="text-sm font-light leading-relaxed" style={{ color: "rgba(245,245,244,.7)" }}>{a}</dd>
+              </div>
+            ))}
+          </dl>
+        </Reveal>
+      </section>
+
+      {/* ── GM view / Owner view ── */}
+      <section id="roles" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Who it&apos;s for</p>
+          <h2 className="font-display mb-8" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            Your GM runs the floor. You run the business. It works for both.
+          </h2>
+          <RoleTabs />
+        </Reveal>
+      </section>
+
+      {/* ── Comparison ── */}
+      <section id="compare" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <Reveal>
+          <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>BillTap vs. typical review tools</p>
+          <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+            They collect reviews. BillTap saves the table.
+          </h2>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <div className="mt-10 overflow-x-auto rounded-2xl" style={{ border: "1px solid rgba(255,255,255,.08)" }}>
+            <table className="w-full text-sm text-left min-w-[520px]">
+              <thead>
+                <tr style={{ background: "rgba(255,255,255,.04)" }}>
+                  <th scope="col" className="p-4 font-semibold"><span className="sr-only">Feature</span></th>
+                  <th scope="col" className="p-4 font-semibold" style={{ color: "rgba(245,245,244,.6)" }}>Typical review tools</th>
+                  <th scope="col" className="p-4 font-semibold" style={{ color: GOLD }}>BillTap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARE.map(([f, them, us]) => (
+                  <tr key={f} style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}>
+                    <th scope="row" className="p-4 font-light" style={{ color: "rgba(245,245,244,.85)" }}>{f}</th>
+                    <td className="p-4 font-light" style={{ color: "rgba(245,245,244,.55)" }}>{them}</td>
+                    <td className="p-4 font-semibold" style={{ color: "#f5f5f4" }}>{us}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── Without / With ──────────────────────────────────── */}
