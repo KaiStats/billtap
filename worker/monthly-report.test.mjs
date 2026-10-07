@@ -65,7 +65,10 @@ test('the referral link is tagged so the lead is filed as a referral', () => {
 
 test('the referral line promises no reward the product does not have', async () => {
   const { mail } = await send(REPORT);
-  assert.doesNotMatch(mail[0].TextBody, /30 days|free month|credit|discount|\$\d+ off/i);
+  // "30 days" is allowed now: it is the ordinary restaurant trial
+  // (TRIAL_DAYS in routes/functions.js), the same one anyone gets, not a
+  // referral bonus. Anything beyond the standard trial is still a promise.
+  assert.doesNotMatch(mail[0].TextBody, /free month|credit|discount|\$\d+ off|\b(?!30\b)\d+ days/i);
 });
 
 test('low ratings are described as heard first, never as kept off Google', async () => {

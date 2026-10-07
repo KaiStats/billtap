@@ -83,7 +83,7 @@ export default function GuestRecoveryAudit() {
                 alerts your manager with the table and what went wrong — while the guest is still there.
               </p>
               <Link to={SIGNUP} className="mt-6 inline-flex items-center gap-2 font-semibold px-7 py-4 rounded-full" style={{ background: GOLD, color: INK }}>
-                Close the leak — start a 14-day free trial <ArrowRight className="w-4 h-4" />
+                Close the leak — start a 30-day free trial <ArrowRight className="w-4 h-4" />
               </Link>
               <p className="mt-3 text-xs" style={{ color: "rgba(245,245,244,.45)" }}>No card. No POS change. $149/month after.</p>
             </>

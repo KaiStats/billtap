@@ -43,7 +43,7 @@ const row = (k, v) => `
  */
 export const REFERRAL_URL =
   'https://billtap.app/restaurants?utm_source=monthly_report&utm_medium=email&utm_campaign=owner_referral';
-const REFERRAL_TEXT = 'Know an owner who would want this? Forward this email — they can try BillTap free for 14 days';
+const REFERRAL_TEXT = 'Know an owner who would want this? Forward this email — they can try BillTap free for 30 days';
 
 /**
  * What the footer says about low ratings.

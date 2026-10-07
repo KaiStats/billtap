@@ -319,7 +319,7 @@ data.
 ## Onboarding a restaurant
 
 1. Owner signs in → `/restaurant-dashboard` → enters name + alert email
-2. 14-day trial starts, a `slug` is assigned (collision-safe)
+2. 30-day trial starts, a `slug` is assigned (collision-safe)
 3. Owner pastes their **Google review URL** — until then the Google handoff
    button stays disabled, since there is nowhere to send happy guests
 4. Print the table QR shown on the dashboard

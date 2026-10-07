@@ -141,7 +141,7 @@ export async function onRequestPost({ request, env }) {
       text: [
         `Thanks for reaching out about ${restaurantName}.`,
         '',
-        "We'll call or text within one business day to get your table tents printed and your 14-day trial switched on. No card needed.",
+        "We'll call or text within one business day to get your table tents printed and your 30-day trial switched on. No card needed.",
         '',
         'Want to go sooner? Reply to this email or call (702) 844-0938.',
         '',
@@ -150,7 +150,7 @@ export async function onRequestPost({ request, env }) {
       ].join('\n'),
       html: `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;font-size:15px;line-height:1.6;color:#111827">
         <p>Thanks for reaching out about <strong>${esc(restaurantName)}</strong>.</p>
-        <p>We'll call or text within one business day to get your table tents printed and your 14-day trial switched on. No card needed.</p>
+        <p>We'll call or text within one business day to get your table tents printed and your 30-day trial switched on. No card needed.</p>
         <p>Want to go sooner? Just reply to this email or call <a href="tel:+17028440938">(702) 844-0938</a>.</p>
         <p style="color:#6b7280">— BillTap · <a href="https://billtap.app/restaurants" style="color:#b7791f">billtap.app/restaurants</a></p>
       </div>`,
