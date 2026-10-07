@@ -173,7 +173,7 @@ const FAQ = [
   },
   {
     q: "Can I cancel anytime?",
-    a: "Yes. Start with a 14-day free trial, and once you're on the $149/mo plan you can cancel whenever — no contract, no cancellation fee.",
+    a: "Yes. Start with a 30-day free trial, and once you're on the $149/mo plan you can cancel whenever — no contract, no cancellation fee.",
   },
   {
     q: "Does BillTap handle any of the money?",
@@ -716,7 +716,7 @@ export default function Restaurants() {
       <Seo
         path="/restaurants"
         title="Guest Recovery for Restaurants: Catch Unhappy Guests Before They Leave | BillTap"
-        description="BillTap is a real-time guest recovery system for restaurant owners and GMs. A low rating alerts your manager with the table and what went wrong while the guest is still there, so you can recover the table before it becomes a bad review or a lost customer. Genuine Google reviews from every guest, no gating. 14-day free trial, $149/month."
+        description="BillTap is a real-time guest recovery system for restaurant owners and GMs. A low rating alerts your manager with the table and what went wrong while the guest is still there, so you can recover the table before it becomes a bad review or a lost customer. Genuine Google reviews from every guest, no gating. 30-day free trial, $149/month."
         // ?v= because Facebook, LinkedIn and Slack cache a preview by image URL.
         // Bump it whenever scripts/build-brand-images.mjs redraws this card.
         image="https://billtap.app/img/og-restaurants.png?v=2"
@@ -748,7 +748,7 @@ export default function Restaurants() {
              *
              * ── The trial is deliberately not a second $0 price ─────────────
              *
-             * A zero-priced UnitPriceSpecification for the 14 days would be
+             * A zero-priced UnitPriceSpecification for the 30 days would be
              * defensible markup and a bad idea: it invites a rich result
              * reading "$0", which is a promise this product does not make past
              * two weeks. `eligibleDuration` was previously carrying the trial
@@ -772,7 +772,7 @@ export default function Restaurants() {
               url: "https://billtap.app/restaurants",
               availability: "https://schema.org/InStock",
               description:
-                "$149 per month after a 14-day free trial. No card required to start, no contract, cancel anytime.",
+                "$149 per month after a 30-day free trial. No card required to start, no contract, cancel anytime.",
               priceSpecification: {
                 "@type": "UnitPriceSpecification",
                 price: "149.00",
@@ -1033,7 +1033,7 @@ export default function Restaurants() {
                 Rather talk to a person? Call the founder: (702) 844-0938
               </a>
               <p className="mt-3 text-sm" style={{ color: "rgba(245,245,244,.45)" }}>
-                Takes 20 seconds. No credit card required. 14-day free trial, cancel anytime.
+                Takes 20 seconds. No credit card required. 30-day free trial, cancel anytime.
               </p>
             </Reveal>
           </div>
@@ -1799,7 +1799,7 @@ export default function Restaurants() {
                 {["Real-time unhappy-guest alerts, with the table and what went wrong",
                   "Recovery tracking: \u201cI\u2019m handling it\u201d and outcomes, top problems, recovery rate",
                   "Monthly guest report in your inbox", "Guest email list, built every service",
-                  "14-day free trial", "Cancel anytime", "Printed QR table tents included",
+                  "30-day free trial", "Cancel anytime", "Printed QR table tents included",
                   "Every guest can rate you in one tap \u2014 no bill split required",
                   "Unlimited tables and covers", "Setup in under 10 minutes",
                   "Billing by Stripe \u2014 card details never touch BillTap",
@@ -1874,7 +1874,7 @@ export default function Restaurants() {
                     Two offers, one form.
 
                     The trial asks an owner who has never heard of us to commit
-                    to fourteen days of table tents. The demo asks for nothing:
+                    to thirty days of table tents. The demo asks for nothing:
                     we build a live page with their name on it (the /new tool,
                     on the 168-hour clock in wrangler.jsonc), and they scan it
                     on their own phone. For an owner who does not know us yet,
@@ -1901,7 +1901,7 @@ export default function Restaurants() {
                   <p className="mt-2 text-sm font-light" style={{ color: "rgba(245,245,244,.54)" }}>
                     {intent === "demo"
                       ? "We build a live BillTap page for your restaurant. Scan it, tap a rating, and see exactly what your guests would. Free for 7 days, no card."
-                      : "14 days free. No card. Takes about twenty seconds."}
+                      : "30 days free. No card. Takes about twenty seconds."}
                   </p>
 
                   <div className="mt-7 space-y-4">
@@ -2028,7 +2028,7 @@ export default function Restaurants() {
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6">
             {[
               { n: "$149", l: "flat monthly, no contract" },
-              { n: "14 days", l: "free trial, no card up front" },
+              { n: "30 days", l: "free trial, no card up front" },
               { n: "Founder-led", l: "you deal with the person who built it" },
             ].map((s) => (
               <div key={s.l}>

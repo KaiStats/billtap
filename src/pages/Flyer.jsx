@@ -11,7 +11,7 @@ import Seo from "@/components/Seo";
  * US Letter inside half-inch margins (720 × 960 CSS px) at readable sizes.
  *
  * Every claim here has to be true of the product today:
- * - $149 and the 14-day, no-card trial are create-pro-checkout.js.
+ * - $149 and the 30-day, no-card trial are TRIAL_DAYS in worker/routes/functions.js.
  * - A low rating emails the owner, and texts them too when SMS is set up
  *   (rating-alert.js), so the copy says "email or text", never just one.
  * - Every guest gets the Google link whatever they rate. Offering it only to
@@ -170,7 +170,7 @@ export default function Flyer() {
             <div style={{ background: INK, color: "#fff", borderRadius: 12, padding: 14, textAlign: "center" }}>
               <p style={{ color: GOLD, fontWeight: 800, fontSize: 12 }}>ONE SIMPLE PLAN</p>
               <p style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>$149<span style={{ fontSize: 15, color: GOLD }}>/month</span></p>
-              {["14-day free trial", "No card to start", "Cancel anytime"].map((t) => (
+              {["30-day free trial", "No card to start", "Cancel anytime"].map((t) => (
                 <p key={t} style={{ fontSize: 13, fontWeight: 700, marginTop: 4, display: "flex", gap: 6, justifyContent: "center" }}><Check size={15} color={GOLD} />{t}</p>
               ))}
             </div>

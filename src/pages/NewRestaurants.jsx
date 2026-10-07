@@ -25,7 +25,7 @@ export default function NewRestaurants() {
       <Seo
         path="/new-restaurants"
         title="Just Opened? Get Your First Google Reviews Faster | BillTap"
-        description="For new restaurants: ask every guest for a Google review from your first night, hear about problems while the guest is still there, and build your guest list from day one. 14-day free trial."
+        description="For new restaurants: ask every guest for a Google review from your first night, hear about problems while the guest is still there, and build your guest list from day one. 30-day free trial."
       />
 
       <div className="max-w-4xl mx-auto px-5 sm:px-8 pt-20 pb-16">
@@ -44,7 +44,7 @@ export default function NewRestaurants() {
         <div className="mt-10 flex flex-col sm:flex-row gap-3">
           <Link to={SIGNUP} className="inline-flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-full"
             style={{ background: GOLD, color: INK }}>
-            Start your 14-day free trial <ArrowRight className="w-4 h-4" />
+            Start your 30-day free trial <ArrowRight className="w-4 h-4" />
           </Link>
           <Link to="/restaurants#turns" className="inline-flex items-center justify-center font-semibold px-7 py-4 rounded-full"
             style={{ border: "1px solid rgba(245,245,244,.28)", color: "#f5f5f4" }}>

@@ -76,7 +76,7 @@ export default function BlogPost02Catch1StarEarly() {
 
         <div className="mt-14 pt-8" style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
           <p style={{ color: "rgba(245,245,244,.55)", fontSize: ".875rem" }}>
-            BillTap is $149/month after a 14-day free trial. No contract, cancel anytime.{" "}
+            BillTap is $149/month after a 30-day free trial. No contract, cancel anytime.{" "}
             <Link to="/restaurants" style={{ color: GOLD }} className="hover:underline">
               See how it works →
             </Link>

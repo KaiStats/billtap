@@ -423,7 +423,7 @@ export default function RestaurantDashboard() {
         <div className="max-w-md mx-auto">
           <h1 className="text-3xl font-black">Set up your restaurant</h1>
           <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,.6)" }}>
-            Two fields now, the rest whenever. Your 14-day trial starts today.
+            Two fields now, the rest whenever. Your 30-day trial starts today.
           </p>
           <div className="mt-8 space-y-4">
             <div>

@@ -311,7 +311,7 @@ export async function resolvePartyLimit(env, svc, session) {
 }
 
 /** Days of trial a new restaurant starts with. Matches the copy on the form. */
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 30;
 
 /**
  * A url-safe name for the table tents.
