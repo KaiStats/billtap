@@ -1026,7 +1026,7 @@ export default function Restaurants() {
             </PhoneFrame>
           </Reveal>
 
-          {/* 3 — the alert. Mirrors the SMS body in worker/routes/rating-alert.js. */}
+          {/* 3 — the alert. Mirrors the alert in worker/routes/rating-alert.js. */}
           <Reveal delay={0.19}>
             <PhoneFrame
               label="On your phone, instantly"
@@ -1105,7 +1105,7 @@ export default function Restaurants() {
               <ul className="mt-5 space-y-3">
                 {[
                   "Every guest gets the same one-tap Google button, whatever they rated",
-                  "An unhappy guest is asked what went wrong — and you get a text right then",
+                  "An unhappy guest is asked what went wrong — and you get an email right then",
                   "A manager can walk over while the guest is still there",
                   "More genuine reviews give future guests more real experiences to judge you by when they find you on Google",
                 ].map((t) => (
@@ -1338,7 +1338,7 @@ export default function Restaurants() {
               tone: "#e5484d",
               kicker: "Rating slipping?",
               title: "Find out what's wrong while you can still fix it.",
-              body: "A few bad nights can drag a rating down fast, and the guests who post them usually never said a word in the room. BillTap texts you the moment someone rates you low — with the table — so a manager can walk over tonight, not answer a review next week.",
+              body: "A few bad nights can drag a rating down fast, and the guests who post them usually never said a word in the room. BillTap emails you the moment someone rates you low — with the table — so a manager can walk over tonight, not answer a review next week.",
               points: ["Hear the complaint in the room, not online", "More of your happy guests reviewing, too", "See your monthly average move in one email"],
             },
           ].map((c, i) => (
