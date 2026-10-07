@@ -101,7 +101,7 @@ const ORGANIZATION = {
     "@type": "ContactPoint",
     contactType: "sales",
     telephone: "+1-702-844-0938",
-    email: "alerts@billtap.app",
+    email: "hello@billtap.app",
     areaServed: "US",
     availableLanguage: "English",
   },
