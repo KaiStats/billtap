@@ -78,7 +78,7 @@ function KindPicker({ value, onChange }) {
   );
 }
 
-function Tile({ label, value, hint }) {
+function Tile({ label, value, hint = "" }) {
   return (
     <div className="p-4 rounded-2xl" style={card}>
       <div className="text-2xl font-black">{value}</div>
@@ -145,7 +145,7 @@ function ReviewForm({ initialUploads, canUpload, onSaved, onCancel }) {
   const [values, setValues] = useState(() => ({ ...fromDraft(merged), notes: "" }));
   // Fields the owner typed in. A later document never overwrites those.
   const [touched, setTouched] = useState(() => new Set());
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [kind, setKind] = useState("payroll");
