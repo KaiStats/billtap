@@ -761,6 +761,11 @@ export default function RestaurantDashboard() {
           )}
         </section>
 
+        </div>
+
+        {/* Billing, codes and settings: outside the Guest Recovery wrapper, so
+            they are reachable from every tab — a Finance-only plan has no
+            Guest Recovery tab to reveal them from. */}
         {/* Billing */}
         <section className="mt-12">
           <div className="p-6 rounded-2xl flex flex-wrap gap-5 items-center justify-between"
@@ -1034,7 +1039,6 @@ export default function RestaurantDashboard() {
             </div>
           </div>
         </section>
-        </div>
       </div>
     </div>
   );

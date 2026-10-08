@@ -220,7 +220,8 @@ function ReviewForm({ initialUploads, canUpload, onSaved, onCancel }) {
         </label>
         {MONEY_FIELDS.map((f) => (
           <label key={f.id} className="text-xs" style={muted}>{f.label} ($)
-            <input inputMode="decimal" value={values[f.id]} onChange={set(f.id)} className={field} style={fieldStyle} />
+            <input inputMode="decimal" value={values[f.id]} onChange={set(f.id)} className={field} style={fieldStyle}
+              placeholder={f.id === "beverage_cost" ? "0 if you don't sell drinks" : ""} />
             {merged.sources[f.id] && !touched.has(f.id) && <span>from {merged.sources[f.id]}</span>}
             {errors[f.id] && <span style={{ color: "#e5484d" }}>{errors[f.id]}</span>}
           </label>
@@ -313,8 +314,8 @@ export default function FinanceModule({ view, ratings, threshold }) {
   const latest = data?.snapshots?.[0] || null;
   const latestKpis = useMemo(() => (latest ? kpis(latest) : null), [latest]);
   const latestGuests = useMemo(
-    () => (latest ? guestMonth(ratings, normalizeMonth(latest.month), threshold) : null),
-    [latest, ratings, threshold],
+    () => (latest ? guestMonth(ratings, normalizeMonth(latest.month), threshold, data?.time_zone) : null),
+    [latest, ratings, threshold, data?.time_zone],
   );
 
   const removeUpload = async (u) => {

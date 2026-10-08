@@ -244,3 +244,37 @@ test('the monthly email shows the latest month and only that month\'s insights',
   assert.equal(financeSection({ month: '2026-09-01', revenue: 1 }, { month: '2026-08-01', insights: [{ title: 'x', body: 'y' }] }).insights.length, 0);
   assert.equal(financeSection(null, null), null);
 });
+
+// ── Review fixes ────────────────────────────────────────────────────────────
+
+import { kpis, combinedFacts, insightIsCurrent } from '../shared/finance.js';
+
+test('a missing beverage cost leaves prime cost unknown instead of reading low', () => {
+  const k = kpis({ revenue: 100000, food_cost: 25000, beverage_cost: null, labor_cost: 30000 });
+  assert.equal(k.cogs_pct, null);
+  assert.equal(k.prime_cost_pct, null);
+  assert.equal(kpis({ revenue: 100000, food_cost: 25000, beverage_cost: 0, labor_cost: 30000 }).prime_cost_pct, 0.55);
+});
+
+test('month-over-month facts only compare consecutive months', () => {
+  const gap = combinedFacts({
+    snapshots: [{ month: '2026-06-01', revenue: 90000, labor_cost: 27000 }, { month: '2026-09-01', revenue: 100000, labor_cost: 33000 }],
+    ratings: [],
+  });
+  assert.equal(gap.previous_month, null);
+  assert.ok(!gap.facts.some((f) => f.key.endsWith('_change')));
+  const jan = combinedFacts({
+    snapshots: [{ month: '2025-12-01', revenue: 90000 }, { month: '2026-01-01', revenue: 100000 }],
+    ratings: [],
+  });
+  assert.equal(jan.previous_month, '2025-12-01');
+});
+
+test('insights go stale when their month or the month before is re-confirmed', () => {
+  const insight = { month: '2026-09-01', created_at: 1000 };
+  assert.equal(insightIsCurrent(insight, [{ month: '2026-09-01', confirmed_at: 900 }]), true);
+  assert.equal(insightIsCurrent(insight, [{ month: '2026-09-01', confirmed_at: 1100 }]), false);
+  assert.equal(insightIsCurrent(insight, [{ month: '2026-08-01', confirmed_at: 1100 }]), false);
+  assert.equal(insightIsCurrent(insight, [{ month: '2026-07-01', confirmed_at: 1100 }]), true);
+  assert.equal(insightIsCurrent(null, []), false);
+});

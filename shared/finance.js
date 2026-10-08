@@ -115,9 +115,11 @@ const ratio = (part, whole) =>
 /** The industry-standard ratios for one month. Null where an input is missing. */
 export function kpis(s) {
   const revenue = s?.revenue == null ? null : Number(s.revenue);
-  const cogs = s?.food_cost == null && s?.beverage_cost == null
+  // Both or nothing: a missing beverage line is unknown, not zero, or prime
+  // cost would read low. An owner with no bar enters 0.
+  const cogs = s?.food_cost == null || s?.beverage_cost == null
     ? null
-    : Number(s?.food_cost || 0) + Number(s?.beverage_cost || 0);
+    : Number(s.food_cost) + Number(s.beverage_cost);
   const labor = s?.labor_cost == null ? null : Number(s.labor_cost);
   return {
     revenue,
@@ -205,7 +207,11 @@ export function combinedFacts({ snapshots, ratings, threshold = 3, timeZone }) {
   add('google_taps', 'Guests who tapped through to Google', g.google_taps, String(g.google_taps));
   if (g.top_issue) add('top_issue', 'Most common problem guests picked', g.top_issue.count, `${g.top_issue.label} (${g.top_issue.count})`);
 
-  if (prev) {
+  // Compared only against the month immediately before. With a gap (June and
+  // September confirmed), "vs last month" would describe a three-month move.
+  const [cy, cm] = cur.month.split('-').map(Number);
+  const expectedPrev = cm === 1 ? `${cy - 1}-12-01` : `${cy}-${String(cm - 1).padStart(2, '0')}-01`;
+  if (prev && String(prev.month).slice(0, 10) === expectedPrev) {
     const pk = kpis(prev);
     const pg = guestMonth(ratings, prev.month, threshold, timeZone);
     const delta = (key, label, a, b, fmt) => {
@@ -220,7 +226,23 @@ export function combinedFacts({ snapshots, ratings, threshold = 3, timeZone }) {
     delta('recovery_rate_change', 'Recovery rate change vs last month', g.recovery_rate, pg.recovery_rate, pts);
   }
 
-  return { month: cur.month, previous_month: prev?.month || null, facts };
+  return { month: cur.month, previous_month: prev && String(prev.month).slice(0, 10) === expectedPrev ? prev.month : null, facts };
+}
+
+/**
+ * Whether stored insights still describe the confirmed figures: false once the
+ * month they cover, or the month before it, was confirmed again after they
+ * were written.
+ */
+export function insightIsCurrent(insight, snapshots) {
+  if (!insight) return false;
+  const month = String(insight.month).slice(0, 10);
+  const [y, m] = month.split('-').map(Number);
+  const prev = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`;
+  return !(snapshots || []).some((s) => {
+    const sm = String(s.month).slice(0, 10);
+    return (sm === month || sm === prev) && Number(s.confirmed_at) > Number(insight.created_at);
+  });
 }
 
 /** Insight output is accepted only if every cited key is a real fact. */

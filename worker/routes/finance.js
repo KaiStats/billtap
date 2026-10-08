@@ -25,7 +25,7 @@ import { isEntitled } from '../../shared/entitlement.js';
 import { readFinancialDocument, writeCombinedInsights, claudeConfigured, ClaudeError } from '../lib/claude.js';
 import {
   hasModule, isUploadKind, UPLOAD_MEDIA_TYPES, MAX_UPLOAD_BYTES, MONEY_FIELDS,
-  normalizeMonth, validateSnapshot, combinedFacts, validateInsights,
+  normalizeMonth, validateSnapshot, combinedFacts, validateInsights, insightIsCurrent, monthBounds,
 } from '../../shared/finance.js';
 
 const BUCKET = 'finance-uploads';
@@ -60,7 +60,7 @@ function decodeBase64(b64) {
   }
 }
 
-export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
+export function financeHandlers({ findOrAdoptRestaurant, ownerView }) {
   /** Owner + module check shared by every handler. Returns { error } or { user, svc, restaurant }. */
   async function owner(env, request) {
     if (backendName(env) !== 'supabase') return { error: json({ error: 'Finance needs the Supabase backend', code: 'unavailable' }, 503) };
@@ -143,10 +143,14 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
         restaurant: ownerView(restaurant),
         snapshots: snapshots.map(snapshotView),
         uploads: uploads.map(uploadView),
-        latest_insight: insights[0]
+        // Dropped once the month it describes was re-confirmed with new figures.
+        latest_insight: insights[0] && insightIsCurrent(insights[0], snapshots)
           ? { month: String(insights[0].month).slice(0, 10), facts: insights[0].facts, insights: insights[0].insights, created_at: insights[0].created_at }
           : null,
         claude_configured: claudeConfigured(env),
+        // The zone month boundaries are drawn in, so Overview matches insights
+        // and the monthly report.
+        time_zone: env.RESTAURANT_TZ || 'America/Los_Angeles',
       });
     },
 
@@ -187,7 +191,9 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
         failure = err;
       }
 
-      const row = await svc.entity('FinancialUpload').create({
+      let row;
+      try {
+        row = await svc.entity('FinancialUpload').create({
         restaurant_id: restaurant.id,
         storage_key: storageKey,
         file_name: fileName,
@@ -199,7 +205,13 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
         error: failure ? failure.code : null,
         created_by: user.id,
         created_at: now,
-      });
+        });
+      } catch (err) {
+        // No row means nothing would ever find this file again, including
+        // the 90-day retention sweep, so it goes now.
+        if (storageKey) await deleteObject(env, BUCKET, storageKey).catch(() => {});
+        throw err;
+      }
       if (failure) return claudeFailure(failure);
       return json({ upload: uploadView(row) });
     },
@@ -240,15 +252,30 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
       if (o.error) return o.error;
       const { svc, restaurant } = o;
 
-      const [snapshots, ratings] = await Promise.all([
-        svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id }, { order: '-month', limit: 2 }),
-        readAll(svc, 'GuestRating', restaurant.id),
-      ]);
+      const timeZone = env.RESTAURANT_TZ || 'America/Los_Angeles';
+      const snapshots = await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id }, { order: '-month', limit: 2 });
+      if (!snapshots.length) return json({ error: 'Confirm at least one month of figures first', code: 'no_snapshots' }, 400);
+      // Only the ratings in the months being compared, read by date rather than
+      // through the capped dashboard history, so a busy restaurant's recent
+      // months are never the ones cut off.
+      const months = snapshots.map((s) => String(s.month).slice(0, 10)).sort();
+      const from = monthBounds(months[0], timeZone).start;
+      const to = monthBounds(months[months.length - 1], timeZone).end;
+      const ratings = [];
+      for (let offset = 0; offset < 50000; offset += 1000) {
+        const page = await svc.entity('GuestRating').filter(
+          { restaurant_id: restaurant.id, created_at: { gte: from, lt: to } },
+          { select: 'stars,created_at,routed_to_google,recovery_status,issue', order: 'created_at', limit: 1000, offset },
+        );
+        ratings.push(...page);
+        if (page.length < 1000) break;
+      }
       const view = ownerView(restaurant);
       const { month, facts } = combinedFacts({
         snapshots: snapshots.map(snapshotView),
-        ratings: ratings.rows,
+        ratings,
         threshold: view.rating_threshold,
+        timeZone,
       });
       if (!month) return json({ error: 'Confirm at least one month of figures first', code: 'no_snapshots' }, 400);
 

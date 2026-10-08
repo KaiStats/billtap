@@ -3581,7 +3581,7 @@ const HANDLERS = {
 // Financial Intelligence (worker/routes/finance.js). Merged in rather than
 // written inline so this file does not grow another thousand lines, and handed
 // the ownership lookup so both modules resolve "whose restaurant" identically.
-Object.assign(HANDLERS, financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }));
+Object.assign(HANDLERS, financeHandlers({ findOrAdoptRestaurant, ownerView }));
 
 export async function onRequestPost({ request, env, ctx, name }) {
   // Minted before anything can fail, so even a rejected body carries one. The

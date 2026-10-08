@@ -23,6 +23,7 @@
  * Never give the master key a VITE_ prefix. Vite inlines every VITE_* variable
  * into the client bundle at build time, so that would publish it.
  */
+import { hasModule } from '../../shared/finance.js';
 import { json, clean, esc, EMAIL_RE, sendEmail, sendSms } from '../lib/email.js';
 // Same origin helper the ported functions use. This file previously hard-coded
 // api.base44.com/v0, which 404s — every lookup here had been failing silently,
@@ -149,6 +150,12 @@ export async function onRequestPost({ request, env }) {
         reason: access.reason,
       }));
       return json({ ok: true, skipped: 'not_entitled' }, 200);
+    }
+
+    // A Financial Intelligence-only plan did not buy Guest Recovery, and the
+    // alert is the core of what Guest Recovery sells.
+    if (!hasModule(restaurant, 'guest_recovery')) {
+      return json({ ok: true, skipped: 'module_off' }, 200);
     }
 
     const stars = Math.round(rating.stars);

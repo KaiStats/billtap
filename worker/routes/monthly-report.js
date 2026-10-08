@@ -10,7 +10,7 @@
  *
  * Bindings: REPORT_WEBHOOK_SECRET (required), plus the usual email bindings.
  */
-import { hasModule, kpis } from '../../shared/finance.js';
+import { hasModule, kpis, insightIsCurrent } from '../../shared/finance.js';
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { isEntitled } from '../../shared/entitlement.js';
@@ -361,9 +361,10 @@ export async function scheduled(env, now = new Date()) {
       // Isolated: a finance read that fails must not cost the restaurant its
       // guest report.
       try {
-        const [snapshot] = await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id }, { order: '-month', limit: 1 });
+        const recent = await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id }, { order: '-month', limit: 2 });
+        const [snapshot] = recent;
         const [insight] = await svc.entity('CombinedInsight').filter({ restaurant_id: restaurant.id }, { order: '-created_at', limit: 1 });
-        const section = financeSection(snapshot, insight);
+        const section = financeSection(snapshot, insightIsCurrent(insight, recent) ? insight : null);
         if (section) report.finance = section;
       } catch (error) {
         console.error('monthly-report: finance section skipped for', restaurant.id, error?.message);
