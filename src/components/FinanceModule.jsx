@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Loader2, Upload, FileText, Sparkles, AlertTriangle, Check } from "lucide-react";
+import { Loader2, Upload, FileText, Sparkles, AlertTriangle, Check, Trash2, Plus } from "lucide-react";
 import { invoke } from "@/api/functions";
 import {
   UPLOAD_KINDS, MONEY_FIELDS, UPLOAD_MEDIA_TYPES, MAX_UPLOAD_BYTES,
-  kpis, guestMonth, normalizeMonth,
+  kpis, guestMonth, normalizeMonth, mergeDrafts,
 } from "../../shared/finance.js";
+import { excelFileToCsv } from "@/lib/excelToCsv";
 
 /**
  * Financial Intelligence, inside the restaurant dashboard.
@@ -33,6 +34,48 @@ function readAsBase64(file) {
     reader.onerror = () => reject(new Error("The file could not be read"));
     reader.readAsDataURL(file);
   });
+}
+
+const isExcel = (file) => /\.xlsx$/i.test(file.name)
+  || file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function utf8ToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/** One file → the Worker → Claude's draft. Excel is converted to CSV here first. */
+async function uploadDocument(file, kind) {
+  let mediaType;
+  let base64;
+  if (isExcel(file)) {
+    const csv = await excelFileToCsv(file);
+    if (!csv) throw new Error("That workbook looks empty.");
+    mediaType = "text/csv";
+    base64 = utf8ToBase64(csv);
+  } else {
+    mediaType = file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? "application/pdf"
+      : /\.(csv|txt)$/i.test(file.name) || file.type === "text/csv" ? "text/csv" : file.type;
+    if (!UPLOAD_MEDIA_TYPES.includes(mediaType)) throw new Error("Upload a PDF, CSV or Excel (.xlsx) file.");
+    if (file.size > MAX_UPLOAD_BYTES) throw new Error("Files are limited to 8 MB.");
+    base64 = await readAsBase64(file);
+  }
+  if (base64.length * 0.75 > MAX_UPLOAD_BYTES) throw new Error("Files are limited to 8 MB.");
+  const res = await invoke("uploadFinancialDocument", { file_name: file.name, media_type: mediaType, kind, base64 });
+  return res.data.upload;
+}
+
+const ACCEPT = ".pdf,.csv,.txt,.xlsx,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function KindPicker({ value, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-lg px-3 py-2 text-sm"
+      style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", color: "#fff" }}>
+      {UPLOAD_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+    </select>
+  );
 }
 
 function Tile({ label, value, hint }) {
@@ -91,23 +134,59 @@ function Insights({ data, onGenerate, busy, error, canGenerate }) {
   );
 }
 
-function ReviewForm({ draft, uploadIds, onSaved, onCancel }) {
-  const [values, setValues] = useState(() => ({
-    month: draft?.period_month ? draft.period_month.slice(0, 7) : "",
-    ...Object.fromEntries(MONEY_FIELDS.map((f) => [f.id, draft?.figures?.[f.id] ?? ""])),
-    covers: draft?.covers ?? "",
-    notes: "",
-  }));
+function ReviewForm({ initialUploads, canUpload, onSaved, onCancel }) {
+  const [uploads, setUploads] = useState(initialUploads);
+  const merged = useMemo(() => mergeDrafts(uploads), [uploads]);
+  const fromDraft = (m) => ({
+    month: m.period_month ? m.period_month.slice(0, 7) : "",
+    ...Object.fromEntries(MONEY_FIELDS.map((f) => [f.id, m.figures?.[f.id] ?? ""])),
+    covers: m.covers ?? "",
+  });
+  const [values, setValues] = useState(() => ({ ...fromDraft(merged), notes: "" }));
+  // Fields the owner typed in. A later document never overwrites those.
+  const [touched, setTouched] = useState(() => new Set());
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
+  const [kind, setKind] = useState("payroll");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    const next = fromDraft(merged);
+    setValues((v) => {
+      const out = { ...v };
+      for (const [k, val] of Object.entries(next)) if (!touched.has(k)) out[k] = val;
+      return out;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merged]);
+
+  const set = (k) => (e) => {
+    const val = e.target.value;
+    setTouched((t) => new Set(t).add(k));
+    setValues((v) => ({ ...v, [k]: val }));
+  };
+
+  const addDocument = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAdding(true); setError("");
+    try {
+      const upload = await uploadDocument(file, kind);
+      setUploads((u) => [...u, upload]);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setAdding(false);
+    }
+  };
 
   const save = async (e) => {
     e.preventDefault();
     setSaving(true); setError(""); setErrors({});
     try {
-      const res = await invoke("saveMonthlySnapshot", { snapshot: values, upload_ids: uploadIds });
+      const res = await invoke("saveMonthlySnapshot", { snapshot: values, upload_ids: uploads.map((u) => u.id) });
       onSaved(res.data.snapshot);
     } catch (err) {
       setErrors(err?.data?.fields || {});
@@ -122,10 +201,16 @@ function ReviewForm({ draft, uploadIds, onSaved, onCancel }) {
   return (
     <form onSubmit={save} className="mt-4 p-5 rounded-2xl" style={{ ...card, borderColor: "rgba(240,180,41,.35)" }}>
       <h3 className="font-bold">Check these figures, then confirm</h3>
-      {draft && (
+      {uploads.length > 0 && (
         <p className="mt-1 text-xs" style={muted}>
-          Read by AI ({draft.confidence} confidence). Blank means the document didn&apos;t show it.
-          {draft.notes ? ` Notes: ${draft.notes}` : ""}
+          Read by AI from {uploads.map((u) => u.file_name).join(", ")} ({merged.confidence} confidence).
+          Blank means no document showed it. Anything you type is kept.
+          {merged.notes ? ` Notes: ${merged.notes}` : ""}
+        </p>
+      )}
+      {merged.other_months.length > 0 && (
+        <p className="mt-2 text-xs" style={{ color: "#f0b429" }}>
+          Not used, because it covers a different month: {merged.other_months.join(", ")}.
         </p>
       )}
       <div className="mt-4 grid sm:grid-cols-3 gap-3">
@@ -136,6 +221,7 @@ function ReviewForm({ draft, uploadIds, onSaved, onCancel }) {
         {MONEY_FIELDS.map((f) => (
           <label key={f.id} className="text-xs" style={muted}>{f.label} ($)
             <input inputMode="decimal" value={values[f.id]} onChange={set(f.id)} className={field} style={fieldStyle} />
+            {merged.sources[f.id] && !touched.has(f.id) && <span>from {merged.sources[f.id]}</span>}
             {errors[f.id] && <span style={{ color: "#e5484d" }}>{errors[f.id]}</span>}
           </label>
         ))}
@@ -144,9 +230,20 @@ function ReviewForm({ draft, uploadIds, onSaved, onCancel }) {
           {errors.covers && <span style={{ color: "#e5484d" }}>{errors.covers}</span>}
         </label>
       </div>
+      {canUpload && (
+        <div className="mt-4 flex flex-wrap gap-3 items-center">
+          <span className="text-xs" style={muted}>Add another document for this month:</span>
+          <KindPicker value={kind} onChange={setKind} />
+          <label className="text-xs font-semibold px-3 py-2 rounded-full cursor-pointer inline-flex items-center gap-1"
+            style={{ border: "1px solid rgba(255,255,255,.25)" }}>
+            {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add file
+            <input type="file" accept={ACCEPT} className="sr-only" onChange={addDocument} disabled={adding} />
+          </label>
+        </div>
+      )}
       {error && <p className="mt-3 text-sm" style={{ color: "#e5484d" }}>{error}</p>}
       <div className="mt-4 flex gap-3">
-        <button type="submit" disabled={saving} className="text-sm font-semibold px-4 py-2 rounded-full inline-flex items-center gap-2"
+        <button type="submit" disabled={saving || adding} className="text-sm font-semibold px-4 py-2 rounded-full inline-flex items-center gap-2"
           style={{ background: "#30a46c", color: "#fff" }}>
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Confirm month
         </button>
@@ -165,15 +262,9 @@ function UploadBox({ onDraft }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const mediaType = file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? "application/pdf"
-      : /\.(csv|txt)$/i.test(file.name) || file.type === "text/csv" ? "text/csv" : file.type;
-    if (!UPLOAD_MEDIA_TYPES.includes(mediaType)) { setError("Upload a PDF or CSV file. For Excel, save as CSV first."); return; }
-    if (file.size > MAX_UPLOAD_BYTES) { setError("Files are limited to 8 MB."); return; }
     setBusy(true); setError("");
     try {
-      const base64 = await readAsBase64(file);
-      const res = await invoke("uploadFinancialDocument", { file_name: file.name, media_type: mediaType, kind, base64 });
-      onDraft(res.data.upload);
+      onDraft(await uploadDocument(file, kind));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -185,19 +276,15 @@ function UploadBox({ onDraft }) {
     <div className="p-5 rounded-2xl" style={card}>
       <h3 className="font-bold flex items-center gap-2"><Upload className="w-4 h-4" aria-hidden="true" /> Add a month</h3>
       <p className="mt-1 text-sm" style={muted}>
-        Upload a P&amp;L, payroll report, bank statement or POS sales report (PDF or CSV). We read the figures, you check them before anything is saved.
+        Upload a P&amp;L, payroll report, bank statement or POS sales report (PDF, CSV or Excel). We read the figures; you check them before anything is saved. You can add more documents for the same month on the next step.
       </p>
       <div className="mt-4 flex flex-wrap gap-3 items-center">
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-lg px-3 py-2 text-sm"
-          style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", color: "#fff" }}>
-          {UPLOAD_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-        </select>
+        <KindPicker value={kind} onChange={setKind} />
         <label className="text-sm font-semibold px-4 py-2 rounded-full cursor-pointer inline-flex items-center gap-2"
           style={{ background: "#f0b429", color: "#0b0b0d" }}>
           {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Reading…</> : <><FileText className="w-4 h-4" /> Choose file</>}
-          <input type="file" accept=".pdf,.csv,.txt,application/pdf,text/csv" className="sr-only" onChange={onFile} disabled={busy} />
+          <input type="file" accept={ACCEPT} className="sr-only" onChange={onFile} disabled={busy} />
         </label>
-        <span className="text-xs" style={muted}>or enter a month by hand below</span>
       </div>
       {error && <p className="mt-3 text-sm" style={{ color: "#e5484d" }}>{error}</p>}
     </div>
@@ -207,7 +294,8 @@ function UploadBox({ onDraft }) {
 export default function FinanceModule({ view, ratings, threshold }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
-  const [review, setReview] = useState(null); // { draft, uploadIds }
+  const [review, setReview] = useState(null); // { uploads: [...] }
+  const [removing, setRemoving] = useState(null);
   const [insightBusy, setInsightBusy] = useState(false);
   const [insightError, setInsightError] = useState("");
 
@@ -228,6 +316,19 @@ export default function FinanceModule({ view, ratings, threshold }) {
     () => (latest ? guestMonth(ratings, normalizeMonth(latest.month), threshold) : null),
     [latest, ratings, threshold],
   );
+
+  const removeUpload = async (u) => {
+    if (!window.confirm(`Delete ${u.file_name}? Confirmed figures are kept; only the file is removed.`)) return;
+    setRemoving(u.id);
+    try {
+      await invoke("removeFinancialUpload", { upload_id: u.id });
+      await load();
+    } catch (err) {
+      setLoadError(errorText(err));
+    } finally {
+      setRemoving(null);
+    }
+  };
 
   const generate = async () => {
     setInsightBusy(true); setInsightError("");
@@ -286,15 +387,15 @@ export default function FinanceModule({ view, ratings, threshold }) {
         </p>
       )}
       {data.claude_configured && !review && (
-        <UploadBox onDraft={(upload) => setReview({ draft: upload.extracted, uploadIds: [upload.id] })} />
+        <UploadBox onDraft={(upload) => setReview({ uploads: [upload] })} />
       )}
       {!review && (
-        <button type="button" onClick={() => setReview({ draft: null, uploadIds: [] })} className="text-sm underline" style={muted}>
+        <button type="button" onClick={() => setReview({ uploads: [] })} className="text-sm underline" style={muted}>
           Enter a month by hand
         </button>
       )}
       {review && (
-        <ReviewForm draft={review.draft} uploadIds={review.uploadIds}
+        <ReviewForm initialUploads={review.uploads} canUpload={data.claude_configured}
           onCancel={() => setReview(null)}
           onSaved={() => { setReview(null); load(); }} />
       )}
@@ -337,11 +438,20 @@ export default function FinanceModule({ view, ratings, threshold }) {
       {data.uploads.length > 0 && (
         <section className="p-5 rounded-2xl" style={card}>
           <h3 className="font-bold">Recent uploads</h3>
+          <p className="mt-1 text-xs" style={muted}>Original files are deleted automatically after 90 days. The figures you confirmed are kept.</p>
           <ul className="mt-3 space-y-2 text-sm">
             {data.uploads.map((u) => (
               <li key={u.id} className="flex justify-between gap-3">
                 <span className="truncate">{u.file_name}</span>
-                <span style={muted}>{{ extracted: "Waiting for you to confirm", confirmed: "Confirmed", failed: "Couldn't read", discarded: "Discarded" }[u.status]}</span>
+                <span className="flex items-center gap-3">
+                  <span style={muted}>{{ extracted: "Not confirmed", confirmed: "Confirmed", failed: "Couldn't read", discarded: "Deleted" }[u.status]}</span>
+                  {u.has_file && (
+                    <button type="button" aria-label={`Delete ${u.file_name}`} disabled={removing === u.id}
+                      onClick={() => removeUpload(u)} style={muted}>
+                      {removing === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

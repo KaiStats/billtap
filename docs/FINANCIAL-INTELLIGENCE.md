@@ -34,14 +34,61 @@ exactly what it was.
   individual table spent, or labor by day of the week, so nothing compares
   them.
 
+## Plans
+
+| Plan | Price | Modules | Worker binding |
+| --- | --- | --- | --- |
+| Guest Recovery | $149/mo | guest_recovery | `STRIPE_PRICE_ID` (unchanged) |
+| Financial Intelligence | $249/mo | finance | `STRIPE_FINANCE_PRICE_ID` |
+| Full platform | $349/mo | guest_recovery + finance | `STRIPE_PLATFORM_PRICE_ID` |
+
+`create-checkout` takes `tier` (default `guest_recovery`) and stamps it on the
+subscription's metadata; `verify-checkout` and the Stripe webhook set
+`restaurants.modules` from it while the subscription is paying. Every
+restaurant gets the same 30-day trial as before, and a restaurant still on its
+trial can switch Finance on from the dashboard (`startFinanceTrial`). A paying
+$149 restaurant changes plan through the founder for now: there is no
+self-serve plan change on an existing subscription yet.
+
+Finance is also gated on entitlement: a lapsed restaurant keeps its rows but
+cannot read or add to them until it resubscribes.
+
+## Files and retention
+
+- Owners can delete any uploaded file from the Finances tab. The confirmed
+  figures stay.
+- The nightly retention job deletes original files after 90 days
+  (`FINANCE_FILE_RETENTION_DAYS`). Rows keep their extracted draft.
+- When an expired demo restaurant is swept, its files are deleted first.
+
+## Documents
+
+- PDF, CSV and Excel (`.xlsx`). Excel is converted to CSV in the browser
+  (`src/lib/excelToCsv.js`, every sheet kept) before upload.
+- Several documents per month: the review form takes more files and merges
+  them (`mergeDrafts`): payroll is trusted first for labor, POS sales for
+  revenue, the P&L for everything else. Anything the owner typed is never
+  overwritten, and a file for a different month is shown, not mixed in.
+
+## Monthly email
+
+Restaurants with Finance get a section in the 1st-of-the-month report: the
+latest confirmed month's revenue, prime cost, labor and margin, plus that
+month's stored insights. The cron makes no new model calls.
+
 ## Turning it on
 
 1. Run `0028_financial_intelligence.sql` in the Supabase SQL editor (staging
    first).
-2. `npx wrangler secret put ANTHROPIC_API_KEY` (and `--env staging`).
+2. Worker secrets (and the same with `--env staging`):
+   ```
+   npx wrangler secret put ANTHROPIC_API_KEY
+   npx wrangler secret put STRIPE_FINANCE_PRICE_ID
+   npx wrangler secret put STRIPE_PLATFORM_PRICE_ID
+   ```
    Optional: `CLAUDE_MODEL` to override `claude-opus-5-5`.
 3. Deploy (Actions → Deploy).
-4. Switch a restaurant on:
+4. To switch a restaurant on by hand:
    ```sql
    update restaurants
    set modules = array['guest_recovery', 'finance']
@@ -51,14 +98,9 @@ exactly what it was.
 Without the API key, uploads answer "not set up yet" and owners can still enter
 months by hand.
 
-## Not built yet
+## Still open
 
-- **Pricing and billing.** There is no Stripe price for the finance module or
-  the bundle. The module is switched on by hand until one exists.
-- **Excel files.** PDF and CSV only; the upload screen tells owners to save
-  Excel as CSV.
-- **Several documents per month.** One upload pre-fills the form; to combine a
-  P&L with a payroll report, the owner types the second figure in.
-- **Insights in the monthly email.** The report still covers guest data only.
-- **Deleting uploads.** Files stay in the private bucket; there is no
-  owner-facing delete or retention job for them yet.
+- Self-serve plan changes for restaurants already paying (upgrade from $149
+  to $349 inside Stripe).
+- The public /restaurants page still sells only the $149 plan.
+- Excel's older `.xls` format is not read; owners save as `.xlsx` or CSV.

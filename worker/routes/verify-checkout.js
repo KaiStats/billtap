@@ -18,6 +18,7 @@
  *
  * Bindings: STRIPE_SECRET_KEY (required)
  */
+import { tierById } from '../../shared/finance.js';
 import { json, clean } from '../lib/email.js';
 import { audit, ACTIONS } from '../lib/audit.js';
 import { serviceRole, currentUser } from '../lib/data.js';
@@ -120,8 +121,11 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
     }
 
     if (paid && restaurantId) {
+      const tier = tierById(sub?.metadata?.tier || data.metadata?.tier);
       await serviceRole(env).entity('Restaurant').update(restaurantId, {
         plan: 'active',
+        // The modules the chosen plan pays for. See create-checkout.
+        ...(tier ? { modules: tier.modules } : {}),
         stripe_subscription_id: subscriptionId || '',
         current_period_end: currentPeriodEnd,
         // Only written when Stripe actually returned one, so a partial read

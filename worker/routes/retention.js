@@ -53,6 +53,7 @@
  * yet redacted", so the work is idempotent and self-healing by construction.
  */
 
+import { purgeFinanceOriginals, removeFinanceFiles } from './finance.js';
 import { serviceRole, backendName } from '../lib/data.js';
 import { deleteObject, storageKeyFromUrl, listObjects, publicObjectUrl } from '../lib/db.js';
 import { mayRunScheduledWork, environmentName } from '../lib/environment.js';
@@ -394,6 +395,9 @@ export async function sweepExpiredDemos(env, svc, { now = Date.now(), limit = DE
     try {
       summary.ratings_deleted += await deleteChildren(env, 'guest_ratings', demo.id);
       summary.contacts_deleted += await deleteChildren(env, 'guest_contacts', demo.id);
+      // Finance rows go with the restaurant by cascade; the files they point at
+      // do not, so they are removed first or they would sit in storage forever.
+      await removeFinanceFiles(env, svc, demo.id);
       /**
        * The count Postgres reported, not an assumption that the call worked.
        *
@@ -585,6 +589,13 @@ export async function scheduled(env) {
    * important thing the nightly job does and it must not be able to report the
    * redaction as failed.
    */
+  // Original finance uploads past their 90 days. Isolated like the rest.
+  try {
+    summary.finance_files = await purgeFinanceOriginals(env, svc);
+  } catch (error) {
+    summary.finance_files = { error: error?.message || String(error) };
+  }
+
   try {
     summary.error_log_pruned = await pruneErrorLog(env);
   } catch (error) {

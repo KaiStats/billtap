@@ -14,6 +14,7 @@ import { json, clean, EMAIL_RE } from '../lib/email.js';
 import { currentUser, serviceRole } from '../lib/data.js';
 
 import { fetchWithTimeout, TIMEOUTS } from '../lib/http.js';
+import { tierById } from '../../shared/finance.js';
 
 export async function onRequestPost({ request, env }) {
   let body;
@@ -64,8 +65,13 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'That restaurant is not on your account.', code: 'not_yours' }, 403);
   }
 
+  // Which plan. Absent means the original $149 Guest Recovery plan, so every
+  // existing caller behaves exactly as before.
+  const tier = tierById(body.tier ?? 'guest_recovery');
+  if (!tier) return json({ error: 'Unknown plan' }, 400);
+
   const key = env.STRIPE_SECRET_KEY;
-  const price = env.STRIPE_PRICE_ID;
+  const price = env[tier.env];
   if (!key || !price) {
     /**
      * Name the one that is missing.
@@ -80,7 +86,7 @@ export async function onRequestPost({ request, env }) {
      * The names go to the log, never to the response: which of our bindings is
      * unset is not a caller's business.
      */
-    const missing = [!key && 'STRIPE_SECRET_KEY', !price && 'STRIPE_PRICE_ID'].filter(Boolean);
+    const missing = [!key && 'STRIPE_SECRET_KEY', !price && tier.env].filter(Boolean);
     console.error(`create-checkout: not configured — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} empty or unset`);
     return json({ error: 'Billing is not configured yet.' }, 503);
   }
@@ -97,6 +103,10 @@ export async function onRequestPost({ request, env }) {
     success_url: `${origin}/restaurant-dashboard?checkout={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/restaurant-dashboard?checkout=cancelled`,
     'subscription_data[metadata][restaurant_id]': restaurantId,
+    // Read back by the webhook and verify-checkout to switch on the modules
+    // this plan pays for.
+    'subscription_data[metadata][tier]': tier.id,
+    'metadata[tier]': tier.id,
     allow_promotion_codes: 'true',
 
     // Collect the billing address.

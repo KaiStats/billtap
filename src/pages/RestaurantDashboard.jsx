@@ -7,7 +7,7 @@ import { reviewLift } from "@/lib/reviewLift";
 import { shareCardLines, drawShareCard, shareCardImage } from "@/lib/shareCard";
 import { accessToken } from "@/lib/supabase";
 import FinanceModule from "@/components/FinanceModule";
-import { hasModule } from "../../shared/finance.js";
+import { hasModule, TIERS } from "../../shared/finance.js";
 import { OUTCOMES, issueLabel, outcomeLabel, summarizeRecovery, worstPeriod, returnVisits } from "../../shared/guest-recovery.js";
 
 const GOLD = "#f0b429";
@@ -199,7 +199,7 @@ export default function RestaurantDashboard() {
     return () => { alive = false; };
   }, [restaurant, load]);
 
-  const startCheckout = async () => {
+  const startCheckout = async (tier = "guest_recovery") => {
     setBilling("starting");
     try {
       const token = await accessToken();
@@ -209,7 +209,7 @@ export default function RestaurantDashboard() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ restaurant_id: restaurant.id, email: restaurant.alert_email }),
+        body: JSON.stringify({ restaurant_id: restaurant.id, email: restaurant.alert_email, tier }),
       });
       const data = await res.json();
       if (data.url) { window.location.href = data.url; return; }
@@ -254,6 +254,17 @@ export default function RestaurantDashboard() {
   // tab bar, Guest Recovery is the whole page.
   const financeOn = hasModule(restaurant, "finance");
   const [tab, setTab] = useState("overview");
+  const [financeTrial, setFinanceTrial] = useState(null); // null | "starting" | "failed"
+  const startFinanceTrial = async () => {
+    setFinanceTrial("starting");
+    try {
+      const res = await invoke("startFinanceTrial", {});
+      setRestaurant((r) => ({ ...r, modules: res.data.modules }));
+      setFinanceTrial(null);
+    } catch {
+      setFinanceTrial("failed");
+    }
+  };
   // The outcome, not the activity. Null when there is no baseline to compare
   // against — see src/lib/reviewLift.js.
   const lift = useMemo(() => reviewLift(restaurant), [restaurant]);
@@ -508,10 +519,24 @@ export default function RestaurantDashboard() {
           </div>
         </header>
 
+        {!financeOn && restaurant.plan === "trial" && !restaurant.demo && (
+          <div className="mt-6 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3"
+            style={{ background: "rgba(240,180,41,.08)", border: "1px solid rgba(240,180,41,.3)" }}>
+            <p className="text-sm">
+              <strong>New: Financial Intelligence.</strong>{" "}
+              <span style={{ color: "rgba(255,255,255,.65)" }}>Upload your P&amp;L and see your costs beside your guest ratings. Free for the rest of your trial.</span>
+            </p>
+            <button type="button" onClick={startFinanceTrial} disabled={financeTrial === "starting"}
+              className="text-sm font-semibold px-4 py-2 rounded-full" style={{ background: GOLD, color: "#1a1200" }}>
+              {financeTrial === "starting" ? "Turning on…" : "Try it"}
+            </button>
+            {financeTrial === "failed" && <p className="w-full text-xs" style={{ color: "#ff8080" }}>Couldn&apos;t turn it on. Try again, or call (702) 844-0938.</p>}
+          </div>
+        )}
         {financeOn && (
           <nav className="mt-6 flex gap-1 p-1 rounded-full w-fit" role="tablist" aria-label="Dashboard sections"
             style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)" }}>
-            {[["overview", "Overview"], ["recovery", "Guest Recovery"], ["finances", "Finances"]].map(([id, label]) => (
+            {[["overview", "Overview"], ...(hasModule(restaurant, "guest_recovery") ? [["recovery", "Guest Recovery"]] : []), ["finances", "Finances"]].map(([id, label]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
                 className="px-4 py-2 rounded-full text-sm font-semibold"
                 style={tab === id ? { background: "#f0b429", color: "#0b0b0d" } : { color: "rgba(255,255,255,.7)" }}>
@@ -769,12 +794,21 @@ export default function RestaurantDashboard() {
             </div>
 
             {restaurant.plan !== "active" && restaurant.plan !== "past_due" && (
-              <button onClick={startCheckout} disabled={billing === "starting" || billing === "verifying"}
-                className="px-6 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-60"
-                style={{ background: GOLD, color: "#1a1200" }}>
-                {(billing === "starting" || billing === "verifying") && <Loader2 className="w-4 h-4 animate-spin" />}
-                {billing === "verifying" ? "Confirming" : "Subscribe — $149/mo"}
-              </button>
+              <div className="flex flex-col gap-2">
+                {/* One button per plan. Guest Recovery stays first and gold: it is
+                    the plan every existing page and email has sold. */}
+                {TIERS.map((t, i) => (
+                  <button key={t.id} onClick={() => startCheckout(t.id)} disabled={billing === "starting" || billing === "verifying"}
+                    className="px-6 py-3 rounded-2xl font-black flex items-center justify-between gap-4 disabled:opacity-60"
+                    style={i === 0 ? { background: GOLD, color: "#1a1200" } : { border: "1px solid rgba(255,255,255,.25)", color: "#fff" }}>
+                    <span>{billing === "verifying" ? "Confirming" : t.label}</span>
+                    <span className="flex items-center gap-2">
+                      {(billing === "starting" || billing === "verifying") && <Loader2 className="w-4 h-4 animate-spin" />}
+                      ${t.price}/mo
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </section>

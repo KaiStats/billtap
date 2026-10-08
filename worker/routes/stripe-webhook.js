@@ -32,6 +32,7 @@
  *   STRIPE_WEBHOOK_SECRET  required. From the Stripe dashboard, `whsec_...`
  *   STRIPE_SECRET_KEY      required, to read the subscription back
  */
+import { tierById } from '../../shared/finance.js';
 import { json } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { audit, ACTIONS } from '../lib/audit.js';
@@ -245,10 +246,16 @@ async function applySubscription(env, subject, subscription) {
     return { kind: 'pro', id: subject.id, plan: patch.plan };
   }
 
+  // The modules this subscription pays for, from the tier create-checkout
+  // stamped on it. Only written while it is paying: a cancellation leaves the
+  // modules as they were and the plan gate does the cutting off, so a lapsed
+  // owner who resubscribes finds their months still there.
+  const tier = tierById(subscription?.metadata?.tier);
   await svc.entity('Restaurant').update(subject.id, {
     plan: nextPlan,
     stripe_subscription_id: subscription?.id || '',
     current_period_end: periodEnd,
+    ...(entitled && tier ? { modules: tier.modules } : {}),
   });
   return { kind: 'restaurant', id: subject.id, plan: nextPlan };
 }

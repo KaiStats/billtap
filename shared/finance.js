@@ -21,6 +21,19 @@ export const MODULES = ['guest_recovery', 'finance'];
 export const hasModule = (restaurant, id) =>
   Array.isArray(restaurant?.modules) ? restaurant.modules.includes(id) : id === 'guest_recovery';
 
+/**
+ * The three subscriptions a restaurant can buy, and the modules each unlocks.
+ * `env` names the Worker binding holding that Stripe price id; the $149 plan
+ * keeps the binding it always had. Prices here are for display only — Stripe
+ * charges what the price object says.
+ */
+export const TIERS = [
+  { id: 'guest_recovery', label: 'Guest Recovery', price: 149, env: 'STRIPE_PRICE_ID', modules: ['guest_recovery'] },
+  { id: 'finance', label: 'Financial Intelligence', price: 249, env: 'STRIPE_FINANCE_PRICE_ID', modules: ['finance'] },
+  { id: 'platform', label: 'Full platform', price: 349, env: 'STRIPE_PLATFORM_PRICE_ID', modules: ['guest_recovery', 'finance'] },
+];
+export const tierById = (id) => TIERS.find((t) => t.id === id) || null;
+
 export const UPLOAD_KINDS = [
   { id: 'pnl', label: 'Profit & loss statement' },
   { id: 'payroll', label: 'Payroll report' },
@@ -220,4 +233,53 @@ export function validateInsights(insights, facts) {
       && i.fact_keys.every((key) => keys.has(key)))
     .slice(0, 5)
     .map((i) => ({ title: i.title.slice(0, 120), body: i.body.slice(0, 600), fact_keys: i.fact_keys }));
+}
+
+/**
+ * Which kind of document to believe first for each figure, when an owner
+ * uploads several for one month. A payroll report is the better source for
+ * labor than a P&L line; a POS report for revenue; the P&L for everything else.
+ */
+const PREFERENCE = {
+  revenue: ['sales', 'pnl', 'bank', 'other', 'payroll'],
+  labor_cost: ['payroll', 'pnl', 'bank', 'other', 'sales'],
+};
+const DEFAULT_PREFERENCE = ['pnl', 'bank', 'other', 'payroll', 'sales'];
+
+/**
+ * Several drafts for one month → one set of figures, and which file each came
+ * from. Only drafts for the same month as the first one are used; a document
+ * for a different month is reported back rather than silently mixed in.
+ *
+ * @param {{ kind: string, file_name: string, extracted: object }[]} uploads
+ */
+export function mergeDrafts(uploads) {
+  const usable = (uploads || []).filter((u) => u?.extracted?.figures);
+  const month = usable.find((u) => u.extracted.period_month)?.extracted.period_month || null;
+  const same = usable.filter((u) => !month || !u.extracted.period_month || u.extracted.period_month === month);
+  const otherMonths = usable.filter((u) => !same.includes(u)).map((u) => u.file_name);
+
+  const figures = {};
+  const sources = {};
+  for (const { id } of MONEY_FIELDS) {
+    const order = PREFERENCE[id] || DEFAULT_PREFERENCE;
+    const ranked = [...same].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    const pick = ranked.find((u) => u.extracted.figures[id] !== null && u.extracted.figures[id] !== undefined);
+    figures[id] = pick ? pick.extracted.figures[id] : null;
+    if (pick) sources[id] = pick.file_name;
+  }
+  const coversFrom = same.find((u) => Number.isInteger(u.extracted.covers));
+  const notes = same.map((u) => u.extracted.notes).filter(Boolean).join(' ');
+  const confidences = same.map((u) => u.extracted.confidence);
+  const confidence = confidences.includes('low') ? 'low' : confidences.includes('medium') ? 'medium' : (confidences[0] || 'high');
+
+  return {
+    period_month: month,
+    figures,
+    covers: coversFrom ? coversFrom.extracted.covers : null,
+    confidence,
+    notes,
+    sources,
+    other_months: otherMonths,
+  };
 }

@@ -10,6 +10,7 @@
  *
  * Bindings: REPORT_WEBHOOK_SECRET (required), plus the usual email bindings.
  */
+import { hasModule, kpis } from '../../shared/finance.js';
 import { json, esc, EMAIL_RE, sendEmail } from '../lib/email.js';
 import { serviceRole } from '../lib/data.js';
 import { isEntitled } from '../../shared/entitlement.js';
@@ -180,6 +181,22 @@ export async function deliverReports(env, body) {
       ['Total list size', r.list_size ?? 0],
     ];
 
+    // Financial Intelligence, for restaurants that have it: the latest month
+    // the owner confirmed and, when one exists for that month, its insights.
+    const finance = r.finance && Array.isArray(r.finance.rows) ? r.finance : null;
+    const financeHtml = finance ? `
+        <p style="margin:26px 0 8px;color:#111;font-size:15px;font-weight:700">Finances — ${esc(finance.month_label || '')}</p>
+        <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px">
+          ${finance.rows.map(([k, v]) => row(k, v)).join('')}
+        </table>
+        ${(finance.insights || []).map((i) => `
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.5"><strong>${esc(i.title)}</strong><br>${esc(i.body)}</p>`).join('')}
+        ${(finance.insights || []).length ? '<p style="margin:10px 0 0;color:#888;font-size:12px">Insights are written by AI from the figures above. Things that happen in the same month are not proof one caused the other.</p>' : ''}` : '';
+    const financeText = finance
+      ? ['', `Finances — ${finance.month_label || ''}`, ...finance.rows.map(([k, v]) => `${k}: ${v}`),
+        ...(finance.insights || []).flatMap((i) => ['', i.title, i.body])]
+      : [];
+
     const html = `
       <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:540px">
         <div style="background:#111827;border-radius:12px;padding:22px;margin-bottom:20px">
@@ -192,6 +209,7 @@ export async function deliverReports(env, body) {
         <p style="margin:22px 0 0;color:#888;font-size:12px;line-height:1.6">
           ${esc(lowRatingLine(r.caught))}
         </p>
+        ${financeHtml}
         <p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #eee;color:#555;font-size:13px;line-height:1.6">
           ${esc(REFERRAL_TEXT)} at
           <a href="${REFERRAL_URL}" style="color:#b7791f">billtap.app/restaurants</a>.
@@ -202,6 +220,7 @@ export async function deliverReports(env, body) {
       ...rows.map(([k, v]) => `${k}: ${v}`),
       '',
       lowRatingLine(r.caught),
+      ...financeText,
       '',
       `${REFERRAL_TEXT}: ${REFERRAL_URL}`,
     ].join('\n');
@@ -299,6 +318,31 @@ async function allRows(svc, entity, restaurantId) {
  * never email a real restaurant. Restaurants with no alert email, unpaid or
  * demo rows are left out — deliverReports re-checks the last two anyway.
  */
+/**
+ * The finance block of the email: the latest confirmed month's ratios, and the
+ * insights stored for that same month. No new model call here — the cron runs
+ * for every restaurant at once, and the owner already saw these on screen.
+ */
+export function financeSection(snapshot, insight) {
+  if (!snapshot) return null;
+  const month = String(snapshot.month).slice(0, 10);
+  const k = kpis(snapshot);
+  const pct = (v) => (v == null ? 'n/a' : `${(v * 100).toFixed(1)}%`);
+  const [y, m] = month.split('-').map(Number);
+  return {
+    month_label: `${MONTHS[m - 1]} ${y}`,
+    rows: [
+      ['Revenue', k.revenue == null ? 'n/a' : `$${Math.round(k.revenue).toLocaleString('en-US')}`],
+      ['Prime cost (food, bev & labor)', pct(k.prime_cost_pct)],
+      ['Labor', pct(k.labor_pct)],
+      ['Net margin', pct(k.net_margin)],
+    ],
+    insights: insight && String(insight.month).slice(0, 10) === month
+      ? (insight.insights || []).map((i) => ({ title: i.title, body: i.body }))
+      : [],
+  };
+}
+
 export async function scheduled(env, now = new Date()) {
   if (!mayRunScheduledWork(env)) return { skipped: 'environment', environment: environmentName(env) };
   const svc = serviceRole(env);
@@ -312,7 +356,20 @@ export async function scheduled(env, now = new Date()) {
       allRows(svc, 'GuestRating', restaurant.id),
       allRows(svc, 'GuestContact', restaurant.id),
     ]);
-    reports.push(buildReport(restaurant, ratings, contacts, window, env.RESTAURANT_TZ || 'America/Los_Angeles'));
+    const report = buildReport(restaurant, ratings, contacts, window, env.RESTAURANT_TZ || 'America/Los_Angeles');
+    if (hasModule(restaurant, 'finance')) {
+      // Isolated: a finance read that fails must not cost the restaurant its
+      // guest report.
+      try {
+        const [snapshot] = await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id }, { order: '-month', limit: 1 });
+        const [insight] = await svc.entity('CombinedInsight').filter({ restaurant_id: restaurant.id }, { order: '-created_at', limit: 1 });
+        const section = financeSection(snapshot, insight);
+        if (section) report.finance = section;
+      } catch (error) {
+        console.error('monthly-report: finance section skipped for', restaurant.id, error?.message);
+      }
+    }
+    reports.push(report);
   }
   const result = await deliverReports(env, { reports, window: window.label });
   return { job: 'monthly-report', month: window.label, restaurants: reports.length, ...result };

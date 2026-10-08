@@ -20,7 +20,8 @@
  */
 import { json } from '../lib/email.js';
 import { serviceRole, currentUser, backendName } from '../lib/data.js';
-import { uploadObject } from '../lib/db.js';
+import { uploadObject, deleteObject } from '../lib/db.js';
+import { isEntitled } from '../../shared/entitlement.js';
 import { readFinancialDocument, writeCombinedInsights, claudeConfigured, ClaudeError } from '../lib/claude.js';
 import {
   hasModule, isUploadKind, UPLOAD_MEDIA_TYPES, MAX_UPLOAD_BYTES, MONEY_FIELDS,
@@ -34,6 +35,7 @@ const CLAUDE_STATUS = { not_configured: 503, rate_limited: 429, refused: 422, tr
 const uploadView = (u) => ({
   id: u.id, file_name: u.file_name, kind: u.kind, status: u.status,
   extracted: u.extracted ?? null, error: u.error ?? null, created_at: u.created_at,
+  has_file: Boolean(u.storage_key),
 });
 
 const SNAPSHOT_COLUMNS = ['month', ...MONEY_FIELDS.map((f) => f.id), 'covers', 'notes'];
@@ -70,6 +72,12 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
     if (!hasModule(restaurant, 'finance')) {
       return { error: json({ error: 'Financial Intelligence is not switched on for this restaurant', code: 'module_off' }, 403) };
     }
+    // The same entitlement every other paid feature reads: trial, active, or
+    // inside the past-due grace period. A lapsed restaurant keeps its rows but
+    // cannot add to them or read them until it resubscribes.
+    if (!isEntitled(restaurant)) {
+      return { error: json({ error: 'Your plan has ended. Resubscribe to see your finances.', code: 'plan_inactive' }, 402) };
+    }
     return { user, svc, restaurant };
   }
 
@@ -81,6 +89,47 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
   };
 
   return {
+    /**
+     * A restaurant still on its free trial switches Finance on for the rest of
+     * that trial. Paid restaurants change plan through checkout instead, so a
+     * $149 subscriber cannot unlock the $249 module from here.
+     */
+    async startFinanceTrial({ env, request }) {
+      if (backendName(env) !== 'supabase') return json({ error: 'Finance needs the Supabase backend', code: 'unavailable' }, 503);
+      const user = await currentUser(env, request);
+      if (!user) return json({ error: 'Unauthorized' }, 401);
+      const svc = serviceRole(env);
+      const restaurant = await findOrAdoptRestaurant(svc, user);
+      if (!restaurant) return json({ error: 'No restaurant' }, 404);
+      if (hasModule(restaurant, 'finance')) return json({ ok: true, modules: restaurant.modules });
+      if ((restaurant.plan ?? 'trial') !== 'trial' || !isEntitled(restaurant)) {
+        return json({ error: 'Choose the Financial Intelligence or Full platform plan to add Finance.', code: 'upgrade_needed' }, 402);
+      }
+      const modules = [...new Set([...(Array.isArray(restaurant.modules) ? restaurant.modules : ['guest_recovery']), 'finance'])];
+      await svc.entity('Restaurant').update(restaurant.id, { modules });
+      return json({ ok: true, modules });
+    },
+
+    /**
+     * Delete an uploaded file. The original is removed from storage; the row
+     * stays as a record that it existed, marked discarded with no key. A
+     * confirmed month built from it is the owner's own figures and is kept.
+     */
+    async removeFinancialUpload({ env, request, body }) {
+      const o = await owner(env, request);
+      if (o.error) return o.error;
+      const { svc, restaurant } = o;
+      const id = typeof body?.upload_id === 'string' ? body.upload_id : '';
+      const row = id ? (await svc.entity('FinancialUpload').filter({ id }))[0] : null;
+      if (!row || row.restaurant_id !== restaurant.id) return json({ error: 'Upload not found' }, 404);
+      if (row.storage_key) await deleteObject(env, BUCKET, row.storage_key);
+      await svc.entity('FinancialUpload').update(row.id, {
+        storage_key: null,
+        status: row.status === 'confirmed' ? 'confirmed' : 'discarded',
+      });
+      return json({ ok: true, upload_id: row.id });
+    },
+
     async getFinanceData({ env, request }) {
       const o = await owner(env, request);
       if (o.error) return o.error;
@@ -217,4 +266,45 @@ export function financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }) {
       return json({ month, facts, insights, created_at: now });
     },
   };
+}
+
+/**
+ * Nightly: delete original finance files older than FINANCE_FILE_RETENTION_DAYS.
+ *
+ * The figures an owner confirmed live in monthly_snapshots and stay. The files
+ * themselves can carry employee names and pay, which nothing here needs once
+ * the month is confirmed, so they are not kept indefinitely. Rows keep their
+ * extracted draft and lose only the storage key.
+ */
+export const FINANCE_FILE_RETENTION_DAYS = 90;
+
+export async function purgeFinanceOriginals(env, svc, { now = Date.now(), limit = 100 } = {}) {
+  const cutoff = now - FINANCE_FILE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const due = await svc.entity('FinancialUpload').filter(
+    { created_at: { lt: cutoff }, storage_key: { not: 'is.null' } },
+    { select: 'id,storage_key', order: 'created_at', limit },
+  );
+  let deleted = 0;
+  let failed = 0;
+  for (const row of due) {
+    try {
+      await deleteObject(env, BUCKET, row.storage_key);
+      await svc.entity('FinancialUpload').update(row.id, { storage_key: null });
+      deleted += 1;
+    } catch (error) {
+      console.error('finance retention: could not delete', row.id, error?.message);
+      failed += 1;
+    }
+  }
+  return { considered: due.length, deleted, failed };
+}
+
+/** Every stored original for one restaurant, before its rows are deleted. */
+export async function removeFinanceFiles(env, svc, restaurantId) {
+  const rows = await svc.entity('FinancialUpload').filter(
+    { restaurant_id: restaurantId, storage_key: { not: 'is.null' } },
+    { select: 'id,storage_key', limit: 500 },
+  );
+  for (const row of rows) await deleteObject(env, BUCKET, row.storage_key);
+  return rows.length;
 }
