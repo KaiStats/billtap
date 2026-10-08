@@ -40,6 +40,9 @@ const TABLES = {
   Session: 'sessions',
   Restaurant: 'restaurants',
   GuestRating: 'guest_ratings',
+  FinancialUpload: 'financial_uploads',
+  MonthlySnapshot: 'monthly_snapshots',
+  CombinedInsight: 'combined_insights',
   GuestContact: 'guest_contacts',
   RestaurantLead: 'restaurant_leads',
   Waitlist: 'waitlist',
@@ -303,6 +306,32 @@ export async function deleteObject(env, bucket, key) {
 
   if (res.ok || res.status === 404) return true;
   throw new DbError(res.status, await res.text());
+}
+
+/**
+ * Store bytes at `key` in a private bucket, as the service role.
+ *
+ * Used for finance uploads, which the Worker has already size-checked and
+ * tied to an owner — unlike receipts, there is no browser-direct path.
+ */
+export async function uploadObject(env, bucket, key, bytes, contentType) {
+  const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+
+  const res = await fetchWithTimeout(
+    `${supabaseUrl(env)}/storage/v1/object/${encodeURIComponent(bucket)}/${key
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': contentType },
+      body: bytes,
+    },
+    TIMEOUTS.storage,
+  );
+  if (!res.ok) throw new DbError(res.status, await res.text());
+  return key;
 }
 
 /**

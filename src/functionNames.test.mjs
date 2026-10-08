@@ -53,11 +53,19 @@ function handlerNames() {
   // `if (` and friends would match the same shape, so control-flow keywords are
   // excluded rather than the regex made cleverer.
   const reserved = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'function']);
-  return new Set(
+  const names = new Set(
     [...body.matchAll(/^ {2}(?:async )?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/gm)]
       .map((m) => m[1])
       .filter((n) => !reserved.has(n)),
   );
+  // Financial Intelligence handlers live in their own module and are merged
+  // into HANDLERS by Object.assign; they are the object returned from
+  // financeHandlers(), indented one level deeper.
+  if (/Object\.assign\(HANDLERS,\s*financeHandlers\(/.test(src)) {
+    const finance = readFileSync(join(ROOT, 'worker/routes/finance.js'), 'utf8');
+    for (const m of finance.matchAll(/^ {4}async ([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/gm)) names.add(m[1]);
+  }
+  return names;
 }
 
 test('the Worker exposes a plausible number of handlers', () => {

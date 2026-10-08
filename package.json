@@ -28,6 +28,7 @@
     "test:db": "node --test scripts/db-smoke.test.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.132.1",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-select": "^2.1.6",

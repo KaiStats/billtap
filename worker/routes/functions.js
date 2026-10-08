@@ -28,6 +28,7 @@ import { AppError, errorResponse, requestId } from '../lib/errors.js';
 import { audit as recordAudit, ACTIONS } from '../lib/audit.js';
 import { firstInWindow } from '../lib/rate-limit.js';
 import { isEntitled } from '../../shared/entitlement.js';
+import { financeHandlers } from './finance.js';
 import { isIssue, isRecoveryStatus } from '../../shared/guest-recovery.js';
 // The same clamp the scan applies to the model's output, applied again to the
 // browser's. See ticketColumns below for why it is shared rather than copied.
@@ -578,6 +579,9 @@ export function ownerView(r) {
     // than reading a stale trial_ends_at as "Trial ended" on a row that is
     // being served regardless. See migration 0023.
     reference_account: !!r.reference_account,
+    // Which modules are switched on (migration 0028). Missing on rows read
+    // before that migration ran, which means Guest Recovery only.
+    modules: Array.isArray(r.modules) ? r.modules : ['guest_recovery'],
     /**
      * The review lift, both ends of it.
      *
@@ -3574,6 +3578,11 @@ const HANDLERS = {
   },
 };
 
+// Financial Intelligence (worker/routes/finance.js). Merged in rather than
+// written inline so this file does not grow another thousand lines, and handed
+// the ownership lookup so both modules resolve "whose restaurant" identically.
+Object.assign(HANDLERS, financeHandlers({ findOrAdoptRestaurant, readAll, ownerView }));
+
 export async function onRequestPost({ request, env, ctx, name }) {
   // Minted before anything can fail, so even a rejected body carries one. The
   // caller is shown this and the log line and the audit row both carry it, so
@@ -3622,7 +3631,11 @@ export async function onRequestPost({ request, env, ctx, name }) {
    * it, and against the actual text too, because Content-Length is the
    * client's claim and a chunked body carries none at all.
    */
-  const MAX_BODY_BYTES = 256 * 1024;
+  //
+  // The one exception is a financial document upload: an 8 MB PDF is ~11 MB
+  // once base64'd into JSON. It is signed-in only and on the costly rate limit,
+  // and the handler re-checks the decoded size against MAX_UPLOAD_BYTES.
+  const MAX_BODY_BYTES = name === 'uploadFinancialDocument' ? 12 * 1024 * 1024 : 256 * 1024;
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
     return errorResponse(

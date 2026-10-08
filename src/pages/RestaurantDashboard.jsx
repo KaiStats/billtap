@@ -6,6 +6,8 @@ import { planSummary } from "@/lib/plan";
 import { reviewLift } from "@/lib/reviewLift";
 import { shareCardLines, drawShareCard, shareCardImage } from "@/lib/shareCard";
 import { accessToken } from "@/lib/supabase";
+import FinanceModule from "@/components/FinanceModule";
+import { hasModule } from "../../shared/finance.js";
 import { OUTCOMES, issueLabel, outcomeLabel, summarizeRecovery, worstPeriod, returnVisits } from "../../shared/guest-recovery.js";
 
 const GOLD = "#f0b429";
@@ -247,6 +249,11 @@ export default function RestaurantDashboard() {
   // different things about the same row — which is what they did. See
   // src/lib/plan.js for the two ways that went wrong in production.
   const plan = useMemo(() => planSummary(restaurant), [restaurant]);
+  // Financial Intelligence, when it is switched on for this restaurant
+  // (migration 0028). Without it the dashboard renders exactly as before: no
+  // tab bar, Guest Recovery is the whole page.
+  const financeOn = hasModule(restaurant, "finance");
+  const [tab, setTab] = useState("overview");
   // The outcome, not the activity. Null when there is no baseline to compare
   // against — see src/lib/reviewLift.js.
   const lift = useMemo(() => reviewLift(restaurant), [restaurant]);
@@ -501,6 +508,24 @@ export default function RestaurantDashboard() {
           </div>
         </header>
 
+        {financeOn && (
+          <nav className="mt-6 flex gap-1 p-1 rounded-full w-fit" role="tablist" aria-label="Dashboard sections"
+            style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)" }}>
+            {[["overview", "Overview"], ["recovery", "Guest Recovery"], ["finances", "Finances"]].map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                className="px-4 py-2 rounded-full text-sm font-semibold"
+                style={tab === id ? { background: "#f0b429", color: "#0b0b0d" } : { color: "rgba(255,255,255,.7)" }}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
+        {financeOn && tab !== "recovery" && (
+          <FinanceModule view={tab} ratings={ratings} threshold={restaurant?.rating_threshold ?? 3} />
+        )}
+
+        {/* Guest Recovery: hidden, not unmounted, so its state survives a tab switch. */}
+        <div hidden={financeOn && tab !== "recovery"}>
         {/* Numbers */}
         <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat label="Average rating" accent={GOLD}
@@ -975,6 +1000,7 @@ export default function RestaurantDashboard() {
             </div>
           </div>
         </section>
+        </div>
       </div>
     </div>
   );

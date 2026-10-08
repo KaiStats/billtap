@@ -77,6 +77,15 @@ export const ENTITIES = [
    * plans, so pointing it at "impossible" was worse than saying nothing.
    */
   'Profile',
+  /**
+   * Financial Intelligence (migration 0028). The confirmed months are the
+   * owner's own work — they reviewed and corrected every figure — and cannot
+   * be rebuilt from anything else. Uploads and insights are small rows; the
+   * original files stay in the finance-uploads bucket and are not copied here.
+   */
+  'FinancialUpload',
+  'MonthlySnapshot',
+  'CombinedInsight',
 ];
 
 /**

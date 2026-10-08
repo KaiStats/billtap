@@ -550,7 +550,7 @@ test('the dashboard read returns the row the settings form populates from', asyn
       'alert_email', 'alert_phone', 'current_period_end',
       'google_baseline_at', 'google_rating', 'google_rating_start',
       'google_review_count', 'google_review_count_start', 'google_review_url', 'google_reviews_at',
-      'id', 'name', 'plan', 'rating_threshold', 'reference_account', 'service_style',
+      'id', 'modules', 'name', 'plan', 'rating_threshold', 'reference_account', 'service_style',
       'slug', 'trial_ends_at',
     ]);
   });

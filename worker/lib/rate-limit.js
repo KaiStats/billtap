@@ -104,6 +104,9 @@ const LIMITED = new Set([
   // Same session, same allowlist, same write as createDemoRestaurant — it must
   // not be the unmetered way to do metered work.
   '/api/fn/extendDemoRestaurant',
+  // Each call is a Claude request on an owner's document or numbers.
+  '/api/fn/uploadFinancialDocument',
+  '/api/fn/generateCombinedInsights',
 ]);
 
 /**
@@ -298,6 +301,9 @@ const COSTLY = new Set([
   '/api/fn/createDemoRestaurant',
   // Same write, same page, just a later clock.
   '/api/fn/extendDemoRestaurant',
+  // Spends at the model provider.
+  '/api/fn/uploadFinancialDocument',
+  '/api/fn/generateCombinedInsights',
 ]);
 
 /** Which binding a path draws from. */
