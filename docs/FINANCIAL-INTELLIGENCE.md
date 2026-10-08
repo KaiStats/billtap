@@ -102,5 +102,5 @@ months by hand.
 
 - Self-serve plan changes for restaurants already paying (upgrade from $149
   to $349 inside Stripe).
-- The public /restaurants page still sells only the $149 plan.
+- /restaurants lists all three plans; the lead form does not yet record which one the owner wants.
 - Excel's older `.xls` format is not read; owners save as `.xlsx` or CSV.

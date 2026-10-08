@@ -173,7 +173,15 @@ const FAQ = [
   },
   {
     q: "Can I cancel anytime?",
-    a: "Yes. Start with a 30-day free trial, and once you're on the $149/mo plan you can cancel whenever — no contract, no cancellation fee.",
+    a: "Yes. Start with a 30-day free trial, and once you're on a plan — $149, $249 or $349 a month — you can cancel whenever. No contract, no cancellation fee.",
+  },
+  {
+    q: "What is Financial Intelligence?",
+    a: "An optional module, $249 a month on its own or $349 with Guest Recovery. Upload a month's P&L, payroll report or bank export (PDF, CSV or Excel) and BillTap's AI reads it into a draft. You check and confirm the figures, and the dashboard shows prime cost, labor and margin month over month, beside your guest ratings. The AI reads documents and writes the summary; it never does the arithmetic.",
+  },
+  {
+    q: "What happens to the financial files I upload?",
+    a: "They're stored privately to your account — only you see them. You can delete any file yourself, and the originals are deleted automatically after 90 days. The figures you confirmed stay.",
   },
   {
     q: "Does BillTap handle any of the money?",
@@ -347,6 +355,7 @@ const ROLES = {
       "A monthly report: recovery rate, top problems, worst shift",
       "A guest email list, built every service",
       "$149 flat a month — no contract, no new hardware",
+      "Add Financial Intelligence: prime cost, labor and margin from your P&L",
     ],
   },
 };
@@ -558,6 +567,32 @@ function Img({ name, alt, className = "", to = 1, eager = false, position = "cen
 const SAMPLE_RESTAURANT = "The Test Kitchen";
 
 /**
+ * Financial Intelligence, as sold. Prices come from TIERS in shared/finance.js;
+ * if those change, this changes with them. Every row of the sample is the
+ * output of shared/finance.js ratios on the sample month below, labelled as a
+ * sample, for the same reason the report above is.
+ */
+const PLANS = [
+  { id: "guest_recovery", name: "Guest Recovery", price: 149, desc: "Real-time unhappy-guest alerts, Google reviews from every guest, the guest list and the monthly report." },
+  { id: "finance", name: "Financial Intelligence", price: 249, desc: "Upload your P&L, payroll or bank file. Confirm the figures; get prime cost, labor and margin every month." },
+  { id: "platform", name: "Full platform", price: 349, desc: "Both, on one dashboard, with your money and your guest ratings set side by side each month.", best: true },
+];
+
+const FINANCE_SAMPLE = [
+  ["Revenue", "$182,400"],
+  ["Prime cost", "61.2% of sales"],
+  ["Labor", "29.8% of sales"],
+  ["Net margin", "8.4%"],
+];
+
+const FINANCE_STEPS = [
+  { t: "Upload", d: "A month's P&L, payroll report or bank export — PDF, CSV or Excel. Several files for one month are fine." },
+  { t: "Confirm", d: "BillTap's AI reads it into a draft. You check the figures and confirm. Nothing counts until you do." },
+  { t: "See it", d: "Prime cost, labor and margin, month over month, next to your guest ratings — and in your first-of-the-month email." },
+];
+
+
+/**
  * A phone-shaped frame for the product shots.
  *
  * ── Why these are rendered, not screenshotted ───────────────────────────────
@@ -716,7 +751,7 @@ export default function Restaurants() {
       <Seo
         path="/restaurants"
         title="Guest Recovery for Restaurants: Catch Unhappy Guests Before They Leave | BillTap"
-        description="BillTap is a real-time guest recovery system for restaurant owners and GMs. A low rating alerts your manager with the table and what went wrong while the guest is still there, so you can recover the table before it becomes a bad review or a lost customer. Genuine Google reviews from every guest, no gating. 30-day free trial, $149/month."
+        description="BillTap is a real-time guest recovery system for restaurant owners and GMs. A low rating alerts your manager with the table and what went wrong while the guest is still there, so you can recover the table before it becomes a bad review or a lost customer. Genuine Google reviews from every guest, no gating. Add Financial Intelligence for prime cost, labor and margin from your P&L. 30-day free trial, plans from $149/month."
         // ?v= because Facebook, LinkedIn and Slack cache a preview by image URL.
         // Bump it whenever scripts/build-brand-images.mjs redraws this card.
         image="https://billtap.app/img/og-restaurants.png?v=2"
@@ -1341,6 +1376,70 @@ export default function Restaurants() {
         </div>
       </section>
 
+      {/* ── Financial Intelligence ───────────────────────────
+          The second module (docs/FINANCIAL-INTELLIGENCE.md). Described as it
+          works: the AI drafts, the owner confirms, the arithmetic is ours.
+          The sample card is labelled a sample, like the report above. */}
+      <section id="finances" className="relative max-w-6xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <Reveal>
+            <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>New · Financial Intelligence</p>
+            <h2 className="font-display" style={{ fontSize: "clamp(2.1rem, 4.8vw, 3.4rem)", lineHeight: 1.05 }}>
+              Your P&amp;L, read for you.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed font-light" style={{ color: "rgba(245,245,244,.62)" }}>
+              Drop in last month&apos;s P&amp;L and get back the numbers that decide whether the month
+              worked — prime cost, labor and margin — without retyping a spreadsheet. Then see them
+              beside your guest ratings for the same month, so the money and the dining room are on
+              one page.
+            </p>
+            <ol className="mt-8 space-y-5">
+              {FINANCE_STEPS.map((s, i) => (
+                <li key={s.t} className="flex gap-4">
+                  <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                    style={{ background: "rgba(240,180,41,.14)", color: GOLD }}>{i + 1}</span>
+                  <div>
+                    <p className="font-semibold" style={{ color: "#f5f5f4" }}>{s.t}</p>
+                    <p className="mt-1 text-sm font-light leading-relaxed" style={{ color: "rgba(245,245,244,.62)" }}>{s.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-7 text-xs font-light leading-relaxed" style={{ color: "rgba(245,245,244,.45)" }}>
+              Your files stay private to your account and the originals are deleted after 90 days.
+              The AI never does the sums — every ratio is calculated from figures you confirmed.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <figure>
+              <div className="rounded-2xl p-5 sm:p-6" style={{ background: "#fff", color: "#111", boxShadow: "0 40px 90px -50px rgba(0,0,0,.95)" }}>
+                <div className="rounded-xl p-5 mb-4" style={{ background: "#111827" }}>
+                  <p className="text-[11px] uppercase tracking-[.12em]" style={{ color: GOLD }}>September · Finances</p>
+                  <p className="mt-1 text-xl font-bold" style={{ color: "#fff" }}>{SAMPLE_RESTAURANT}</p>
+                </div>
+                <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+                  <tbody>
+                    {FINANCE_SAMPLE.map(([k, v]) => (
+                      <tr key={k}>
+                        <td className="py-2.5 pr-3" style={{ color: "#666", borderBottom: "1px solid #eee" }}>{k}</td>
+                        <td className="py-2.5 text-right font-bold" style={{ borderBottom: "1px solid #eee" }}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-4 text-xs leading-relaxed" style={{ color: "#888" }}>
+                  In the same month, your average rating was 4.6 and three unhappy guests reached a manager in time.
+                </p>
+              </div>
+              <figcaption className="mt-3 text-xs text-center font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+                Sample month for a sample restaurant — illustrative numbers, not a customer&apos;s results.
+              </figcaption>
+            </figure>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ── What keeps owners up at night ─────────────────────
           Three of the pains owners and GMs name most, and only the three this
           product actually touches. Staffing is framed as consistency, not
@@ -1810,6 +1909,32 @@ export default function Restaurants() {
                   </li>
                 ))}
               </ul>
+
+              {/* The three plans from shared/finance.js TIERS. Every plan gets
+                  the same 30-day trial; the form below starts it. */}
+              <div className="mt-10">
+                <p className="rst-eyebrow mb-4" style={{ color: GOLD }}>Choose your plan</p>
+                <div className="grid gap-3">
+                  {PLANS.map((p) => (
+                    <div key={p.id} className="p-5 rounded-2xl flex items-start justify-between gap-4"
+                      style={{ background: p.best ? "rgba(240,180,41,.08)" : "rgba(255,255,255,.03)", border: `1px solid ${p.best ? "rgba(240,180,41,.4)" : "rgba(255,255,255,.08)"}` }}>
+                      <div>
+                        <p className="font-semibold" style={{ color: "#f5f5f4" }}>
+                          {p.name}
+                          {p.best && <span className="ml-2 text-[10px] uppercase tracking-[.12em] px-2 py-0.5 rounded-full align-middle" style={{ background: GOLD, color: INK }}>Both</span>}
+                        </p>
+                        <p className="mt-1.5 text-xs font-light leading-relaxed" style={{ color: "rgba(245,245,244,.6)" }}>{p.desc}</p>
+                      </div>
+                      <p className="font-display text-2xl leading-none flex-shrink-0" style={{ color: GOLD }}>
+                        ${p.price}<span className="font-body text-xs font-light" style={{ color: "rgba(245,245,244,.4)" }}>/mo</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs font-light" style={{ color: "rgba(245,245,244,.45)" }}>
+                  Every plan: 30-day free trial, no contract, cancel anytime. Already on a trial? Switch Financial Intelligence on from your dashboard.
+                </p>
+              </div>
 
               {/*
                 The comparison this page was missing, and it was already
