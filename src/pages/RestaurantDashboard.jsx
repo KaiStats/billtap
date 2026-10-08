@@ -533,6 +533,11 @@ export default function RestaurantDashboard() {
             {financeTrial === "failed" && <p className="w-full text-xs" style={{ color: "#ff8080" }}>Couldn&apos;t turn it on. Try again, or call (702) 844-0938.</p>}
           </div>
         )}
+        {!financeOn && (restaurant.plan === "active" || restaurant.plan === "past_due") && !restaurant.demo && (
+          <p className="mb-4 text-sm" style={{ color: "rgba(255,255,255,.7)" }}>
+            Want Financial Intelligence too? Email <a href="mailto:hello@billtap.app" className="underline">hello@billtap.app</a> and we&apos;ll move your plan over.
+          </p>
+        )}
         {financeOn && (
           <nav className="mt-6 flex gap-1 p-1 rounded-full w-fit" role="tablist" aria-label="Dashboard sections"
             style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)" }}>

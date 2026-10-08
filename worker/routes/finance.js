@@ -231,15 +231,17 @@ export function financeHandlers({ findOrAdoptRestaurant, ownerView }) {
           .filter((u) => requested.includes(u.id))
         : [];
 
+      const existing = (await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id, month: checked.snapshot.month }))[0];
       const now = Date.now();
       const fields = {
         ...checked.snapshot,
-        source_upload_ids: uploads.map((u) => u.id),
+        // Kept across re-confirms: correcting a month by hand must not erase
+        // which documents its figures came from.
+        source_upload_ids: [...new Set([...(existing?.source_upload_ids || []), ...uploads.map((u) => u.id)])],
         confirmed_by: user.id,
         confirmed_at: now,
         updated_date: new Date(now).toISOString(),
       };
-      const existing = (await svc.entity('MonthlySnapshot').filter({ restaurant_id: restaurant.id, month: checked.snapshot.month }))[0];
       const saved = existing
         ? await svc.entity('MonthlySnapshot').update(existing.id, fields)
         : await svc.entity('MonthlySnapshot').create({ restaurant_id: restaurant.id, ...fields });

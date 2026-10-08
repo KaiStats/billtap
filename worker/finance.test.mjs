@@ -282,3 +282,20 @@ test('an upload is stored privately, read by Claude, and returned as a draft', a
     assert.equal(row.data.restaurant_id, 'r1');
   } finally { globalThis.fetch = inner; s.restore(); }
 });
+
+test('re-confirming a month keeps the documents it was built from', async () => {
+  const s = stub({
+    uploads: [{ id: 'u_new', restaurant_id: 'r1' }],
+    snapshots: [{ id: 's1', restaurant_id: 'r1', month: '2026-09-01', source_upload_ids: ['u_old'] }],
+  });
+  try {
+    const res = await call('saveMonthlySnapshot', {
+      snapshot: { month: '2026-09', revenue: 100000 },
+      upload_ids: ['u_new'],
+    });
+    assert.equal(res.status, 200);
+    const updated = s.writes.find((w) => w.table === 'monthly_snapshots');
+    assert.equal(updated.method, 'PATCH');
+    assert.deepEqual(updated.data.source_upload_ids, ['u_old', 'u_new']);
+  } finally { s.restore(); }
+});

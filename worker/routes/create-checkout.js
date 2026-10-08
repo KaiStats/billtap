@@ -59,10 +59,18 @@ export async function onRequestPost({ request, env }) {
   if (!user) return json({ error: 'Sign in first.', code: 'unauthorized' }, 401);
 
   const owned = await serviceRole(env).entity('Restaurant')
-    .filter({ id: restaurantId }, { select: 'id,owner_id' });
+    .filter({ id: restaurantId }, { select: 'id,owner_id,plan,stripe_subscription_id' });
   if (!owned.length || String(owned[0].owner_id || '') !== String(user.id)) {
     console.error(`create-checkout: ${user.id} tried to pay for restaurant ${restaurantId}`);
     return json({ error: 'That restaurant is not on your account.', code: 'not_yours' }, 403);
+  }
+
+  // A restaurant already paying must not open a second subscription: Stripe
+  // would bill both, and the webhook would overwrite stripe_subscription_id so
+  // the first one keeps charging with nothing pointing at it. Plan changes for
+  // a live subscriber go through us until self-serve upgrades exist.
+  if (['active', 'past_due'].includes(owned[0].plan) && owned[0].stripe_subscription_id) {
+    return json({ error: 'This restaurant already has a plan. Email hello@billtap.app to change it.', code: 'already_subscribed' }, 409);
   }
 
   // Which plan. Absent means the original $149 Guest Recovery plan, so every

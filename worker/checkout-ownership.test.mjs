@@ -155,3 +155,20 @@ test('the real owner completing the same session is activated normally', async (
     assert.equal(writes[0].body.stripe_subscription_id, 'sub_attacker');
   });
 });
+
+test('a restaurant already paying cannot open a second subscription', async () => {
+  await withStub({ restaurants: [{ ...HERB, plan: 'active', stripe_subscription_id: 'sub_1' }] }, async (s) => {
+    const res = await startCheckout('r_herb');
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, 'already_subscribed');
+    assert.equal(s.sent.length, 0, 'nothing was sent to Stripe');
+  });
+});
+
+test('a trial restaurant can still check out', async () => {
+  await withStub({ restaurants: [{ ...HERB, plan: 'trial', stripe_subscription_id: '' }] }, async (s) => {
+    const res = await startCheckout('r_herb');
+    assert.equal(res.status, 200);
+    assert.equal(s.sent.length, 1);
+  });
+});
