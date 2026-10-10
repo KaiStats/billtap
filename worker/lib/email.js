@@ -86,7 +86,12 @@ async function attemptSend(request) {
   }
 }
 
-export async function sendEmail(env, { to, subject, html, text, replyTo, from: fromOverride }) {
+/**
+ * @typedef {{ ok: boolean, reason?: string, retryable?: boolean }} SendResult
+ */
+
+/** @returns {Promise<SendResult>} */
+export async function sendEmail(env, /** @type {{ to: string, subject: string, html: string, text: string, replyTo?: string, from?: string }} */ { to, subject, html, text, replyTo, from: fromOverride }) {
   const held = suppressed(env, 'email', to);
   if (held) return held;
 
@@ -167,6 +172,7 @@ export async function sendEmail(env, { to, subject, html, text, replyTo, from: f
    * giving up: a 422 from Postmark (an unverified sender, a payload rule) says
    * nothing about whether Resend will take the same message.
    */
+  /** @type {SendResult} */
   let last = { ok: false, reason: 'email_send_failed' };
   for (const provider of providers) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -187,7 +193,8 @@ export async function sendEmail(env, { to, subject, html, text, replyTo, from: f
  * are all set — an operator with no phone on file, or an account with no Twilio
  * credentials, simply gets email only. Like sendEmail, it never throws.
  */
-export async function sendSms(env, { to, body }) {
+/** @returns {Promise<SendResult>} */
+export async function sendSms(env, /** @type {{ to: string, body: string }} */ { to, body }) {
   // Twilio has no spend cap on this account, and a text sent to a real owner at
   // two in the morning about an invented one-star review has no undo.
   const held = suppressed(env, 'sms', to);

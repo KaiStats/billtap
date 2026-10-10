@@ -469,3 +469,69 @@ test('an unpaid restaurant is still not paged, and stays deliverable', async () 
     assert.equal(tables.guest_ratings[0].alerted_at, null);
   });
 });
+
+// ── Server-side alert guards (audit H1) ─────────────────────────────────────
+
+test('a rating above the threshold pages nobody, even when called directly', async () => {
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 5, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [rating] }, async ({ emails, tables }) => {
+    const res = await alertFor();
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).skipped, 'above_threshold');
+    assert.equal(emails.length, 0);
+    assert.equal(tables.guest_ratings[0].alerted_at, null);
+  });
+});
+
+test('a restaurant is paged at most ALERTS_PER_HOUR times an hour', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const now = Date.now();
+  const earlier = Array.from({ length: ALERTS_PER_HOUR }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: now - 60_000 }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...earlier, rating] }, async ({ emails }) => {
+    const res = await alertFor();
+    assert.equal((await res.json()).skipped, 'hourly_cap');
+    assert.equal(emails.length, 0);
+  });
+});
+
+test('pages from over an hour ago do not count against the cap', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const old = Array.from({ length: ALERTS_PER_HOUR }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: Date.now() - 2 * 3600_000 }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...old, rating] }, async ({ emails }) => {
+    await alertFor();
+    assert.equal(emails.length, 1);
+  });
+});
+
+test('follow-up pages count against the hourly cap too', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const now = Date.now();
+  const half = ALERTS_PER_HOUR / 2;
+  const earlier = Array.from({ length: half }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: now - 60_000, comment_alerted_at: now - 30_000 }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...earlier, rating] }, async ({ emails }) => {
+    assert.equal((await (await alertFor()).json()).skipped, 'hourly_cap');
+    assert.equal(emails.length, 0);
+  });
+});
+
+test('a first alert that carried its comment counts once against the cap', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const t = Date.now() - 60_000;
+  const earlier = Array.from({ length: ALERTS_PER_HOUR / 2 }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: t, comment_alerted_at: t }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...earlier, rating] }, async ({ emails }) => {
+    await alertFor();
+    assert.equal(emails.length, 1, 'ten pages so far, not twenty');
+  });
+});

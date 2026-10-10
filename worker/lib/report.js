@@ -153,7 +153,7 @@ function parseStack(stack) {
  * path the send goes to waitUntil so the caller's 500 is not sitting behind a
  * POST to a third party.
  */
-export function reportError(env, ctx, error, { id, route, extra = {} } = {}) {
+export function reportError(env, ctx, error, /** @type {{ id?: string, route?: string, extra?: object }} */ { id, route, extra = {} } = {}) {
   const status = error?.name === 'AppError' ? error.status : 500;
   // The caller's own mistake. Already a log line; not an incident.
   if (status < 500) return false;

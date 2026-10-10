@@ -56,7 +56,7 @@ import { audit, ACTIONS, fingerprint } from '../lib/audit.js';
 const CONFIRMATION = 'DELETE';
 
 /** PostgREST, as service role. Returns the rows it touched. */
-async function write(env, table, params, { method = 'PATCH', body } = {}) {
+async function write(env, table, params, /** @type {{ method?: string, body?: any }} */ { method = 'PATCH', body } = {}) {
   const res = await fetchWithTimeout(
     `${supabaseUrl(env)}/rest/v1/${table}?${params}`,
     {

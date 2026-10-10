@@ -163,7 +163,7 @@ function entityApi(env, authHeaders, apikey) {
        * PostgREST parses them, so there is no injection surface here; keep it
        * that way if this ever grows an or/like clause.
        */
-      async filter(query = {}, { select = '*', limit, offset, order: orderSpec } = {}) {
+      async filter(query = {}, /** @type {{ select?: string, limit?: number, offset?: number, order?: string }} */ { select = '*', limit, offset, order: orderSpec } = {}) {
         const params = new URLSearchParams({ select });
         for (const [column, value] of Object.entries(query)) {
           if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -224,7 +224,7 @@ function entityApi(env, authHeaders, apikey) {
        * diners acting at the same moment means the second write reinstates the
        * first's stale snapshot. See supabase/migrations/0005_sessions_version.sql.
        */
-      async update(id, data, { ifMatch } = {}) {
+      async update(id, data, /** @type {{ ifMatch?: object }} */ { ifMatch } = {}) {
         const params = new URLSearchParams();
         params.append('id', `eq.${id}`);
         if (ifMatch) {

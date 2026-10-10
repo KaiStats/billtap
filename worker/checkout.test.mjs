@@ -206,3 +206,26 @@ test('checkout does not send customer_update without a customer', async () => {
   assert.match(sent, /billing_address_collection/,
     'the address is still collected — nexus depends on it');
 });
+
+test('replaying an old paid session after cancelling activates nothing', async () => {
+  // Audit L2: a Checkout Session stays "complete" forever; the subscription
+  // it created is what says whether they are paying today.
+  const net = stubNetwork({ ...PAID, subscription: { ...PAID.subscription, status: 'canceled' } });
+  try {
+    const res = await onRequestPost({ request: request(), env: ENV, ctx: null });
+    assert.equal((await res.json()).paid, false);
+    assert.equal(net.writes.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test('a trialing subscription still activates', async () => {
+  const net = stubNetwork({ ...PAID, subscription: { ...PAID.subscription, status: 'trialing' } });
+  try {
+    const res = await onRequestPost({ request: request(), env: ENV, ctx: null });
+    assert.equal((await res.json()).paid, true);
+  } finally {
+    net.restore();
+  }
+});

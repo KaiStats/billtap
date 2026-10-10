@@ -32,6 +32,11 @@ import { serviceRole } from '../lib/data.js';
 import { supabaseUrl } from '../lib/db.js';
 import { entitlement } from '../../shared/entitlement.js';
 import { isIssue, issueLabel } from '../../shared/guest-recovery.js';
+import { ratingThreshold } from './functions.js';
+
+// Pages per restaurant per hour. A busy Saturday with a broken kitchen stays
+// well under it; a script calling this endpoint for every slug does not.
+export const ALERTS_PER_HOUR = 20;
 
 const MAX_BODY_BYTES = 512;
 
@@ -197,6 +202,33 @@ export async function onRequestPost({ request, env }) {
      * a read that times out, or a rating submitted with no session at all must
      * cost the manager some detail, never the page itself.
      */
+    // The client decides when to call; the server decides whether to page.
+    // Without this, a direct call pages the owner about a five-star rating.
+    if (stars > ratingThreshold(restaurant.rating_threshold)) {
+      return json({ ok: true, skipped: 'above_threshold' }, 200);
+    }
+
+    // Follow-ups count too: each is a page. Two concurrent calls can still
+    // both read 19 and both send; the overshoot is bounded by the per-IP
+    // costly rate limit, so a reservation table is not worth its migration.
+    if (svc.queryOperators) {
+      try {
+        const since = Date.now() - 60 * 60 * 1000;
+        const sent = 0
+          + await pagesSince(svc, restaurant.id, 'alerted_at', since)
+          + await pagesSince(svc, restaurant.id, 'comment_alerted_at', since);
+        if (sent >= ALERTS_PER_HOUR) {
+          console.log(JSON.stringify({
+            at: new Date().toISOString(), job: 'rating-alert', skipped: 'hourly_cap', restaurant_id: restaurant.id,
+          }));
+          return json({ ok: true, skipped: 'hourly_cap' }, 200);
+        }
+      } catch (error) {
+        // Fail open: a missed real alert costs more than one extra page.
+        console.error('rating-alert: hourly cap check failed:', error?.message);
+      }
+    }
+
     let check = null;
     if (rating.session_id) {
       try {
@@ -415,7 +447,7 @@ export async function onRequestPost({ request, env }) {
         text,
         replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,
       }),
-      alertPhone ? sendSms(env, { to: alertPhone, body: smsBody }) : { ok: false },
+      alertPhone ? sendSms(env, { to: alertPhone, body: smsBody }) : /** @type {{ ok: boolean, reason?: string }} */ ({ ok: false }),
     ]);
 
     // Nothing reached the operator. Release the claim so a retry is possible —
@@ -515,4 +547,16 @@ async function stampAlerted(svc, ratingId, value = Date.now(), isFollowUp = fals
     console.error('rating-alert: alerted_at write failed:', error.message);
     return false;
   }
+}
+
+/** @returns {Promise<number>} pages sent since `since` for one restaurant */
+async function pagesSince(svc, restaurantId, column, since) {
+  const rows = await svc.entity('GuestRating').filter(
+    { restaurant_id: restaurantId, [column]: { gte: since } },
+    { select: 'id,alerted_at,comment_alerted_at', limit: ALERTS_PER_HOUR + 1 },
+  );
+  return rows.filter((r) => Number(r[column]) >= since
+    // A first alert that carried the comment stamps both columns with the
+    // same time for one page; count it once, under alerted_at.
+    && !(column === 'comment_alerted_at' && Number(r.comment_alerted_at) === Number(r.alerted_at))).length;
 }

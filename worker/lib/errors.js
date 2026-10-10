@@ -51,12 +51,13 @@ export function requestId() {
  */
 export class AppError extends Error {
   /**
-   * @param code       stable identifier, e.g. 'session_expired'
+   * @param {string} code       stable identifier, e.g. 'session_expired'
    * @param message    shown to the caller when status < 500. Must be safe to
    *                   put on a stranger's screen.
    * @param status     HTTP status
-   * @param options.detail   context for the logs only, never sent
-   * @param options.retry    true when trying the same thing again may work
+   * @param {object} [options]
+   * @param {any} [options.detail]   context for the logs only, never sent
+   * @param {boolean} [options.retry]    true when trying the same thing again may work
    */
   constructor(code, message, status = 400, { detail = null, retry = false } = {}) {
     super(message);
@@ -174,7 +175,7 @@ export function publicShape(error, id, route = 'unknown') {
  * calm. The stack goes in only for the unexpected ones — an AppError is a
  * decision this code made on purpose, and its stack is noise.
  */
-export function logError(error, { id, route, extra = {} }) {
+export function logError(error, /** @type {{ id?: string, route?: string, extra?: object }} */ { id, route, extra = {} }) {
   const line = {
     at: new Date().toISOString(),
     level: error instanceof AppError && error.status < 500 ? 'warn' : 'error',
