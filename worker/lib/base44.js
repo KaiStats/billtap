@@ -85,7 +85,7 @@ export class Base44Error extends Error {
   }
 }
 
-async function request(env, { path, method = 'GET', body, headers = {} }) {
+async function request(env, /** @type {{ path: string, method?: string, body?: any, headers?: object }} */ { path, method = 'GET', body, headers = {} }) {
   const id = appId(env);
   if (!id) throw new Error('BASE44_APP_ID is not configured');
 

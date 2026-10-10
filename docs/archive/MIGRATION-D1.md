@@ -10,7 +10,7 @@ independently revertible. There is no cutover weekend.
 
 | Surface | Today | Replacement | Notes |
 | --- | --- | --- | --- |
-| 8 entities | Base44 entities | D1 (`migrations/0001_init.sql`) | Schema written and validated |
+| 8 entities | Base44 entities | D1 (`docs/archive/d1-0001_init.sql`) | Schema written and validated |
 | Auth | email/password, OTP, OAuth | Magic link + Google | **Password hashes are not exportable** |
 | Realtime | `Session.subscribe` ×4 | Durable Object per session | Drives live paid/unpaid |
 | Receipt image upload | `Core.UploadFile` | R2 | |

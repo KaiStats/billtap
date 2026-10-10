@@ -43,6 +43,7 @@ import { ticketFrom } from './scan-receipt.js';
  * called directly, by a test or by a future path, does its work and skips the
  * row rather than throwing on a missing dependency.
  */
+/** @type {(entry?: any) => Promise<void>} */
 const NO_AUDIT = async () => {};
 
 /** One page of a dashboard read. */
@@ -1888,9 +1889,12 @@ const HANDLERS = {
         const contacts = await svc.entity('GuestContact').filter({
           restaurant_id: rating.restaurant_id, email,
         });
+        // One visit per rating: repeating this call with the same email for
+        // the same rating must not inflate the count (audit L1).
+        const repeat = String(rating.guest_email || '').toLowerCase() === email;
         if (contacts.length) {
           await svc.entity('GuestContact').update(contacts[0].id, {
-            visits: (contacts[0].visits || 1) + 1,
+            visits: (contacts[0].visits || 1) + (repeat ? 0 : 1),
             last_seen: Date.now(),
           });
         } else {
@@ -3016,7 +3020,7 @@ const HANDLERS = {
     const existing = await findOrAdoptRestaurant(svc, user, audit);
 
     const parsed = restaurantPatch(body, { creating: !existing });
-    if (parsed.error) return json({ error: parsed.error }, 400);
+    if ('error' in parsed) return json({ error: parsed.error }, 400);
     const { patch, fields } = parsed;
 
     if (!existing) {

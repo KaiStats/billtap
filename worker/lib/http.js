@@ -83,7 +83,7 @@ export async function fetchWithTimeout(url, init = {}, ms = TIMEOUTS.database) {
     if (error?.name === 'AbortError') {
       const timeout = new Error(`Request timed out after ${ms}ms`);
       timeout.name = 'TimeoutError';
-      timeout.timeout = ms;
+      /** @type {any} */ (timeout).timeout = ms;
       throw timeout;
     }
     throw error;

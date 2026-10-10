@@ -124,7 +124,7 @@ function sessionRef(request) {
 }
 
 /** The row, built and bounded. Exported so a test can assert on it directly. */
-export function buildRow(error, { id, route, method, request, body, env, status }) {
+export function buildRow(error, /** @type {{ id?: string, route?: string, method?: string, request?: Request, body?: any, env?: any, status?: number }} */ { id, route, method, request, body, env, status }) {
   const resolved = status ?? (error?.name === 'AppError' ? error.status : 500);
   return {
     request_id: id || null,

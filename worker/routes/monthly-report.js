@@ -356,6 +356,7 @@ export async function scheduled(env, now = new Date()) {
       allRows(svc, 'GuestRating', restaurant.id),
       allRows(svc, 'GuestContact', restaurant.id),
     ]);
+    /** @type {any} */
     const report = buildReport(restaurant, ratings, contacts, window, env.RESTAURANT_TZ || 'America/Los_Angeles');
     if (hasModule(restaurant, 'finance')) {
       // Isolated: a finance read that fails must not cost the restaurant its

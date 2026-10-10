@@ -446,7 +446,7 @@ export async function onRequestPost({ request, env }) {
         text,
         replyTo: EMAIL_RE.test(guestEmail) ? guestEmail : undefined,
       }),
-      alertPhone ? sendSms(env, { to: alertPhone, body: smsBody }) : { ok: false },
+      alertPhone ? sendSms(env, { to: alertPhone, body: smsBody }) : /** @type {{ ok: boolean, reason?: string }} */ ({ ok: false }),
     ]);
 
     // Nothing reached the operator. Release the claim so a retry is possible —
