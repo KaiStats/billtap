@@ -32,6 +32,11 @@ import { serviceRole } from '../lib/data.js';
 import { supabaseUrl } from '../lib/db.js';
 import { entitlement } from '../../shared/entitlement.js';
 import { isIssue, issueLabel } from '../../shared/guest-recovery.js';
+import { ratingThreshold } from './functions.js';
+
+// Pages per restaurant per hour. A busy Saturday with a broken kitchen stays
+// well under it; a script calling this endpoint for every slug does not.
+export const ALERTS_PER_HOUR = 20;
 
 const MAX_BODY_BYTES = 512;
 
@@ -197,6 +202,32 @@ export async function onRequestPost({ request, env }) {
      * a read that times out, or a rating submitted with no session at all must
      * cost the manager some detail, never the page itself.
      */
+    // The client decides when to call; the server decides whether to page.
+    // Without this, a direct call pages the owner about a five-star rating.
+    if (stars > ratingThreshold(restaurant.rating_threshold)) {
+      return json({ ok: true, skipped: 'above_threshold' }, 200);
+    }
+
+    if (!isFollowUp && svc.queryOperators) {
+      try {
+        const since = Date.now() - 60 * 60 * 1000;
+        const recent = await svc.entity('GuestRating').filter(
+          { restaurant_id: restaurant.id, alerted_at: { gte: since } },
+          { select: 'id,alerted_at', limit: ALERTS_PER_HOUR + 1 },
+        );
+        const inWindow = recent.filter((r) => Number(r.alerted_at) >= since);
+        if (inWindow.length >= ALERTS_PER_HOUR) {
+          console.log(JSON.stringify({
+            at: new Date().toISOString(), job: 'rating-alert', skipped: 'hourly_cap', restaurant_id: restaurant.id,
+          }));
+          return json({ ok: true, skipped: 'hourly_cap' }, 200);
+        }
+      } catch (error) {
+        // Fail open: a missed real alert costs more than one extra page.
+        console.error('rating-alert: hourly cap check failed:', error?.message);
+      }
+    }
+
     let check = null;
     if (rating.session_id) {
       try {

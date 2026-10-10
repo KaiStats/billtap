@@ -58,8 +58,12 @@ export async function onRequestPost({ request, env, ctx, requestId = null }) {
       return json({ error: 'Could not verify that payment.' }, 502);
     }
 
-    const paid = data.payment_status === 'paid' || data.status === 'complete';
     const sub = data.subscription && typeof data.subscription === 'object' ? data.subscription : null;
+    // A completed Checkout Session stays "complete" forever. Replaying an old
+    // cs_ id after cancelling must not turn the plan back on, so the
+    // subscription it created has to be live right now.
+    const live = !sub?.status || ['active', 'trialing'].includes(sub.status);
+    const paid = (data.payment_status === 'paid' || data.status === 'complete') && live;
 
     // The billing address, stored on the Restaurant row below.
     //
