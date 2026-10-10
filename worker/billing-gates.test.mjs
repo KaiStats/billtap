@@ -508,3 +508,17 @@ test('pages from over an hour ago do not count against the cap', async () => {
     assert.equal(emails.length, 1);
   });
 });
+
+test('follow-up pages count against the hourly cap too', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const now = Date.now();
+  const half = ALERTS_PER_HOUR / 2;
+  const earlier = Array.from({ length: half }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: now - 60_000, comment_alerted_at: now - 30_000 }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...earlier, rating] }, async ({ emails }) => {
+    assert.equal((await (await alertFor()).json()).skipped, 'hourly_cap');
+    assert.equal(emails.length, 0);
+  });
+});

@@ -208,15 +208,16 @@ export async function onRequestPost({ request, env }) {
       return json({ ok: true, skipped: 'above_threshold' }, 200);
     }
 
-    if (!isFollowUp && svc.queryOperators) {
+    // Follow-ups count too: each is a page. Two concurrent calls can still
+    // both read 19 and both send; the overshoot is bounded by the per-IP
+    // costly rate limit, so a reservation table is not worth its migration.
+    if (svc.queryOperators) {
       try {
         const since = Date.now() - 60 * 60 * 1000;
-        const recent = await svc.entity('GuestRating').filter(
-          { restaurant_id: restaurant.id, alerted_at: { gte: since } },
-          { select: 'id,alerted_at', limit: ALERTS_PER_HOUR + 1 },
-        );
-        const inWindow = recent.filter((r) => Number(r.alerted_at) >= since);
-        if (inWindow.length >= ALERTS_PER_HOUR) {
+        const sent = 0
+          + await pagesSince(svc, restaurant.id, 'alerted_at', since)
+          + await pagesSince(svc, restaurant.id, 'comment_alerted_at', since);
+        if (sent >= ALERTS_PER_HOUR) {
           console.log(JSON.stringify({
             at: new Date().toISOString(), job: 'rating-alert', skipped: 'hourly_cap', restaurant_id: restaurant.id,
           }));
@@ -546,4 +547,13 @@ async function stampAlerted(svc, ratingId, value = Date.now(), isFollowUp = fals
     console.error('rating-alert: alerted_at write failed:', error.message);
     return false;
   }
+}
+
+/** @returns {Promise<number>} pages sent since `since` for one restaurant */
+async function pagesSince(svc, restaurantId, column, since) {
+  const rows = await svc.entity('GuestRating').filter(
+    { restaurant_id: restaurantId, [column]: { gte: since } },
+    { select: `id,${column}`, limit: ALERTS_PER_HOUR + 1 },
+  );
+  return rows.filter((r) => Number(r[column]) >= since).length;
 }

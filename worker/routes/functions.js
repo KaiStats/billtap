@@ -1889,9 +1889,11 @@ const HANDLERS = {
         const contacts = await svc.entity('GuestContact').filter({
           restaurant_id: rating.restaurant_id, email,
         });
-        // One visit per rating: repeating this call with the same email for
-        // the same rating must not inflate the count (audit L1).
-        const repeat = String(rating.guest_email || '').toLowerCase() === email;
+        // One visit per rating (audit L1): if the contact was already touched
+        // since this rating was made, this rating has been counted. A failed
+        // earlier write leaves last_seen alone, so a retry still counts.
+        const ratedAt = Number(rating.created_at) || 0;
+        const repeat = ratedAt > 0 && Number(contacts[0]?.last_seen) >= ratedAt;
         if (contacts.length) {
           await svc.entity('GuestContact').update(contacts[0].id, {
             visits: (contacts[0].visits || 1) + (repeat ? 0 : 1),
