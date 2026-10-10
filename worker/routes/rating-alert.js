@@ -553,7 +553,10 @@ async function stampAlerted(svc, ratingId, value = Date.now(), isFollowUp = fals
 async function pagesSince(svc, restaurantId, column, since) {
   const rows = await svc.entity('GuestRating').filter(
     { restaurant_id: restaurantId, [column]: { gte: since } },
-    { select: `id,${column}`, limit: ALERTS_PER_HOUR + 1 },
+    { select: 'id,alerted_at,comment_alerted_at', limit: ALERTS_PER_HOUR + 1 },
   );
-  return rows.filter((r) => Number(r[column]) >= since).length;
+  return rows.filter((r) => Number(r[column]) >= since
+    // A first alert that carried the comment stamps both columns with the
+    // same time for one page; count it once, under alerted_at.
+    && !(column === 'comment_alerted_at' && Number(r.comment_alerted_at) === Number(r.alerted_at))).length;
 }

@@ -522,3 +522,16 @@ test('follow-up pages count against the hourly cap too', async () => {
     assert.equal(emails.length, 0);
   });
 });
+
+test('a first alert that carried its comment counts once against the cap', async () => {
+  const { ALERTS_PER_HOUR } = await import('./routes/rating-alert.js');
+  const t = Date.now() - 60_000;
+  const earlier = Array.from({ length: ALERTS_PER_HOUR / 2 }, (_, i) => (
+    { id: `old${i}`, restaurant_id: 'r1', stars: 1, alerted_at: t, comment_alerted_at: t }
+  ));
+  const rating = { id: 'gr1', restaurant_id: 'r1', stars: 1, comment: null, alerted_at: null };
+  await withStub({ restaurants: [PAYING()], ratings: [...earlier, rating] }, async ({ emails }) => {
+    await alertFor();
+    assert.equal(emails.length, 1, 'ten pages so far, not twenty');
+  });
+});
